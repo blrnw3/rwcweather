@@ -2,8 +2,9 @@ CREATE SCHEMA IF NOT EXISTS wx;
 
 USE wx;
 
-CREATE TABLE IF NOT EXISTS `live` (
+CREATE TABLE IF NOT EXISTS `obs` (
   `t` datetime NOT NULL,
+  `src` enum ('live', 'local', 'backfill', 'interpolation') DEFAULT 'live',
   `rain` float unsigned DEFAULT NULL COMMENT 'DAILY total rain',
   `humi` tinyint unsigned DEFAULT NULL,
   `pres` decimal(5,1) unsigned DEFAULT NULL,
@@ -12,26 +13,33 @@ CREATE TABLE IF NOT EXISTS `live` (
   `temp` decimal(3,1) DEFAULT NULL,
   `wdir` smallint(3) unsigned DEFAULT NULL,
   `solr` smallint(4) unsigned DEFAULT NULL,
+  `pm2` smallint(3) unsigned DEFAULT NULL COMMENT 'PM-2.5 level',
   `wet` tinyint unsigned DEFAULT 0 COMMENT '1 if raining else 0',
   `sun` tinyint unsigned DEFAULT 0 COMMENT '1 if sunny else 0',
   `inhumi` tinyint unsigned DEFAULT NULL,
   `intemp` decimal(3,1) DEFAULT NULL,
+  `t_obs` datetime NOT NULL COMMENT 'Actual datetime of the observation',
+  `t_mod` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'last modified',
   PRIMARY KEY (`t`)
 ) ENGINE=InnoDB
 DEFAULT CHARSET utf8
-COMMENT 'Live variables (once-per-minute sensor readings)';
+COMMENT 'Weather observations (once-per-minute sensor readings)';
 
 CREATE TABLE IF NOT EXISTS `avg_extreme` (
   `d` date NOT NULL,
   `var` enum(
         'rain', 'temp', 'humi', 'pres', 'wind', 'gust', 'wdir', 'solr', 'wet', 'sun', 'feels', 'inhumi', 'intemp',
-        'night_temp', 'day_temp', 'day_wet', 'rate', 'frost'
+        'night_temp', 'day_temp', 'day_wet', 'rate', 'frost', 'pm2'
    ) not null,
   `type` enum('avg', 'total', 'min', 'max') not null,
   `period` enum('day') not null default 'day',
   `val` double not null,
   `val_exact` decimal(4,2) default null comment 'for min/max e.g. temp, record the precise val for better comparison',
   `at` time default null comment 'time of the extreme',
+  `cnt` int not null comment 'number of obs involved in avg/extreme',
+  `t_mod` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'last modified',
+  `overridden` tinyint unsigned DEFAULT 0 COMMENT '1 if manually overridden',
+  `comment` varchar(255) DEFAULT NULL COMMENT 'if manually updated, comment optional',
    PRIMARY KEY (`d`, `var`, `type`, `period`),
    KEY `var_type_val` (`var`, `type`, `val`),
    KEY `var_type_d` (`var`, `type`, `d`),
@@ -40,7 +48,7 @@ CREATE TABLE IF NOT EXISTS `avg_extreme` (
 DEFAULT CHARSET utf8
 COMMENT 'Averages, totals, extremes (just daily for now)';
 
-CREATE TABLE IF NOT EXISTS `change_extremes` (
+CREATE TABLE IF NOT EXISTS `change_extreme` (
   `d` date NOT NULL,
   `var` enum('rain', 'temp', 'humi', 'pres', 'wind', 'gust', 'solr', 'feels', 'inhumi', 'intemp') not null,
   `type` enum('avg', 'total', 'min', 'max') not null,
@@ -59,11 +67,11 @@ CREATE TABLE IF NOT EXISTS `change_extremes` (
 
 CREATE TABLE IF NOT EXISTS `event` (
   `d` date NOT NULL,
-  `period` enum('day') not null default 'day'
+  `period` enum('day') not null default 'day',
   `snow` double unsigned DEFAULT NULL,
   `lysnw` decimal(3,1) unsigned DEFAULT NULL,
-  `hail` enum('-' 's', 'm', 'l') DEFAULT NULL,
-  `thunder` enum('-' 's', 'm', 'l') DEFAULT NULL,
+  `hail` enum('-', 's', 'm', 'l') DEFAULT NULL,
+  `thunder` enum('-', 's', 'm', 'l') DEFAULT NULL,
   `fog` boolean DEFAULT NULL,
   `comms` text DEFAULT NULL,
   `extra` text DEFAULT NULL,

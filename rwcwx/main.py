@@ -1,9 +1,10 @@
 import os
+from datetime import date, datetime
 
 from flask import Flask
+from werkzeug.routing import BaseConverter
 
-from rwcwx import logger
-
+import rwcwx.routes as r
 
 app = Flask(__name__)
 app.config.from_mapping(
@@ -11,19 +12,21 @@ app.config.from_mapping(
 )
 
 
-@app.route('/')
-def hello_world():
-    return 'Hello, World!'
+class DateStampConverter(BaseConverter):
+    FMAT = "%Y%m%d"
+
+    def to_python(self, value: str) -> date:
+        return datetime.strptime(value, self.FMAT)
+
+    def to_url(self, value: date) -> str:
+        return value.strftime(self.FMAT)
 
 
-@app.route('/lol')
-def lol():
-    return {"lol": 1000}
+app.url_map.converters["datestamp"] = DateStampConverter
 
-
-def main():
-    logger.info("Starting rwcwx")
-
-
-if __name__ == '__main__':
-    main()
+app.add_url_rule("/", view_func=r.todo)
+app.add_url_rule("/lol", view_func=r.lol)
+app.add_url_rule("/obs/current", view_func=r.current)
+app.add_url_rule("/obs/latest", view_func=r.obs_latest)
+app.add_url_rule("/obs/summary/day/", view_func=r.day_summary)
+app.add_url_rule("/obs/summary/day/<datestamp:d>", view_func=r.day_summary)
