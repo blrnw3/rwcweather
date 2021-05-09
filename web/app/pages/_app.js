@@ -1,26 +1,19 @@
-import { createGlobalStyle, ThemeProvider } from 'styled-components'
+import { ChakraProvider, ColorModeProvider } from '@chakra-ui/react'
 
-const GlobalStyle = createGlobalStyle`
-  body {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-`
+import theme from '../_theme'
 
-const theme = {
-  colors: {
-    primary: '#0070f3',
-  },
-}
-
-export default function App({ Component, pageProps }) {
+function MyApp({ Component, pageProps }) {
   return (
-    <>
-      <GlobalStyle />
-      <ThemeProvider theme={theme}>
+    <ChakraProvider resetCSS theme={theme}>
+      <ColorModeProvider
+        options={{
+          useSystemColorMode: true,
+        }}
+      >
         <Component {...pageProps} />
-      </ThemeProvider>
-    </>
+      </ColorModeProvider>
+    </ChakraProvider>
   )
 }
+
+export default MyApp
