@@ -65,7 +65,7 @@ class CumulusObsImporter:
             **obs_db_params
         ).on_duplicate_key_update(
             **obs_db_params,
-            t_mod=datetime.now().replace(tzinfo=UTC)
+            t_mod=datetime.utcnow()
         )
         logger.info(f"Inputting data at time {obs.dt} (record: {obs.dt_minute})")
         db.execute(save_obs)

@@ -9,8 +9,8 @@ Python3 Flask app with mysql db
 Davis VP2 weather station sending readings to a server running Cumulus MX using WeatherLink Live
 
 ## Development
-To simulate the prod cron scripts, run dev/run_cron.sh
-
+* To simulate the prod cron scripts, run dev/run_cron.sh
+* To start the webserver: FLASK_APP=rwcwx/main.py flask run
 
 ## TODO
 * Switch to FastAPI

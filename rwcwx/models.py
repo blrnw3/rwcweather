@@ -1,3 +1,4 @@
+import math
 import os
 
 from sqlalchemy.ext.declarative import declarative_base
@@ -37,13 +38,14 @@ class Obs(Base):
 
     @property
     def dewpt(self) -> float:
-        # TODO: moar accurate
-        return float(self.temp) - (100 - self.humi) * 0.2
+        t = float(self.temp)
+        gamma = (17.271 * t) / (237.7 + t) + math.log(self.humi / 100)
+        return (237.7 * gamma) / (17.271 - gamma)
 
     @property
-    def json_(self) -> dict:
+    def dict_(self) -> dict:
         d = self.__dict__
-        d.pop("_sa_instance_state")
+        d.pop("_sa_instance_state", None)
         d["dewpt"] = round(self.dewpt, 1)
         return d
 

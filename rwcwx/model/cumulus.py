@@ -16,7 +16,7 @@ class CumulusObs:
         obs_raw = raw_line.split(" ")
 
         if len(obs_raw) < 50:
-            raise ValueError(f"Path invalid or partial. Only {len(obs_raw)} fields")
+            raise ValueError(f"Path invalid or partial. Only {len(obs_raw)} fields. Raw line: {raw_line}")
 
         self.dt_local = datetime.strptime(
             f"{obs_raw[0]} {obs_raw[1]}", self.DATE_TIME_FORMAT

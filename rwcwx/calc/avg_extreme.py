@@ -158,7 +158,7 @@ class Dewpt(ObsVar):
 class Pm2(ObsVar):
     name = "pm2_5_level"
     unit = Unit.ppm
-    db_field = "temp"
+    db_field = "pm2"
 
     @classmethod
     def conv(cls, val: float) -> float:

@@ -1,5 +1,6 @@
 import json
 import os
+from json import JSONDecodeError
 
 import click
 import requests
@@ -19,12 +20,21 @@ class ExternalDataGrabber:
         self.out_dir = out_dir
 
     def run(self) -> None:
-        self.get_aqi()
+        try:
+            self.get_aqi()
+        except JSONDecodeError as e:
+            logger.exception("Failed decoding reponse", exc_info=e)
 
     def get_aqi(self) -> None:
         # NB: https://github.com/hrbonz/python-aqi
         logger.info(f"Getting aqi data from {self.PURPLE_AIR_URI}")
-        resp = requests.get(url=self.PURPLE_AIR_URI)
+
+        try:
+            resp = requests.get(url=self.PURPLE_AIR_URI)
+        except OSError as e:
+            logger.exception("Could not hit purple air.", exc_info=e)
+            return
+
         save_location = os.path.join(self.out_dir, AQI_FILE_NAME)
         logger.info(f"Saving aqi data to {save_location}")
         with open(save_location, "w") as f:

@@ -12,6 +12,13 @@ app.config.from_mapping(
 )
 
 
+@app.after_request
+def after_request(response):
+    header = response.headers
+    header['Access-Control-Allow-Origin'] = '*'
+    return response
+
+
 class DateStampConverter(BaseConverter):
     FMAT = "%Y%m%d"
 
@@ -26,7 +33,9 @@ app.url_map.converters["datestamp"] = DateStampConverter
 
 app.add_url_rule("/", view_func=r.todo)
 app.add_url_rule("/lol", view_func=r.lol)
+app.add_url_rule("/web/dashboard", view_func=r.dashboard)
 app.add_url_rule("/obs/current", view_func=r.current)
 app.add_url_rule("/obs/latest", view_func=r.obs_latest)
+app.add_url_rule("/obs/trend", view_func=r.trend_live)
 app.add_url_rule("/obs/summary/day/", view_func=r.day_summary)
 app.add_url_rule("/obs/summary/day/<datestamp:d>", view_func=r.day_summary)

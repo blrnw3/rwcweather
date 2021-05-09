@@ -5,7 +5,7 @@ import logging
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, MetaData
-from sqlalchemy.engine import ResultProxy
+from sqlalchemy.engine import Engine, ResultProxy
 from sqlalchemy.orm import sessionmaker, Session
 
 from werkzeug.local import Local, release_local, LocalManager
@@ -21,12 +21,12 @@ class Db:
         self._local_manager = LocalManager([self._local])
         self._database_url = database_url
         self._options = options
-        self.engine = self.create_engine()
+        self.engine: Engine = self.create_engine()
         self.metadata = MetaData()
         self.session_mkr = sessionmaker(bind=self.engine)
         self.session = self.session_mkr(autocommit=True)  # type: Session
 
-    def create_engine(self):
+    def create_engine(self) -> Engine:
         return create_engine(self._database_url, **self._options)
 
     def connect(self):

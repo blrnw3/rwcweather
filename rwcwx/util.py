@@ -13,6 +13,10 @@ class DateUtil:
         return datetime.now(TZ)
 
     @staticmethod
+    def now_local_string() -> str:
+        return datetime.now(TZ).isoformat()
+
+    @staticmethod
     def utc_now() -> datetime:
         return datetime.now(UTC)
 
