@@ -12,6 +12,12 @@ Davis VP2 weather station sending readings to a server running Cumulus MX using 
 * To simulate the prod cron scripts, run dev/run_cron.sh
 * To start the webserver: FLASK_APP=rwcwx/main.py flask run
 
+## Settings (as env vars)
+* MYSQL_URL - not needed in local but needed elsewhere
+
+## Deployment
+See /deploy
+
 ## TODO
 * Switch to FastAPI
 * https://fastapi.tiangolo.com/deployment/docker/

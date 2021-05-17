@@ -1,0 +1,2 @@
+# m h  dom mon dow   command
+* * * * * PYTHONPATH=/home/ben/rwcweather python3 /home/ben/rwcweather/rwcwx/job/get_external.py -o /home/ben/rwcweather/out_prod &>> /home/ben/rwcweather/log/external.log

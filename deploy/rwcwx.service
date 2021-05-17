@@ -1,0 +1,16 @@
+[Unit]
+Description=uWSGI instance to serve rwcwx
+After=network.target
+
+[Service]
+User=ben
+Group=www-data
+WorkingDirectory=/home/ben/rwcweather
+# Should hold secrets including MYSQL_URL
+EnvironmentFile=/etc/rwcwx.env
+Environment="PATH=/home/ben/rwcweather/venv_prod/bin"
+ExecStart=/home/ben/rwcweather/venv_prod/bin/uwsgi --ini deploy/rwcwx.ini
+
+[Install]
+WantedBy=multi-user.target
+

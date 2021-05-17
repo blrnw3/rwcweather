@@ -15,11 +15,11 @@ import { Page } from "../components/Page";
 import { formatObs, prettySecs, timeOf } from '../format';
 
 
-const fetcher = url => fetch("http://localhost:5000" + url).then(res => res.json())
+const fetcher = url => fetch(process.env.NEXT_PUBLIC_API_HOST + url).then(res => res.json())
 let lastObs;
 
 function useDashboard () {
-  const { data, error } = useSWR(`/web/dashboard`, fetcher, {refreshInterval: 5000})
+  const { data, error } = useSWR(`/api/web/dashboard`, fetcher, {refreshInterval: 5000})
   if (error || !data) {
     console.log(error);
     return error ? 0 : null;
