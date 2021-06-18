@@ -1,12 +1,28 @@
 import os
+import time
+
+# Set system TZ (helps for local development; server is always in UTC anyway).
+os.environ["TZ"] = "UTC"
+time.tzset()
+
 from datetime import date, datetime
 
 from flask import Flask
+from flask.json import JSONEncoder
 from werkzeug.routing import BaseConverter
 
 import rwcwx.routes as r
 
+
+class CustomJSONEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.timestamp() * 1000
+        return JSONEncoder.default(self, obj)
+
+
 app = Flask(__name__)
+app.json_encoder = CustomJSONEncoder
 app.config.from_mapping(
     SECRET_KEY=os.getenv("FLASK_SECRET", "_rwcwx_"),
 )

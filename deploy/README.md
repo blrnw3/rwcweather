@@ -42,5 +42,6 @@
 
 ## Ongoing deployment
 * Within web/app run `npm run build` to compile the web app (DO NOT do this on server - too slow)
-* Sync all the code: `rsync -ruv -e 'ssh -p 8294 -i ~/.ssh/digitalocean_private_ben_centos_openssh' rwcweather ben@138.68.56.237:~/ --exclude=".git/" --exclude="venv/" --exclude="web/app/.next/cache" --exclude="web/app/node_modules/"`
+* Sync all the code from outside root dir:
+ `rsync -ruv -e 'ssh -p 8294 -i ~/.ssh/digitalocean_private_ben_centos_openssh' rwcweather ben@138.68.56.237:~/ --exclude=".git/" --exclude="venv/" --exclude="web/app/.next/cache" --exclude="web/app/node_modules/"`
 * On the server, run `sudo systemctl restart rwcwx` and `pm2 restart rwcwx-app`

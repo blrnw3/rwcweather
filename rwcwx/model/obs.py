@@ -21,8 +21,15 @@ class ObsQ:
 
     @staticmethod
     def latest(mins: int) -> List[Obs]:
-        """ Most recent :mins: records, most recent first """
-        return db.s.query(Obs).order_by(Obs.t.desc())[:mins]
+        """
+        Most recent :mins: records, most recent first
+        Caps the oldest data
+        """
+        if mins >= 60:
+            st = DateUtil.utc_now() - timedelta(minutes=mins * 1.2)
+            return db.s.query(Obs).filter(Obs.t > st).order_by(Obs.t.desc())[:mins]
+        else:
+            return db.s.query(Obs).order_by(Obs.t.desc())[:mins]
 
     @staticmethod
     def trend(periods: List[int]) -> Dict[int, Obs]:

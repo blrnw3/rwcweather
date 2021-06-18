@@ -3,6 +3,7 @@ from sqlalchemy import Table
 from rwcwx.model.db import Db
 
 
+# Used for non-ORM inserts e.g. in save_latest.py
 class Model:
 
     def __init__(self, db: Db):

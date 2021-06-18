@@ -11,11 +11,11 @@ import { RiHazeLine } from "react-icons/ri";
 import { VscArrowUp, VscCircleFilled, VscDash } from "react-icons/vsc";
 import { WiBarometer, WiHumidity, WiRain, WiThermometer } from "react-icons/wi";
 import useSWR from "swr";
+import { fetcher } from '../components/conf';
 import { Page } from "../components/Page";
 import { formatObs, prettySecs, timeOf } from '../format';
 
 
-const fetcher = url => fetch(process.env.NEXT_PUBLIC_API_HOST + url).then(res => res.json())
 let lastObs;
 
 function useDashboard () {
@@ -66,7 +66,7 @@ function LiveTime(props) {
     let t_dt = new Date(dash["now"]["t_obs"]);
     let t_dt_fmt = dt_fmat.format(t_dt).replace("GMT-7", "PDT").replace("GMT-8", "PST");
     let t_server = new Date(dash["server"]["datetime"]);
-    let diff = (t_server - t_dt) / 1000;
+    let diff = Math.round((t_server - t_dt) / 1000);
     if (diff > 100) {
       t = "Delayed ("+ diff +"s old): " + t_dt_fmt;
       status = "orange";

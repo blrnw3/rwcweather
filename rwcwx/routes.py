@@ -54,7 +54,7 @@ def day_summary(d: date = None):
 
 def obs_latest():
     mins = int(request.args.get("d", "60"))
-    assert 1 < mins <= 1500
+    assert 1 < mins <= 10000
     return _wrap_result(
         ObsQ.latest(mins),
         duration=mins
