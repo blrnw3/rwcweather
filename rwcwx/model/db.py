@@ -82,3 +82,8 @@ class Db:
     def execute(self, *args, **kwargs) -> ResultProxy:
         with self.connect() as conn:
             return conn.execute(*args, **kwargs)
+
+    def execute_batch(self, records: list) -> None:
+        with self.connect() as conn:
+            for r in records:
+                conn.execute(r)

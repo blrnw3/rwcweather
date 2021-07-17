@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 from statistics import mean
 
@@ -10,14 +10,17 @@ from dateutil.tz import UTC
 from sqlalchemy.dialects.mysql import insert
 
 from rwcwx import logger
+from rwcwx.calc.avg_extreme import DaySummary
 from rwcwx.config import AQI_FILE_NAME
 from rwcwx.model.cumulus import CumulusObs
 from rwcwx.models import db, m
+from rwcwx.util import DateUtil
 
 
 class CumulusObsImporter:
 
     AIR_AGE_THRESHOLD = timedelta(seconds=3600)
+    AVG_EXT_INTERVAL = timedelta(minutes=1)
 
     def __init__(self, obs_path: str, external_root: str) -> None:
         self.obs_path = obs_path
@@ -28,10 +31,16 @@ class CumulusObsImporter:
         self.current_dt = None
         self.max_gust = 0
 
+        self.last_avg_ext_update = datetime.now() - self.AVG_EXT_INTERVAL
+
     def run(self):
         while True:
             try:
                 self.get_and_save_latest()
+                if datetime.now() >= (self.last_avg_ext_update + self.AVG_EXT_INTERVAL):
+                    logger.info("Updating averages/extremes")
+                    self.update_avg_ext()
+                    self.last_avg_ext_update = datetime.now()
             except Exception as e:
                 self.err_cnt += 1
                 logger.exception("Error getting/saving latest cumulus data", exc_info=e)
@@ -41,7 +50,7 @@ class CumulusObsImporter:
                 self.err_cnt = 0
             time.sleep(1)
 
-    def get_and_save_latest(self):
+    def get_and_save_latest(self) -> None:
         last_mod = os.path.getmtime(self.obs_path)
         if last_mod == self.obs_last_mod:
             return
@@ -86,6 +95,45 @@ class CumulusObsImporter:
         except Exception as e:
             logger.exception("Failed extracting air q data", exc_info=e)
             return None
+
+    @staticmethod
+    def update_avg_ext(d: date = None) -> None:
+        if d is None:
+            d = DateUtil.now().date()
+        logger.info(f"Avg/extr update date: {d}")
+        try:
+            day_summary = DaySummary(d).stats()
+        except ValueError:
+            logger.warn("No records for day (yet)")
+            return
+
+        records = []
+        for obsVar, summary in day_summary.items():
+            params = dict(
+                d=d,
+                var=obsVar.db_field,
+                period="day",
+                t_mod=datetime.utcnow(),
+                cnt=summary.count
+            )
+
+            for typ, val, at in [
+                ("avg", summary.avg, None),
+                ("total", summary.total, None),
+                ("min", summary.min_val, summary.min_at),
+                ("max", summary.max_val, summary.max_at),
+            ]:
+                all_params = dict(type=typ, val=val, at=at)
+                all_params.update(params)
+                # TODO: don't override already overidden entries (check first)
+                records.append(
+                    insert(m.avg_extreme).values(
+                        **all_params,
+                    ).on_duplicate_key_update(
+                        **all_params
+                    )
+                )
+        db.execute_batch(records)
 
 
 @click.command()

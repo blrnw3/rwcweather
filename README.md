@@ -18,7 +18,6 @@ Davis VP2 weather station sending readings to a server running Cumulus MX using 
 ## Deployment
 See /deploy
 
-## TODO
+## infra TODOs
 * Switch to FastAPI
-* https://fastapi.tiangolo.com/deployment/docker/
-* https://github.com/leeoniya/uPlot
+* Dockerize: https://fastapi.tiangolo.com/deployment/docker/

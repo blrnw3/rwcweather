@@ -5,6 +5,7 @@ mysqlclient
 simplejson  # Fixes Decimal (de)serialization
 python-dateutil
 requests
+python-aqi
 
 click
 wheel

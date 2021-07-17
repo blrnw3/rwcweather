@@ -1,13 +1,14 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from dataclasses import dataclass, asdict
 from datetime import date, datetime
 from enum import Enum
 from typing import Collection, Dict, Iterable, List, Optional, Tuple, Type
 
-
+from rwcwx.model.avgext import AvgExtQ
 from rwcwx.model.obs import ObsQ
-from rwcwx.models import Obs
+from rwcwx.models import AvgExt, Obs
 from rwcwx.util import DateUtil
 
 
@@ -40,12 +41,15 @@ class SummaryStats:
     def as_dict(self) -> dict:
         return {"avg": self.avg, **asdict(self)}
 
-#
-# @dataclass
-# class ObsVariable:
-#     name: str
-#     unit: str
-#     db_field: str
+
+@dataclass
+class MonthlySummary:
+    summary: SummaryStats
+
+
+@dataclass
+class AnnualSummary:
+    summary: SummaryStats
 
 
 class ObsVar(ABC):
@@ -97,9 +101,56 @@ class ObsVar(ABC):
         )
 
     @classmethod
-    @abstractmethod
-    def conv(cls, val: float) -> float:
-        raise NotImplementedError("abstract")
+    def month_summary(cls, avg_exts: List[AvgExt]) -> MonthlySummary:
+        cnt, total = 0, 0
+        min_val, min_at = None, None
+        max_val, max_at = None, None
+
+        for ae in avg_exts:
+            cnt += 1
+            total += ae.val
+            if min_val is None or ae.val < min_val:
+                min_val = ae.val
+                min_at = ae.d
+            if max_val is None or ae.val > max_val:
+                max_val = ae.val
+                max_at = ae.d
+
+        summary = SummaryStats(
+            count=cnt,
+            total=total,
+            min_val=min_val,
+            max_val=max_val,
+            min_at=min_at,
+            max_at=max_at
+        )
+        return MonthlySummary(summary=summary)
+
+    @classmethod
+    def year_summary(cls, avg_exts: List[AvgExt]) -> AnnualSummary:
+        cnt, total = 0, 0
+        min_val, min_at = None, None
+        max_val, max_at = None, None
+
+        for ae in avg_exts:
+            cnt += 1
+            total += ae.val
+            if min_val is None or ae.val < min_val:
+                min_val = ae.val
+                min_at = ae.d
+            if max_val is None or ae.val > max_val:
+                max_val = ae.val
+                max_at = ae.d
+
+        summary = SummaryStats(
+            count=cnt,
+            total=total,
+            min_val=min_val,
+            max_val=max_val,
+            min_at=min_at,
+            max_at=max_at
+        )
+        return AnnualSummary(summary=summary)
 
 
 ObsVarT = Type[ObsVar]
@@ -165,6 +216,16 @@ class Pm2(ObsVar):
         pass  # TODO
 
 
+class Aqi(ObsVar):
+    name = "aqi"
+    unit = Unit.ppm
+    db_field = "aqi"
+
+    @classmethod
+    def conv(cls, val: float) -> float:
+        pass  # TODO
+
+
 class Wind(ObsVar):
     name = "wind_speed"
     unit = Unit.mph
@@ -216,7 +277,12 @@ class InTemp(ObsVar):
 
 
 class ObsVarGroup:
-    ALL: Iterable[ObsVarT] = (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Pm2, Dewpt)
+    ALL: Iterable[ObsVarT] = (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt)
+
+
+OBS_VAR_MAP = {o.db_field: o for o in (
+    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt)
+)}
 
 
 class DaySummary:
@@ -246,3 +312,89 @@ class DaySummary:
 
     def stats_json(self):
         return {k.name: v.as_dict for k, v in self.stats().items()}
+
+
+class MonthSummary:
+
+    def __init__(self, month: Optional[date]) -> None:
+        if month is None:
+            month = DateUtil.now()
+        self.month: date = month
+
+    @classmethod
+    def for_this_month(cls) -> MonthSummary:
+        return MonthSummary(None)
+
+    def stats(self) -> Dict[str, Dict]:
+        by_type = defaultdict(list)
+        for ae in AvgExtQ.all_for_month(self.month):
+            by_type[(ae.var, ae.type)].append(ae)
+        stats = {}
+        for (var, typ), aes in by_type.items():
+            stats[f"{var}_{typ}"] = ObsVar.month_summary(aes).summary.as_dict
+        return stats
+
+
+class YearSummary:
+
+    def __init__(self, year: Optional[int]) -> None:
+        if year is None:
+            year = DateUtil.now().year
+        self.year: int = year
+
+    @classmethod
+    def for_this_year(cls) -> YearSummary:
+        return YearSummary(None)
+
+    def stats(self) -> Dict[str, Dict]:
+        by_type = defaultdict(list)
+        for ae in AvgExtQ.all_for_year(self.year):
+            by_type[(ae.var, ae.type)].append(ae)
+        stats = {}
+        for (var, typ), aes in by_type.items():
+            stats[f"{var}_{typ}"] = ObsVar.year_summary(aes).summary.as_dict
+        return stats
+
+
+class ObsVarMatrix:
+
+    def __init__(self, var: str, typ: str, year: int = None) -> None:
+        self.var: ObsVarT = OBS_VAR_MAP[var]
+        self.typ = typ  # todo: enum
+        self.avg_exts = AvgExtQ.for_var_between_dates(self.var.db_field, self.typ)
+
+    def daily(self):
+        return [ae.simple_dict_ for ae in self.avg_exts]
+
+    def monthly(self):
+        by_month = defaultdict(list)
+        for ae in self.avg_exts:
+            by_month[(ae.d.year, ae.d.month)].append(ae)
+
+        return [
+            dict(
+                summary=self.var.month_summary(aes).summary.as_dict,
+                m=period
+            )
+            for period, aes in by_month.items()
+        ]
+
+    def annual(self):
+        by_yr = defaultdict(list)
+        for ae in self.avg_exts:
+            by_yr[ae.d.year].append(ae)
+
+        return [
+            dict(
+                summary=self.var.year_summary(aes).summary.as_dict,
+                m=yr
+            )
+            for yr, aes in by_yr.items()
+        ]
+
+    def all_summaries(self):
+        return dict(
+            daily=self.daily(),
+            monthly=self.monthly(),
+            yearly=self.annual()
+        )

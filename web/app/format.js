@@ -86,9 +86,29 @@ const OBS_FORMAT = {
         us: 2
       }
     },
+    aqi: {
+      units: {
+        base: "",
+      },
+      conv: {
+      },
+      precision: {
+        base: 0,
+      }
+    },
     pm2: {
       units: {
-        base: "ppm",
+        base: "PPM",
+      },
+      conv: {
+      },
+      precision: {
+        base: 0,
+      }
+    },
+    wdir: {
+      units: {
+        base: String.fromCharCode(176),
       },
       conv: {
       },
@@ -101,15 +121,15 @@ const OBS_FORMAT = {
 export function prettySecs(ms) {
     let s = ms / 1000;
 	if(s < 100) {
-		return secs + ' s';
+		return secs + " s";
     }
     let ago;
 	if(s < 7200) {
-		ago = Math.round(s / 60) + ' mins';
+		ago = Math.round(s / 60) + " mins";
 	} else if(s < (3600 * 48.5)) {
-		ago = Math.round(s / 3600) + ' hours';
+		ago = Math.round(s / 3600) + " hours";
 	} else {
-		ago = Math.round(s / 86400) + ' days';
+		ago = Math.round(s / 86400) + " days";
 	}
 	return ago;
 }
@@ -127,9 +147,41 @@ export function wdirName(degs) {
 	return labels[ Math.round(degs / 22.5) ];
 }
 
+export function aqiStatus(aqi) {
+  if(aqi < 50) {
+    return ["🟢", "Healthy"];
+  }
+  if(aqi < 100) {
+    return ["🟡", "Moderate"];
+  }
+  if(aqi < 150) {
+    return ["​🟠​", "Poor"];
+  }
+  if(aqi < 200) {
+    return ["🔴", "Unhealthy"];
+  }
+  if(aqi < 300) {
+    return ["🟣", "Very unhealthy"];
+  }
+  return ["⚫", "Hazardous"];
+}
 
+export function moonPhase(phaseFraction) {
+  let names = [
+    ["New Moon", "🌑"],
+    ["Waxing Crescent", "🌒"],
+    ["First Quarter", "🌓"],
+    ["Waxing Gibbous", "🌔"],
+    ["Full Moon", "🌕"],
+    ["Waning Gibbous", "🌖"],
+    ["Third Quarter", "🌗"],
+    ["Waning Crescent", "🌘"],
+    ["New Moon", "🌑"],
+  ];
+  return names[ Math.round(phaseFraction * 8) ];
+}
 
-export function formatObs(val, obsType, signed = false) {
+export function formatObs(val, obsType, signed = false, unit = true) {
   if(val == null) {
     return "-";
   }
@@ -147,6 +199,13 @@ export function formatObs(val, obsType, signed = false) {
   let precision = (unitPref in formatRules["precision"]) ? formatRules["precision"][unitPref] : formatRules["precision"]["base"];
   let unitStr = (unitPref in formatRules["units"]) ? formatRules["units"][unitPref] : formatRules["units"]["base"];
   let signStr = (signed && val >= 0) ? "+" : "";
+  let finalUnitStr = unit ? (" " + unitStr) : "";
 
-  return signStr + val.toFixed(precision).toString() + " " + unitStr;
+  return signStr + val.toFixed(precision).toString() + finalUnitStr;
+}
+
+export function unitForObsType(obsType) {
+  const formatRules = OBS_FORMAT[obsType];
+  let unitPref = UNIT;
+  return (unitPref in formatRules["units"]) ? formatRules["units"][unitPref] : formatRules["units"]["base"];
 }

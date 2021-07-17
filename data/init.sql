@@ -29,17 +29,16 @@ CREATE TABLE IF NOT EXISTS `avg_extreme` (
   `d` date NOT NULL,
   `var` enum(
         'rain', 'temp', 'humi', 'pres', 'wind', 'gust', 'wdir', 'solr', 'wet', 'sun', 'feels', 'inhumi', 'intemp',
-        'night_temp', 'day_temp', 'day_wet', 'rate', 'frost', 'pm2'
+        'night_temp', 'day_temp', 'day_wet', 'rain_rate', 'frost', 'pm2', 'dewpt', 'aqi'
    ) not null,
   `type` enum('avg', 'total', 'min', 'max') not null,
   `period` enum('day') not null default 'day',
   `val` double not null,
-  `val_exact` decimal(4,2) default null comment 'for min/max e.g. temp, record the precise val for better comparison',
-  `at` time default null comment 'time of the extreme',
+  `at` datetime default null comment 'when the extreme val occurred first in the period',
   `cnt` int not null comment 'number of obs involved in avg/extreme',
   `t_mod` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'last modified',
   `overridden` tinyint unsigned DEFAULT 0 COMMENT '1 if manually overridden',
-  `comment` varchar(255) DEFAULT NULL COMMENT 'if manually updated, comment optional',
+  `comment` varchar(255) DEFAULT NULL COMMENT 'if manually updated, comment optional. e.g. source',
    PRIMARY KEY (`d`, `var`, `type`, `period`),
    KEY `var_type_val` (`var`, `type`, `val`),
    KEY `var_type_d` (`var`, `type`, `d`),

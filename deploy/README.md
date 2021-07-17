@@ -45,3 +45,4 @@
 * Sync all the code from outside root dir:
  `rsync -ruv -e 'ssh -p 8294 -i ~/.ssh/digitalocean_private_ben_centos_openssh' rwcweather ben@138.68.56.237:~/ --exclude=".git/" --exclude="venv/" --exclude="web/app/.next/cache" --exclude="web/app/node_modules/"`
 * On the server, run `sudo systemctl restart rwcwx` and `pm2 restart rwcwx-app`
+* If updates to the save_latest script have been made,

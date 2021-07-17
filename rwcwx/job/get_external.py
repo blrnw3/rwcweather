@@ -15,6 +15,7 @@ class ExternalDataGrabber:
     """
 
     PURPLE_AIR_URI = "https://www.purpleair.com/json?key=XZAC8NRA6BSXDNDO&show=65141"
+    ALT_STATION_URI = ""
 
     def __init__(self, out_dir: str) -> None:
         self.out_dir = out_dir
