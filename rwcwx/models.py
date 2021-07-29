@@ -1,5 +1,6 @@
 import math
 import os
+from typing import Optional
 
 import aqi
 from sqlalchemy.ext.declarative import declarative_base
@@ -63,11 +64,13 @@ class Obs(Base):
             feel = (C[0] + C[1] * t + C[2] * r + C[3] * t * r +
                     C[4] * t2 + C[5] * r2 + C[6] * t2 * r +
                     C[7] * t * r2 + C[8] * t2 * r2)
+            if feel < t:
+                feel = t
         return feel
 
     @property
-    def aqi(self) -> int:
-        return int(aqi.to_aqi([(aqi.POLLUTANT_PM25, float(self.pm2))]))
+    def aqi(self) -> Optional[int]:
+        return int(aqi.to_aqi([(aqi.POLLUTANT_PM25, float(self.pm2))])) if self.pm2 is not None else None
 
     @property
     def dict_(self) -> dict:

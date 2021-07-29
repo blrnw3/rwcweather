@@ -3,8 +3,12 @@
 import math
 from datetime import datetime, timedelta
 import time
-import calendar
 from typing import Dict
+
+from dateutil.tz import UTC
+
+from rwcwx.config import TZ
+from rwcwx.util import DateUtil
 
 PI = 3.141592653589793  # math.pi
 sin = math.sin
@@ -129,7 +133,7 @@ def getMoonIllumination(date):
     phi = acos(sin(s["dec"]) * sin(m["dec"]) + cos(s["dec"]) * cos(m["dec"]) * cos(s["ra"] - m["ra"]))
     inc = atan(sdist * sin(phi), m["dist"] - sdist * cos(phi))
     angle = atan(cos(s["dec"]) * sin(s["ra"] - m["ra"]),
-                 sin(s["dec"]) * cos(m["dec"]) - cos(s["dec"]) * sin(m["dec"]) * cos(s["ra"] - m["ra"]));
+                 sin(s["dec"]) * cos(m["dec"]) - cos(s["dec"]) * sin(m["dec"]) * cos(s["ra"] - m["ra"]))
 
     return dict(fraction=(1 + cos(inc)) / 2, phase=0.5 + 0.5 * inc * (-1 if angle < 0 else 1) / PI, angle=angle)
 
@@ -174,7 +178,7 @@ def hoursLater(date, h):
 
 
 def getMoonTimes(date, lat, lng):
-    t = date.replace(hour=0, minute=0, second=0)
+    t = date #.replace(hour=0, minute=0, second=0)
 
     hc = 0.133 * rad
     pos = getMoonPosition(t, lat, lng)
@@ -182,7 +186,7 @@ def getMoonTimes(date, lat, lng):
     rise = 0
     sett = 0
     # go in 2-hour chunks, each time seeing if a 3-point quadratic curve crosses zero (which means rise or set)
-    for i in range(1, 24, 2):
+    for i in range(1, 28, 2):
         h1 = getMoonPosition(hoursLater(t, i), lat, lng)["altitude"] - hc
         h2 = getMoonPosition(hoursLater(t, i + 1), lat, lng)["altitude"] - hc
 
@@ -221,14 +225,8 @@ def getMoonTimes(date, lat, lng):
 
     result = dict()
 
-    if (rise):
-        result["rise"] = hoursLater(t, rise)
-    if (sett):
-        result["set"] = hoursLater(t, sett)
-
-    if (not rise and not sett):
-        value = 'alwaysUp' if ye > 0 else 'alwaysDown'
-        result[value] = True
+    result["rise"] = hoursLater(t, rise)
+    result["set"] = hoursLater(t, sett)
 
     return result
 
@@ -278,19 +276,41 @@ def getPosition(date, lat, lng):
 
 def get_all_times_rwc(dt: datetime = None) -> Dict[str, datetime]:
     lat, lng = 37.470, -122.265
-    dt = dt or datetime.now()
+    dt_original = dt or datetime.now()
+    dt = dt or DateUtil.now()
+    dt_midnight = datetime(dt.year, dt.month, dt.day, tzinfo=TZ).astimezone(UTC)
+
+    # moon_times_utc_today = getMoonTimes(dt, lat, lng)
+    # moon_times_utc_yest = getMoonTimes(dt - timedelta(days=1), lat, lng)
+
     return {
-        **getTimes(dt, lat, lng),
-        **getMoonTimes(dt, lat, lng),
-        **getMoonPosition(dt, lat, lng),
-        **getMoonIllumination(dt)
+        **getTimes(dt_midnight.replace(hour=12), lat, lng),
+        **getMoonTimes(dt_midnight, lat, lng),
+        **getMoonPosition(dt_original, lat, lng),
+        **getMoonIllumination(dt_original)
     }
+
+
+def get_all_times_rwc_test(dt: datetime):
+    all_times = get_all_times_rwc(dt)
+    # return all_times.get("rise"), all_times.get("set")
+    return all_times.get("sunrise"), all_times.get("sunset")
 
 
 def _test():
     print(get_all_times_rwc())
-    print(get_all_times_rwc(datetime(2021,7,16)))
+    d = DateUtil.now()
+    # print(get_all_times_rwc_test(datetime(d.year, d.month, d.day, tzinfo=TZ).astimezone(UTC)))
+    # print(get_all_times_rwc_test((datetime.now() + timedelta(days=-1)).replace(hour=0, minute=0, second=0)))
+    # print(get_all_times_rwc_test(datetime.now().replace(hour=0, minute=0, second=0)))
+    # print(get_all_times_rwc_test((datetime.now() + timedelta(days=1)).replace(hour=0, minute=0, second=0)))
+    # for i in range(24):
+    #     print(i, get_all_times_rwc_test(datetime(2021,7,27,i)))
+    # print(get_all_times_rwc_test(datetime(2021,7,28,0)))
 
 
 if __name__ == "__main__":
+    import os
+    os.environ["TZ"] = "UTC"
+    time.tzset()
     _test()

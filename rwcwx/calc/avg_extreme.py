@@ -2,7 +2,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, asdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import Collection, Dict, Iterable, List, Optional, Tuple, Type
 
@@ -157,17 +157,9 @@ ObsVarT = Type[ObsVar]
 
 
 class Rain(ObsVar):
-
     name = "rain"
     unit = Unit.inch
     db_field = "rain"
-
-    # def __init__(self):
-    #     super().__init__(name="rain", unit="in", db_field="rain")
-
-    @classmethod
-    def conv(cls, val: float) -> float:
-        pass  # TODO
 
     @classmethod
     def summary_stats(cls, obs: List[Obs]) -> SummaryStats:
@@ -181,19 +173,11 @@ class Temp(ObsVar):
     unit = Unit.degc
     db_field = "temp"
 
-    @classmethod
-    def conv(cls, val: float) -> float:
-        pass  # TODO
-
 
 class Humi(ObsVar):
     name = "humidity"
     unit = Unit.pct
     db_field = "humi"
-
-    @classmethod
-    def conv(cls, val: float) -> float:
-        pass  # TODO
 
 
 class Dewpt(ObsVar):
@@ -201,19 +185,11 @@ class Dewpt(ObsVar):
     unit = Unit.degc
     db_field = "dewpt"
 
-    @classmethod
-    def conv(cls, val: float) -> float:
-        pass  # TODO
-
 
 class Pm2(ObsVar):
     name = "pm2_5_level"
     unit = Unit.ppm
     db_field = "pm2"
-
-    @classmethod
-    def conv(cls, val: float) -> float:
-        pass  # TODO
 
 
 class Aqi(ObsVar):
@@ -221,19 +197,11 @@ class Aqi(ObsVar):
     unit = Unit.ppm
     db_field = "aqi"
 
-    @classmethod
-    def conv(cls, val: float) -> float:
-        pass  # TODO
-
 
 class Wind(ObsVar):
     name = "wind_speed"
     unit = Unit.mph
     db_field = "wind"
-
-    @classmethod
-    def conv(cls, val: float) -> float:
-        pass  # TODO
 
 
 class Gust(ObsVar):
@@ -241,19 +209,11 @@ class Gust(ObsVar):
     unit = Unit.mph
     db_field = "gust"
 
-    @classmethod
-    def conv(cls, val: float) -> float:
-        pass  # TODO
-
 
 class Pres(ObsVar):
     name = "pressure"
     unit = Unit.hpa
     db_field = "pres"
-
-    @classmethod
-    def conv(cls, val: float) -> float:
-        pass  # TODO
 
 
 class Wdir(ObsVar):
@@ -261,19 +221,11 @@ class Wdir(ObsVar):
     unit = Unit.hpa
     db_field = "wdir"
 
-    @classmethod
-    def conv(cls, val: float) -> float:
-        pass  # TODO
-
 
 class InTemp(ObsVar):
     name = "pressure"
     unit = Unit.degc
     db_field = "intemp"
-
-    @classmethod
-    def conv(cls, val: float) -> float:
-        pass  # TODO
 
 
 class ObsVarGroup:
@@ -356,45 +308,44 @@ class YearSummary:
         return stats
 
 
-class ObsVarMatrix:
+class AvgExtAggregator:
 
-    def __init__(self, var: str, typ: str, year: int = None) -> None:
-        self.var: ObsVarT = OBS_VAR_MAP[var]
-        self.typ = typ  # todo: enum
-        self.avg_exts = AvgExtQ.for_var_between_dates(self.var.db_field, self.typ)
+    @staticmethod
+    def daily(avg_exts: List[AvgExt], var: str):
+        return [ae.simple_dict_ for ae in avg_exts]
 
-    def daily(self):
-        return [ae.simple_dict_ for ae in self.avg_exts]
-
-    def monthly(self):
+    @staticmethod
+    def monthly(avg_exts: List[AvgExt], var: str):
         by_month = defaultdict(list)
-        for ae in self.avg_exts:
+        for ae in avg_exts:
             by_month[(ae.d.year, ae.d.month)].append(ae)
 
         return [
             dict(
-                summary=self.var.month_summary(aes).summary.as_dict,
+                summary=OBS_VAR_MAP[var].month_summary(aes).summary.as_dict,
                 m=period
             )
             for period, aes in by_month.items()
         ]
 
-    def annual(self):
+    @staticmethod
+    def annual(avg_exts: List[AvgExt], var: str):
         by_yr = defaultdict(list)
-        for ae in self.avg_exts:
+        for ae in avg_exts:
             by_yr[ae.d.year].append(ae)
 
         return [
             dict(
-                summary=self.var.year_summary(aes).summary.as_dict,
+                summary=OBS_VAR_MAP[var].year_summary(aes).summary.as_dict,
                 m=yr
             )
             for yr, aes in by_yr.items()
         ]
 
-    def all_summaries(self):
+    @staticmethod
+    def all_summaries(avg_ext: List[AvgExt], var: str):
         return dict(
-            daily=self.daily(),
-            monthly=self.monthly(),
-            yearly=self.annual()
+            daily=AvgExtAggregator.daily(avg_ext, var),
+            monthly=AvgExtAggregator.monthly(avg_ext, var),
+            yearly=AvgExtAggregator.annual(avg_ext, var)
         )

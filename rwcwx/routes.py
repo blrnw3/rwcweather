@@ -1,16 +1,16 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Union
 
 from dateutil.tz import UTC
 from flask import request
 
 from rwcwx.astronomy import get_all_times_rwc, getTimes
-from rwcwx.calc.avg_extreme import MonthSummary, ObsVarMatrix, DaySummary, YearSummary
+from rwcwx.calc.avg_extreme import AvgExtAggregator, MonthSummary, DaySummary, YearSummary
 from rwcwx.config import TZ
 from rwcwx.model.avgext import AvgExtQ
 from rwcwx.model.obs import ObsQ
-from rwcwx.models import Base, db, m, Obs
-from rwcwx.util import DateUtil
+from rwcwx.models import AvgExt, Base, db, m, Obs
+from rwcwx.util import DateStampConverter, DateUtil
 
 
 def todo():
@@ -85,16 +85,20 @@ def year_summary(yr: int = None):
     )
 
 
-def avg_extreme(var: str, typ: str):
-    return _wrap_result(ObsVarMatrix(var, typ).daily())
+def var_daily(var: str, typ: str):
+    return _wrap_result(AvgExtAggregator.daily(_var_avg_exts_from_request(var, typ), var))
 
 
-def obs_var_summary_month(var: str, typ: str):
-    return _wrap_result(ObsVarMatrix(var, typ).monthly())
+def var_monthly(var: str, typ: str):
+    return _wrap_result(AvgExtAggregator.monthly(_var_avg_exts_from_request(var, typ), var))
 
 
-def obs_var_matrix(var: str, typ: str):
-    return _wrap_result(ObsVarMatrix(var, typ).all_summaries())
+def var_yearly(var: str, typ: str):
+    return _wrap_result(AvgExtAggregator.annual(_var_avg_exts_from_request(var, typ), var))
+
+
+def var_all_periods(var: str, typ: str):
+    return _wrap_result(AvgExtAggregator.all_summaries(_var_avg_exts_from_request(var, typ), var))
 
 
 def obs_latest():
@@ -126,12 +130,15 @@ def trend_live():
 
 
 def _wrap_result(res, **extras) -> dict:
+    now = DateUtil.now()
     return {
         "result": _dictify_obs_result(res),
         "server": dict(
-            datetime=DateUtil.now(),
-            epoch=DateUtil.now().timestamp(),
-            localtime=DateUtil.now_local_string()
+            datetime=now,
+            epoch=now.timestamp(),
+            localtime=DateUtil.now_local_string(),
+            date=(now.year, now.month, now.day),
+            offset=int(now.utcoffset().total_seconds() // 3600)
         ),
         **extras
     }
@@ -145,3 +152,26 @@ def _dictify_obs_result(res):
     elif isinstance(res, Base):
         return res.dict_
     return res
+
+
+def _var_avg_exts_from_request(var: str, typ: str) -> List[AvgExt]:
+    if "year" in request.args:
+        year = int(request.args.get("year", DateUtil.now().year))
+        avg_ext = AvgExtQ.for_var_and_year(var, typ, year)
+    else:
+        if "start" in request.args:
+            start = DateStampConverter.from_str(request.args["start"])
+        else:
+            n = int(request.args.get("n", "31"))
+            start = DateUtil.now() - timedelta(days=n)
+
+        if "end" in request.args:
+            end = DateStampConverter.from_str(request.args["end"])
+        elif "include_today" in request.args or DateUtil.now().hour >= 21:
+            end = None
+        else:
+            end = DateUtil.yesterday()
+
+        avg_ext = AvgExtQ.for_var_between_dates(var, typ, start, end)
+
+    return avg_ext

@@ -24,6 +24,13 @@ class AvgExtQ:
         return q.order_by(AvgExt.d.desc(), AvgExt.type.asc()).all()
 
     @staticmethod
+    def for_var_and_year(var: str, typ: str, year: int) -> List[AvgExt]:
+        start_date, end_date = DateUtil.year_start_end_dates(year)
+        q = (db.s.query(AvgExt).filter(AvgExt.var == var).filter(AvgExt.type == typ)
+             .filter(AvgExt.d >= start_date).filter(AvgExt.d <= end_date))
+        return q.order_by(AvgExt.d.desc(), AvgExt.type.asc()).all()
+
+    @staticmethod
     def all_for_month(month: date) -> List[AvgExt]:
         start_date = month.replace(day=1)
         end_date = DateUtil.last_date_of_month(month)
@@ -32,7 +39,6 @@ class AvgExtQ:
 
     @staticmethod
     def all_for_year(year: int) -> List[AvgExt]:
-        start_date = date(year, 1, 1)
-        end_date = date(year, 12, 31)
+        start_date, end_date = DateUtil.year_start_end_dates(year)
         q = db.s.query(AvgExt).filter(AvgExt.d >= start_date).filter(AvgExt.d <= end_date)
         return q.all()

@@ -11,6 +11,10 @@ const OBS_FORMAT = {
       },
       precision: {
         base: 1
+      },
+      scale: {
+        base: [0, 5, 10, 15, 20, 25, 30, 35],
+        us: [32, 40, 50, 60, 70, 80, 90, 100]
       }
     },
     abs_temp: {
@@ -35,6 +39,10 @@ const OBS_FORMAT = {
       },
       precision: {
         base: 1
+      },
+      scale: {
+        base: [1, 2, 3, 5, 10, 15, 20, 25],
+        eu: [1, 2, 3, 5, 10, 20, 30, 40]
       }
     },
     gust: {
@@ -47,6 +55,10 @@ const OBS_FORMAT = {
       },
       precision: {
         base: 0
+      },
+      scale: {
+        base: [1, 2, 3, 5, 10, 15, 20, 25],
+        eu: [1, 2, 3, 5, 10, 20, 30, 40]
       }
     },
     humi: {
@@ -57,6 +69,9 @@ const OBS_FORMAT = {
       },
       precision: {
         base: 0
+      },
+      scale: {
+        base: [10, 20, 30, 40, 50, 60, 70, 80, 90],
       }
     },
     rain: {
@@ -71,19 +86,27 @@ const OBS_FORMAT = {
       precision: {
         base: 1,
         us: 2
+      },
+      scale: {
+        base: [0.2, 1, 3, 5, 10, 15, 25, 50],
+        us: [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1, 2]
       }
     },
     pres: {
       units: {
-        base: "hPa",
-        us: "inHg",
+        base: "mb",
+        us: "in",
       },
       conv: {
-        us: p => p * 0.0002953,
+        us: p => p * 0.02953,
       },
       precision: {
         base: 1,
         us: 2
+      },
+      scale: {
+        base: [1000, 1005, 1010, 1015, 1020, 1025, 1030, 1035],
+        us: [29.5, 29.6, 29.7, 29.8, 29.9, 30, 30.1, 30.2, 30.3]
       }
     },
     aqi: {
@@ -94,6 +117,9 @@ const OBS_FORMAT = {
       },
       precision: {
         base: 0,
+      },
+      scale: {
+        base: [10, 25, 50, 75, 100, 150, 200, 300, 500],
       }
     },
     pm2: {
@@ -114,6 +140,9 @@ const OBS_FORMAT = {
       },
       precision: {
         base: 0,
+      },
+      scale: {
+        base: [45, 90, 135, 180, 225, 270, 315, 360],
       }
     },
   }
@@ -181,14 +210,13 @@ export function moonPhase(phaseFraction) {
   return names[ Math.round(phaseFraction * 8) ];
 }
 
-export function formatObs(val, obsType, signed = false, unit = true) {
+export function formatObs(unitPref, val, obsType, signed = false, unit = true) {
   if(val == null) {
     return "-";
   }
   if (obsType == "wdir") {
     return wdirName(val);
   }
-  let unitPref = UNIT;
   const formatRules = OBS_FORMAT[obsType];
   if (formatRules == null) {
     throw "Invalid obsType for conversion: " + obsType;
@@ -204,8 +232,27 @@ export function formatObs(val, obsType, signed = false, unit = true) {
   return signStr + val.toFixed(precision).toString() + finalUnitStr;
 }
 
-export function unitForObsType(obsType) {
+export function convFunction(unitPref, obsType) {
   const formatRules = OBS_FORMAT[obsType];
-  let unitPref = UNIT;
+  if (unitPref in formatRules["conv"]) {
+    return formatRules["conv"][unitPref];
+  }
+  return (x) => x;
+}
+
+export function unitForObsType(unitPref, obsType) {
+  const formatRules = OBS_FORMAT[obsType];
   return (unitPref in formatRules["units"]) ? formatRules["units"][unitPref] : formatRules["units"]["base"];
+}
+
+export function scaleForObsType(unitPref, obsType) {
+  const formatRules = OBS_FORMAT[obsType];
+  return (unitPref in formatRules["scale"]) ? formatRules["scale"][unitPref] : formatRules["scale"]["base"];
+}
+
+export function unitAndPrecisionForObsType(unitPref, obsType) {
+  const formatRules = OBS_FORMAT[obsType];
+  let unitSymbol = (unitPref in formatRules["units"]) ? formatRules["units"][unitPref] : formatRules["units"]["base"];
+  let precision = (unitPref in formatRules["precision"]) ? formatRules["precision"][unitPref] : formatRules["precision"]["base"];
+  return { unitSymbol, precision };
 }

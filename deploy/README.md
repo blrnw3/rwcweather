@@ -38,11 +38,20 @@
 * Add deploy/crontab to ben user's crontab
 * Within ~/rwcweather run `MYSQL_URL=svc:<PASS>@127.0.0.1:3306/wx PYTHONPATH=/home/ben/rwcweather nohup python3 rwcwx/job/save_latest.py -o /var/www/rwc/html/cumulus/realtime.txt -e out_prod  &>> log/get_latest.log &`
     * Change <PASS> to the prod password
-    * TODO: make this into a system service so it does not need restarting on system reboot
+    * TODO: make this into a system service so it does not need restarting on system reboot / code changes
 
 ## Ongoing deployment
 * Within web/app run `npm run build` to compile the web app (DO NOT do this on server - too slow)
 * Sync all the code from outside root dir:
  `rsync -ruv -e 'ssh -p 8294 -i ~/.ssh/digitalocean_private_ben_centos_openssh' rwcweather ben@138.68.56.237:~/ --exclude=".git/" --exclude="venv/" --exclude="web/app/.next/cache" --exclude="web/app/node_modules/"`
+* If requirements.txt has been updated, activate venv_prod and install them
 * On the server, run `sudo systemctl restart rwcwx` and `pm2 restart rwcwx-app`
-* If updates to the save_latest script have been made,
+* If updates to the save_latest script have been made:
+    * Kill running process: ps -aux | grep python to find it
+    * see 'demon scripts' for restart command
+    
+### Troubleshooting
+* Node logs: `pm2 logs`
+* Flask logs: `journalctl -u rwcwx --since today`
+* Nginx access logs: `sudo tail -f /var/log/nginx/access.log`
+    * Error log is at error.log

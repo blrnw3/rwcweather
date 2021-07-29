@@ -1,13 +1,11 @@
-# MVP (v0)
-TARGET DATE: 01 Jul 2021
-* Dashboard: live conditions, daily extremes, and trends
-* Charts: up to 7 days of live obs
-* Reports: basic calendar matrix with one avg_extreme variable per day for a year
-* About: basic outline
-* Settings: change units between uk,eu,us
-* UI: minimum set of consistent styles applied, no logo, responsive
-## Fix:
-* Mysql connection drops when not used for a while
+# Active issues
+## High pri
+* Dependent radio groups
+* Wind direction chart
+* More efficient fetch for long-range 'latest' obs data (7d is slow on LTE)
+* Matrix: change year
+* Try SSR again
+* URL modification based on selectors
 
 # v1 (priority list, deploy as each point developed)
 TARGET DATE: 01 Jan 2022
@@ -15,10 +13,12 @@ TARGET DATE: 01 Jan 2022
 * Webcam: new page and display on dashboard
 * Forecast: new page and display on dash
 * Climate: new page and integrate into dash and all existing pages
-* UX: explore use of a real picture for logo
+* Charts: date selector
 ## Minor
 * Feels-like
-
+* Smart update frequencies and caching
+* AQI smoothing
+* UX: explore use of a real picture for logo
 
 # v2 (priority list)
 TARGET DATE: TBD
@@ -37,3 +37,8 @@ TARGET DATE: TBD
 * nw3weather feature parity
 * Photo albums
 * live webcam
+
+server {
+    server_name .redwoodcityweather.com;
+    return 301 https://rwcweather.com$request_uri;
+}

@@ -1,6 +1,6 @@
 from calendar import monthrange
 from datetime import datetime, timedelta, date
-from typing import List
+from typing import List, Tuple
 
 from dateutil.tz import UTC
 from werkzeug.routing import BaseConverter
@@ -30,9 +30,17 @@ class DateUtil:
     def last_date_of_month(month: date) -> date:
         return month.replace(day=monthrange(month.year, month.month)[1])
 
+    @staticmethod
+    def year_start_end_dates(year: int) -> Tuple[date, date]:
+        return date(year, 1, 1), date(year, 12, 31)
+
 
 class DateStampConverter(BaseConverter):
     FMAT = "%Y%m%d"
+
+    @staticmethod
+    def from_str(value: str):
+        return datetime.strptime(value, DateStampConverter.FMAT)
 
     def to_python(self, value: str) -> date:
         return datetime.strptime(value, self.FMAT)

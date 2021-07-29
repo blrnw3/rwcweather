@@ -1,110 +1,70 @@
-import Highcharts from 'highcharts'
-import HighchartsReact from 'highcharts-react-official'
-import { Heading, Text, Box, useRadio, useRadioGroup, HStack } from "@chakra-ui/react";
-import { Page } from "../../components/Page";
-import Image from 'next/image';
-import { fetcher } from '../../components/conf';
-import useSWR from 'swr';
+import { Flex, Heading, useRadioGroup } from "@chakra-ui/react";
 import { useState } from 'react';
-import { formatObs, prettySecs, timeOf } from '../../format';
-import { OBS } from '../../components/conf';
-import Select from '../../components/ChakraReactSelect'
-import ReactSelect, { components as selectComponents } from "react-select";
+import { SummaryChart } from "../../components/chart";
+import { fmatAggTypeOpt, fmatDaysOpt, fmatObsOpt, fmatOptCapitalize, OBS } from '../../components/conf';
+import { Page } from "../../components/Page";
+import RadioCard from '../../components/RadioCard';
 
-function useSummary (obs, agg) {
-    const { data, error } = useSWR("/api/obs/summary/"+ obs +"/"+agg, fetcher, {refreshInterval: 300000})
-    if (error || !data) {
-      console.log(error);
-      return error ? 0 : null;
-    }
-    let res = data["result"];
-    return res;
-  }
 
-function SummaryChart(props) {
-    let obs = props.obs || "temp";
-    let aggType = props.aggType || "max";
-    if(aggType === "avg" && obs === "rain") {
-      aggType = "total";
-    }
-    const latest = useSummary(obs, aggType);
-    let data;
-    if(!latest) {
-        data = [[0, 0]];
-    } else {
-        data = latest.map(x => [new Date(x["d"][0], x["d"][1] -1, x["d"][2]).valueOf(), x["val"]]).reverse();
-    }
-    let options = {
-        credits: {
-            href: null,
-            text: "@rwcweather"
-        },
-        title: {
-          text: "Chart of " + aggType + " " + obs + ""
-        },
-        time: {
-            timezoneOffset: 60 * 7
-        },
-        xAxis: {
-            type: "datetime"
-        },
-        series: [{
-          data: data,
-          name: aggType + " " + obs
-        }]
-      }
-    return <Box m="4">
-        <HighchartsReact
-            highcharts={Highcharts}
-            options={options}
-        />
-    </Box>
-}
-
-function SummaryObsSelect(props) {
-  let opts = Array.from(OBS, ([k, v]) => ({value: k, label: v.name}))
-  const aggOpts = [
-    {value: "max", label: "Max"},
-    {value: "min", label: "Min"},
-    {value: "avg", label: "Average"},
-  ]
-  return <Box>
-      <ReactSelect
-        name="obs"
-        isSearchable={false}
-        options={opts}
-        defaultValue={opts[0]}
-        onChange={props.fnObs}
-      />
-    <Select
-      name="agg_type"
-      isSearchable={false}
-      options={aggOpts}
-      defaultValue={aggOpts[0]}
-      onChange={props.fnAgg}
-    />
-    </Box>
+function RadioButtonGroup(props) {
+  let { getRootProps, getRadioProps } = useRadioGroup({
+    name: props.name,
+    defaultValue: props.options[0],
+    onChange: props.fn,
+  })
+  const group = getRootProps()
+  return <Flex wrap="wrap" py="1" id={props.name} {...group}>
+    {props.options.map((value) => {
+      const radio = getRadioProps({ value });
+      return (
+        <RadioCard key={value.toString()} box={{fontSize: {base: "sm", md: "md"}}} {...radio}>
+          {props.optFormat(value)}
+        </RadioCard>
+      )
+    })}
+  </Flex>
 }
 
 export default function Charts() {
+  const [obs, setObs] = useState("temp");
+  const [aggType, setAggType] = useState("max");
+  const [period, setPeriod] = useState("30");
+  const [aggOpts, setAggOpts] = useState(["max", "min", "avg"]);
+  const [chartType, setChartType] = useState("column");
 
-  const [obs, setObs] = useState(null);
-  const [aggType, setAggType] = useState(null);
+  const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt"];
+  const periodOpts = ["30", "90", "180", "365"];
+
+  const handleObsChange = (x) => {
+    setObs(x);
+    let aggOptsOk = (x === "rain") ? ["total"] : ["max", "min", "avg"];
+    setAggOpts(aggOptsOk);
+    if(x === "rain") {
+      setAggType("total");
+    } else if( aggType === "total" ) {
+      setAggType("max");
+    }
+  }
 
   return (
-    <Page>
-      <Heading as="h1">
+    <Page name="charts" sub="summary" title="Charts | summary">
+      <Heading as="h1" size="1" mt="0">
         Summary Charts
       </Heading>
-      
-      <Text>
-        Latest weather summary charts for Redwood City, CA
-      </Text>
-      
-      <SummaryObsSelect fnObs={x => setObs(x.value)} fnAgg={x => setAggType(x.value)} />
-      
-      <SummaryChart obs={obs} aggType={aggType} />
-      
+
+      <Heading size="2" as="h2">
+        Daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} in the past {period} days
+      </Heading>
+
+      <RadioButtonGroup name="obs" options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
+      <RadioButtonGroup name="agg" options={aggOpts} optFormat={fmatAggTypeOpt} fn={setAggType} />
+
+      <SummaryChart obs={obs} aggType={aggType} chartType={chartType} period={period}  my={4} mx={{base: 0, md: 4, xl: 6}}
+       height="responsive" spacing={[20, 20, 25, 10]} />
+
+      <RadioButtonGroup name="period" options={periodOpts} optFormat={fmatDaysOpt} fn={setPeriod} />
+      <RadioButtonGroup name="agg" options={["column", "line"]} optFormat={fmatOptCapitalize} fn={setChartType} />
+
     </Page>
   )
 }
