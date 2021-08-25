@@ -1,13 +1,12 @@
 import {
   Box,
-  Button, Center, Text,
+  Button, Text,
   Flex, Link as ChakraLink,
   Menu,
   MenuButton, MenuItem,
   MenuList, Tooltip, useDisclosure, Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody, ModalFooter, RadioGroup, Stack, Radio
 } from '@chakra-ui/react';
 import { createContext, useEffect, useState } from 'react';
-import { IconContext } from "react-icons";
 import { IoSettingsOutline } from 'react-icons/io5';
 import { WiSunrise } from "react-icons/wi";
 import Layout from './Layout';
@@ -101,7 +100,7 @@ function Header(props) {
   return <Flex id="header" w="100%" justify="space-between" bg="pliny.500" wrap="wrap" px="4">
     <Box id="brand" fontSize={{base: "2xl", md: "3xl"}} pt="5" pb="2" pl={{base: 2, md: 3}} color="gray.100">
       <ChakraLink href="/" variant="hidden">
-        <IconContext.Provider value={{ color: "yellow", size: "3em", style: { display: "inline" } }} ><WiSunrise /></IconContext.Provider>
+        <Text as="span" className="home_ico" color="yellow"><WiSunrise /></Text>
         <Box as="span" paddingLeft="4" letterSpacing="1px" color="pliny.50">
           <Text as="span" letterSpacing="0" fontWeight="extrabold" color="yellow">RWC</Text> Weather
         </Box>

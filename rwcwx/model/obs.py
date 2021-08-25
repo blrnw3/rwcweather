@@ -20,16 +20,23 @@ class ObsQ:
         return q.order_by(Obs.t.asc()).all()
 
     @staticmethod
-    def latest(mins: int) -> List[Obs]:
+    def latest(mins: int, optimized=False) -> List[Obs]:
         """
         Most recent :mins: records, most recent first
         Caps the oldest data
         """
         if mins >= 60:
-            st = DateUtil.utc_now() - timedelta(minutes=mins * 1.2)
-            return db.s.query(Obs).filter(Obs.t > st).order_by(Obs.t.desc())[:mins]
+            st = DateUtil.utc_now() - timedelta(minutes=mins * 1.05)  # Get slightly more data
+            q = db.s.query(Obs).filter(Obs.t > st).order_by(Obs.t.desc())
+            if optimized and mins > 720:
+                # Get every nth record for efficiency
+                nth = min(max(round(mins / 2000), 2), 15)
+                nth_filter = text(f"(unix_timestamp(t) / 60) % {nth} = 0")
+                q = q.filter(nth_filter)
+            q = q.all()
         else:
-            return db.s.query(Obs).order_by(Obs.t.desc())[:mins]
+            q = db.s.query(Obs).order_by(Obs.t.desc())[:mins]
+        return q
 
     @staticmethod
     def trend(periods: List[int]) -> Dict[int, Obs]:

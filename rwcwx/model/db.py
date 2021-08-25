@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from werkzeug.local import Local, release_local, LocalManager
 
 logger = logging.getLogger(__name__)
-logging.getLogger("sqlalchemy.engine").setLevel(logging.WARN)
+logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
 
 
 class Db:

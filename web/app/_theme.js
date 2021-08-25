@@ -55,6 +55,18 @@ const themeDefault = {
   },
   styles: {
     global: {
+      svg: {
+        display: "inline",
+      },
+      "span.home_ico svg": {
+        "font-size": "3em"
+      },
+      "span.home_ico_sml svg": {
+        "font-size": "2.3em"
+      },
+      "span.home_ico_sml": {
+        "margin-right": "2px"
+      },
     },
   },
   components: {

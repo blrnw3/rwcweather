@@ -13,7 +13,7 @@ function onkill()
 trap onkill EXIT
 
 python rwcwx/job/get_external.py -o out
-curl https://redwoodcityweather.com/cumulus/realtime.txt > out/realtime.txt
+curl https://rwcweather.com/cumulus/realtime.txt > out/realtime.txt
 python rwcwx/job/save_latest.py -o /Users/bmasscheleinrodgers/rwcweather/out/realtime.txt -e /Users/bmasscheleinrodgers/rwcweather/out &
 ID=$!
 sleep 10
@@ -21,10 +21,10 @@ sleep 10
 while true
 do
   python rwcwx/job/get_external.py -o out
-  curl https://redwoodcityweather.com/cumulus/realtime.txt > out/realtime.txt
+  curl https://rwcweather.com/cumulus/realtime.txt > out/realtime.txt
   sleep 30
-  curl https://redwoodcityweather.com/cumulus/realtime.txt > out/realtime.txt
+  curl https://rwcweather.com/cumulus/realtime.txt > out/realtime.txt
   sleep 30
-  curl https://redwoodcityweather.com/cumulus/realtime.txt > out/realtime.txt
+  curl https://rwcweather.com/cumulus/realtime.txt > out/realtime.txt
   sleep 30
 done

@@ -48,7 +48,6 @@ export default function About() {
               src="/img/map_hq_region.png"
               alt="HQ map region - SF bay area"
               width={821}
-              placeholder="blur"
               height={864}
               quality={90}
             />
@@ -98,7 +97,6 @@ export default function About() {
             <Image
               src="/img/wind_sensor.jpeg"
               alt="Wind sensor"
-              placeholder="blur"
               width={1008}
               height={756}
             />

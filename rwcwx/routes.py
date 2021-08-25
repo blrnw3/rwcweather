@@ -14,7 +14,7 @@ from rwcwx.util import DateStampConverter, DateUtil
 
 
 def todo():
-    return "API docs TODO"
+    return "API docs TODO. Try /web/dashboard/live"
 
 
 def lol():
@@ -103,9 +103,9 @@ def var_all_periods(var: str, typ: str):
 
 def obs_latest():
     mins = int(request.args.get("d", "60"))
-    assert 1 < mins <= 10080
+    assert 1 < mins <= 150_000
     return _wrap_result(
-        ObsQ.latest(mins),
+        ObsQ.latest(mins, optimized=True),
         duration=mins
     )
 

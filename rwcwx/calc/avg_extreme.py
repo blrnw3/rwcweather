@@ -35,7 +35,7 @@ class SummaryStats:
 
     @property
     def avg(self) -> float:
-        return self.total / self.count
+        return self.total / self.count if self.count else None
 
     @property
     def as_dict(self) -> dict:
@@ -255,8 +255,8 @@ class DaySummary:
     def stats(self) -> Dict[ObsVarT, SummaryStats]:
         day_obs = ObsQ.day(self.day)
         total_cnt = len(day_obs)
-        if total_cnt == 0:
-            raise ValueError(f"No obs for {self.day}")
+        # if total_cnt == 0:
+        #     raise ValueError(f"No obs for {self.day}")
         stats = {}
         for f in ObsVarGroup.ALL:
             stats[f] = f.summary_stats(day_obs)

@@ -27,7 +27,7 @@ function RadioButtonGroup(props) {
 
 export default function Charts() {
   const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt"];
-  const hrsOptions = ["6", "12", "24", "48", "72", "120", "168"];
+  const hrsOptions = ["6", "12", "24", "48", "72", "120", "168", "336", "744", "2208"];
 
   const [obs, setObs] = useState("temp");
   const [hrs, setHrs] = useState("12");
