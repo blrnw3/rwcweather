@@ -77,6 +77,10 @@ const aggNames = {
     return OBS.get(obs).name;
   }
 
+  export function fmatYrOpt(yr) {
+    return yr;
+  }
+
   export function fmatOptCapitalize(opt) {
     return opt.substring(0, 1).toUpperCase() + opt.substring(1);
   }

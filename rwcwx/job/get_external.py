@@ -14,7 +14,8 @@ class ExternalDataGrabber:
     Get and save external weather data
     """
 
-    PURPLE_AIR_URI = "https://www.purpleair.com/json?key=XZAC8NRA6BSXDNDO&show=65141"
+    PURPLE_AIR_URI = "https://api.purpleair.com/v1/sensors/65141"
+    API_KEY = os.getenv("PA_API_KEY")
     ALT_STATION_URI = ""
 
     def __init__(self, out_dir: str) -> None:
@@ -31,7 +32,7 @@ class ExternalDataGrabber:
         logger.info(f"Getting aqi data from {self.PURPLE_AIR_URI}")
 
         try:
-            resp = requests.get(url=self.PURPLE_AIR_URI)
+            resp = requests.get(url=self.PURPLE_AIR_URI, headers={"X-API-Key": self.API_KEY})
         except OSError as e:
             logger.exception("Could not hit purple air.", exc_info=e)
             return

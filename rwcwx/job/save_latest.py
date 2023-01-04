@@ -6,7 +6,6 @@ from typing import Optional
 from statistics import mean
 
 import click
-from dateutil.tz import UTC
 from sqlalchemy.dialects.mysql import insert
 
 from rwcwx import logger
@@ -58,12 +57,15 @@ class CumulusObsImporter:
         self.obs_last_mod = last_mod
 
         obs = CumulusObs(self.obs_path)
+        # logger.warn(f"minute: {obs.dt.minute}. curr_dt: {self.current_dt}. Gust: {obs.gust}. Max gust: {self.max_gust}")
         if obs.dt.minute == self.current_dt:
             self.max_gust = max(self.max_gust, obs.gust)
+            # logger.warn("Updating max_gust")
         else:
+            # logger.warn("RESETTING")
             self.max_gust = obs.gust
 
-        self.current_dt = obs.dt_minute
+        self.current_dt = obs.dt_minute.minute
         obs.gust = self.max_gust
 
         obs_db_params = obs.as_obs_table_params()
@@ -84,12 +86,12 @@ class CumulusObsImporter:
         try:
             with open(aqi_path) as f:
                 air_data = json.load(f)
-                last_seen = datetime.fromtimestamp(air_data["results"][0]["LastSeen"])
+                last_seen = datetime.fromtimestamp(air_data["sensor"]["last_seen"])
                 age = datetime.now() - last_seen
                 if age > self.AIR_AGE_THRESHOLD:
                     logger.error(f"Air data out of date. Age: {age}")
                     return None
-                pm2_5s = [float(r["PM2_5Value"]) for r in air_data["results"]]
+                pm2_5s = [air_data["sensor"]["pm2.5"]]
                 logger.info(f"Air data: pm2.5 {pm2_5s} updated {age.total_seconds()} s ago")
                 return mean(pm2_5s)
         except Exception as e:
@@ -123,6 +125,9 @@ class CumulusObsImporter:
                 ("min", summary.min_val, summary.min_at),
                 ("max", summary.max_val, summary.max_at),
             ]:
+                if val is None:
+                    logger.warn(f"Skipping null value {obsVar.name}-{typ}")
+                    continue
                 all_params = dict(type=typ, val=val, at=at)
                 all_params.update(params)
                 # TODO: don't override already overidden entries (check first)

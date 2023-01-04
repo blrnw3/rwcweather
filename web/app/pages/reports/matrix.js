@@ -1,14 +1,18 @@
 import { Box, Flex, Grid, Heading, Spinner, Text, useRadioGroup } from "@chakra-ui/react";
 import { Fragment, useContext, useState } from 'react';
 import useSWR from 'swr';
-import { fetcher, fmatAggTypeOpt, fmatObsOpt, OBS } from '../../components/conf';
+import { fetcher, fmatAggTypeOpt, fmatObsOpt, fmatYrOpt, OBS } from '../../components/conf';
 import { daysInMonth } from "../../components/dateUtil";
 import { Page, UnitCtx } from "../../components/Page";
 import RadioCard from "../../components/RadioCard";
 import { convFunction, formatObs, scaleForObsType } from '../../format';
 
+const yrStart = 2020;
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const months = Array.from(Array(12).keys());
+const yrEnd = new Date().getFullYear();
+const years = Array.from(Array(yrEnd-yrStart+1).keys()).map(x => (x + yrStart).toString());
+years.reverse();
 let loading = true;
 
 function useSummary(obs, agg, year) {
@@ -68,7 +72,6 @@ function DailyMatrix(props) {
     const summary = useSummary(obs, agg, props.year);
     const res = summary?.daily || [];
     let serverDateParts = summary?.["server"]?.["date"] || [2000, 1, 1];
-    const year = serverDateParts[0];
     let today = new Date(serverDateParts[0], serverDateParts[1] - 1, serverDateParts[2]);
     let unit = useContext(UnitCtx);
 
@@ -99,12 +102,12 @@ function DailyMatrix(props) {
                 <Box display="contents" sx={{ ":hover > div": { backgroundColor: "gray.400" } }}>
                     <Box minW="32px" className="day" textAlign="center" key={d.toString()}>{d}</Box>
                     {months.map((m) => {
-                        let thisDate = new Date(year, m, d);
+                        let thisDate = new Date(props.year, m, d);
                         let v = "";
                         let col = "black";
                         let bg = "gray.200";
                         let hover = {}
-                        if (d > daysInMonth(year, m + 1)) {
+                        if (d > daysInMonth(props.year, m + 1)) {
                             // Invalid day
                             bg = ""
                         }
@@ -203,9 +206,9 @@ export default function Obs() {
     const [obs, setObs] = useState("temp");
     const [aggType, setAggType] = useState("max");
     const [aggOpts, setAggOpts] = useState(["max", "min", "avg"]);
-    const year = new Date().getFullYear();
+    const [year, setYear] = useState(yrEnd.toString());
 
-    const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt"];
+    const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust"];
 
     const handleObsChange = (x) => {
         setObs(x);
@@ -223,17 +226,18 @@ export default function Obs() {
             Reports: Annual matrix
         </Heading>
         <Heading as="h2" size="2">
-            Daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} this year
+            Daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} for {year}
         </Heading>
 
         <RadioButtonGroup name="obs" options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
         <RadioButtonGroup name="agg" options={aggOpts} optFormat={fmatAggTypeOpt} fn={setAggType} />
+        <RadioButtonGroup name="yr" options={years} optFormat={fmatYrOpt} fn={setYear} />
         
         <DailyMatrix obs={obs} aggType={aggType} year={year} />
         <MonthlyMatrix obs={obs} aggType={aggType} year={year} />
 
         <Text mt="3">
-            Description: daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} data for every day this year, along with
+            Description: daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} data for every day in the year {year}, along with
             monthly aggregations - monthly maximum, minimum and averages for each month.
         </Text>
 

@@ -26,22 +26,22 @@ class CumulusObs:
         self.dt = self.dt_local.astimezone(tz.UTC)
         self.dt_minute = self.dt.replace(second=0)
 
-        self.temp = obs_raw[2]
+        self.temp = float(obs_raw[2])
         self.humi = int(obs_raw[3])
-        self.dewp = obs_raw[4]
-        self.wind = obs_raw[5]
-        self.gust = obs_raw[6]
+        self.dewp = float(obs_raw[4])
+        self.wind = int(obs_raw[5])
+        self.gust = int(obs_raw[6])
         self.wdir = int(obs_raw[7])
-        self.rate = obs_raw[8]
+        self.rate = float(obs_raw[8])
         self.rain = float(obs_raw[9])
-        self.pres = obs_raw[10]
+        self.pres = float(obs_raw[10])
 
-        self.intemp = obs_raw[22]
-        self.inhumi = obs_raw[23]
+        self.intemp = float(obs_raw[22])
+        self.inhumi = int(obs_raw[23])
 
         self.daylight = (obs_raw[49] == "1")
-        self.solr_max = obs_raw[56]
-        self.feels = obs_raw[58]
+        self.solr_max = float(obs_raw[56])
+        self.feels = float(obs_raw[58])
 
         self.wet = float(obs_raw[47]) > 0
 

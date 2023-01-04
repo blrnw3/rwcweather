@@ -270,7 +270,7 @@ class MonthSummary:
 
     def __init__(self, month: Optional[date]) -> None:
         if month is None:
-            month = DateUtil.now()
+            month = DateUtil.now().date()
         self.month: date = month
 
     @classmethod

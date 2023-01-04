@@ -55,4 +55,24 @@ class ObsQ:
 
     @staticmethod
     def last_rain() -> datetime:
-        return db.s.query(Obs).filter(Obs.rain > 0).order_by(Obs.t.desc())[0].t
+        q = """
+         select t, diff
+          from (
+            select t, rain, (rain - lag(rain) over w) as diff
+            from obs
+            where t > '2021-11-08' and rain > 0
+            window w as (order by t)
+            ) x
+            where diff != 0
+            order by t desc
+            limit 1
+         """
+        if "test" in db._database_url:
+            # TODO: update test mysql to support window fns
+            q = "select t from obs where rain > 0 order by t desc limit 1"
+        return db.s.execute(q).fetchone()[0]
+
+    @staticmethod
+    def rain_last_n_mins(mins: int) -> float:
+        st = DateUtil.utc_now() - timedelta(minutes=mins)
+        return db.s.query(Obs).filter(Obs.t > st).sum(Obs.rain)

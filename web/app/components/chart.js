@@ -126,10 +126,12 @@ export function LatestChart(props) {
             }
         },
         series: [{
+            type: obs == "wdir" ? "scatter" : "line",
             data: temp,
             name: obs,
             tooltip: {
-                valueDecimals: precision
+                valueDecimals: precision,
+                // pointFormat: obs == "wdir" ? "{point.y} &deg;" : undefined
             },
             color: {
                 linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
@@ -155,6 +157,11 @@ export function SummaryChart(props) {
     let aggType = props.aggType;
     let chartType = props.chartType;
     let aggTypePretty = fmatAggTypeOpt(aggType);
+
+    if (obs == "rain" && aggType == "avg") {
+        aggType = "total";
+        aggTypePretty = "Total";
+    }
 
     let unit = useContext(UnitCtx);
     let obsName = OBS.get(obs).name;

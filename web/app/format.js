@@ -150,7 +150,7 @@ const OBS_FORMAT = {
 export function prettySecs(ms) {
     let s = ms / 1000;
 	if(s < 100) {
-		return secs + " s";
+		return s + " s";
     }
     let ago;
 	if(s < 7200) {
