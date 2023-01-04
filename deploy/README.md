@@ -65,5 +65,3 @@
     
 ### Upgrading
 * https://nextjs.org/docs/upgrading
-
-    

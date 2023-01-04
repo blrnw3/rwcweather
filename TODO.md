@@ -1,15 +1,15 @@
 # Active issues
 ## High pri
-* Dependent radio groups
-* Wind direction chart
-* More efficient fetch for long-range 'latest' obs data (7d is slow on LTE)
-* Matrix: change year
-* Try SSR again
+* Times of extremes and moon on dash are localized - should be PT
+* Rain in db should not be cumulative per day but give actual vals
 * URL modification based on selectors
+* backfill data for 2020
 
 # v1 (priority list, deploy as each point developed)
-TARGET DATE: 01 Jan 2022
+TARGET DATE: 01 Jun 2022
 ## Major
+* Try SSR again
+* Dependent radio groups
 * Webcam: new page and display on dashboard
 * Forecast: new page and display on dash
 * Climate: new page and integrate into dash and all existing pages
