@@ -34,6 +34,10 @@ class DateUtil:
     def year_start_end_dates(year: int) -> Tuple[date, date]:
         return date(year, 1, 1), date(year, 12, 31)
 
+    @staticmethod
+    def water_year_start_end_dates(year: int) -> Tuple[date, date]:
+        return date(year-1, 10, 1), date(year, 9, 30)
+
 
 class DateStampConverter(BaseConverter):
     FMAT = "%Y%m%d"

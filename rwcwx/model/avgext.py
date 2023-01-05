@@ -42,3 +42,9 @@ class AvgExtQ:
         start_date, end_date = DateUtil.year_start_end_dates(year)
         q = db.s.query(AvgExt).filter(AvgExt.d >= start_date).filter(AvgExt.d <= end_date)
         return q.all()
+
+    @staticmethod
+    def rain_for_water_year(year: int) -> List[AvgExt]:
+        start_date, end_date = DateUtil.water_year_start_end_dates(year)
+        q = db.s.query(AvgExt).filter(AvgExt.d >= start_date).filter(AvgExt.d <= end_date).filter(AvgExt.var.in_(("rain",)))
+        return q.all()

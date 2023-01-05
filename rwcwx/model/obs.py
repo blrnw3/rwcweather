@@ -39,7 +39,7 @@ class ObsQ:
         return q
 
     @staticmethod
-    def trend(periods: List[int]) -> Dict[int, Obs]:
+    def trend(periods: List[int], var: str = None) -> Dict[int, Obs]:
         """
         Get all records for the specific :periods:, each representing the obs from n records ago
         NB: To avoid nulls and preserve data during downtime, the periods are not computed using n-mins ago logic,
@@ -60,7 +60,7 @@ class ObsQ:
           from (
             select t, rain, (rain - lag(rain) over w) as diff
             from obs
-            where t > '2021-11-08' and rain > 0
+            where t > '2023-01-03' and rain > 0
             window w as (order by t)
             ) x
             where diff != 0
@@ -75,4 +75,16 @@ class ObsQ:
     @staticmethod
     def rain_last_n_mins(mins: int) -> float:
         st = DateUtil.utc_now() - timedelta(minutes=mins)
-        return db.s.query(Obs).filter(Obs.t > st).sum(Obs.rain)
+        return sum((o.rain for o in db.s.query(Obs.rain).filter(Obs.t > st).all()))
+
+    @staticmethod
+    def rain_24hrs() -> float:
+        now = DateUtil.utc_now().replace(second=0, microsecond=0)
+        day_ago = now - timedelta(hours=24)
+        yest_end = DateUtil.yesterday().replace(hour=23, minute=59, second=0, microsecond=0)
+        amounts = db.s.query(Obs).filter(Obs.t.in_((day_ago, yest_end, now))).order_by(Obs.t.desc()).all()
+        # return amounts
+        try:
+            return amounts[0].rain + amounts[1].rain - amounts[2].rain
+        except IndexError:
+            return None

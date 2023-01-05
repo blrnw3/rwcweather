@@ -68,3 +68,4 @@ app.add_url_rule("/api/var/all_periods/<var>/<typ>/", view_func=r.var_all_period
 
 # Other
 app.add_url_rule("/api/astronomy", view_func=r.astronomy)
+app.add_url_rule("/api/rain", view_func=r.rain_stats)

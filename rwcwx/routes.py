@@ -5,7 +5,7 @@ from dateutil.tz import UTC
 from flask import request
 
 from rwcwx.astronomy import get_all_times_rwc, getTimes
-from rwcwx.calc.avg_extreme import AvgExtAggregator, MonthSummary, DaySummary, YearSummary
+from rwcwx.calc.avg_extreme import AvgExtAggregator, MonthSummary, DaySummary, YearSummary, WaterYearRainSummary
 from rwcwx.config import TZ
 from rwcwx.model.avgext import AvgExtQ
 from rwcwx.model.obs import ObsQ
@@ -35,12 +35,21 @@ def dashboard_live():
     """
     Amalgamates all useful data for a live dashboard to reduce number of http calls
     """
+    trends = ObsQ.trend([10, 60, 180, 1440])
+    last_rain = ObsQ.last_rain()
     return _wrap_result(
         dict(
             now=ObsQ.latest(1)[0],
-            trends=ObsQ.trend([10, 60, 1440]),
+            trends=trends,
             today=DaySummary(DateUtil.now().date()).stats_json(),
-            last_rain=ObsQ.last_rain(),
+            last_rain=last_rain,
+            rain_trend=dict(
+                last=ObsQ.last_rain(),
+                hr24=ObsQ.rain_24hrs(),
+                m10=trends[0].rain - trends[10].rain,
+                hr1=trends[0].rain - trends[60].rain,
+                hr3=trends[0].rain - trends[180].rain,
+            )
         )
     )
 
@@ -54,6 +63,7 @@ def dashboard_summary():
             yesterday=DaySummary(DateUtil.yesterday().date()).stats_json(),
             month=MonthSummary.for_this_month().stats(),
             year=YearSummary.for_this_year().stats(),
+            water_year=WaterYearRainSummary.for_this_year().stats(),
             astronomy=get_all_times_rwc(),
         )
     )
@@ -127,6 +137,17 @@ def trend_live():
         ObsQ.trend(periods),
         periods=periods
     )
+
+
+def rain_stats():
+    rn_trends = ObsQ.trend([10, 60, 180])
+    return _wrap_result(dict(
+        last_rain=ObsQ.last_rain(),
+        rain_24hrs=ObsQ.rain_24hrs(),
+        rain_10m=rn_trends[0].rain - rn_trends[10].rain,
+        rain_hr=rn_trends[0].rain - rn_trends[60].rain,
+        rain_3hr=rn_trends[0].rain - rn_trends[180].rain,
+    ))
 
 
 def _wrap_result(res, **extras) -> dict:

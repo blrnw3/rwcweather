@@ -290,8 +290,12 @@ function RainHomeCard(props) {
   const dash = props.dash;
   let changed = dash ? dash["obs_change"].get("rain") : null;
   let now = formatObs(unit, dash?.["now"]?.["rain"], "rain");
+  let rn10 = formatObs(unit, dash?.["rain_trend"]?.["m10"], "rain");
+  let rnhr = formatObs(unit, dash?.["rain_trend"]?.["hr1"], "rain");
+  let rn24 = formatObs(unit, dash?.["rain_trend"]?.["hr24"], "rain");
   let monthly = formatObs(unit, props.summary?.["month"]?.["rain_total"]?.["total"], "rain");
   let annual = formatObs(unit, props.summary?.["year"]?.["rain_total"]?.["total"], "rain");
+  let water_yr = formatObs(unit, props.summary?.["water_year"]?.["rain_total"]?.["total"], "rain");
   let last = dash ? prettySecs(new Date(dash["now"]["t"]) - new Date(dash["last_rain"])) : "-";
 
   const icon = <Text as="span" color="blue" className="home_ico"><WiRain /></Text>
@@ -300,9 +304,12 @@ function RainHomeCard(props) {
       <Tooltip label="Rainfall">{icon}</Tooltip>
       <Text as="span" fontSize={{ base: "2xl", md: "3xl" }} paddingRight="4" paddingLeft="1">{now}</Text>
     </Text>
-    <Text borderBottom="1px solid #ccc">Last rain: <Text as="span" fontWeight="bold">{last}</Text> ago</Text>
+    <Text>Last rain: <Text as="span" fontWeight="bold">{last}</Text> ago</Text>
+    <Text borderBottom="1px solid #ccc">Past 10m: <Text as="span" fontWeight="bold">{rn10}</Text></Text>
+    <Text>Hourly: <Text as="span" fontWeight="bold">{rnhr}</Text></Text>
+    <Text borderBottom="1px solid #ccc">Past 24hrs: <Text as="span" fontWeight="bold">{rn24}</Text></Text>
     <Text>Monthly: <Text as="span" fontWeight="bold">{monthly}</Text></Text>
-    <Text>Annual: <Text as="span" fontWeight="bold">{annual}</Text></Text>
+    <Text>Water Year: <Text as="span" fontWeight="bold">{water_yr}</Text></Text>
   </HomeCard>
 }
 

@@ -101,7 +101,7 @@ class ObsVar(ABC):
         )
 
     @classmethod
-    def month_summary(cls, avg_exts: List[AvgExt]) -> MonthlySummary:
+    def multiday_summary(cls, avg_exts: List[AvgExt]) -> SummaryStats:
         cnt, total = 0, 0
         min_val, min_at = None, None
         max_val, max_at = None, None
@@ -116,7 +116,7 @@ class ObsVar(ABC):
                 max_val = ae.val
                 max_at = ae.d
 
-        summary = SummaryStats(
+        return SummaryStats(
             count=cnt,
             total=total,
             min_val=min_val,
@@ -124,33 +124,14 @@ class ObsVar(ABC):
             min_at=min_at,
             max_at=max_at
         )
-        return MonthlySummary(summary=summary)
+
+    @classmethod
+    def month_summary(cls, avg_exts: List[AvgExt]) -> MonthlySummary:
+        return MonthlySummary(summary=cls.multiday_summary(avg_exts))
 
     @classmethod
     def year_summary(cls, avg_exts: List[AvgExt]) -> AnnualSummary:
-        cnt, total = 0, 0
-        min_val, min_at = None, None
-        max_val, max_at = None, None
-
-        for ae in avg_exts:
-            cnt += 1
-            total += ae.val
-            if min_val is None or ae.val < min_val:
-                min_val = ae.val
-                min_at = ae.d
-            if max_val is None or ae.val > max_val:
-                max_val = ae.val
-                max_at = ae.d
-
-        summary = SummaryStats(
-            count=cnt,
-            total=total,
-            min_val=min_val,
-            max_val=max_val,
-            min_at=min_at,
-            max_at=max_at
-        )
-        return AnnualSummary(summary=summary)
+        return AnnualSummary(summary=cls.multiday_summary(avg_exts))
 
 
 ObsVarT = Type[ObsVar]
@@ -308,6 +289,27 @@ class YearSummary:
         return stats
 
 
+class WaterYearRainSummary:
+
+    def __init__(self, year: Optional[int]) -> None:
+        if year is None:
+            year = DateUtil.now().year
+        self.year: int = year
+
+    @classmethod
+    def for_this_year(cls) -> WaterYearRainSummary:
+        return WaterYearRainSummary(None)
+
+    def stats(self) -> Dict[str, Dict]:
+        by_type = defaultdict(list)
+        for ae in AvgExtQ.rain_for_water_year(self.year):
+            by_type[(ae.var, ae.type)].append(ae)
+        stats = {}
+        for (var, typ), aes in by_type.items():
+            stats[f"{var}_{typ}"] = ObsVar.year_summary(aes).summary.as_dict
+        return stats
+
+
 class AvgExtAggregator:
 
     @staticmethod
@@ -336,6 +338,20 @@ class AvgExtAggregator:
 
         return [
             dict(
+                summary=OBS_VAR_MAP[var].water_year_summary(aes).summary.as_dict,
+                m=yr
+            )
+            for yr, aes in by_yr.items()
+        ]
+
+    @staticmethod
+    def water_year(avg_exts: List[AvgExt], var: str):
+        by_yr = defaultdict(list)
+        for ae in avg_exts:
+            by_yr[ae.d.year].append(ae)
+
+        return [
+            dict(
                 summary=OBS_VAR_MAP[var].year_summary(aes).summary.as_dict,
                 m=yr
             )
@@ -347,5 +363,6 @@ class AvgExtAggregator:
         return dict(
             daily=AvgExtAggregator.daily(avg_ext, var),
             monthly=AvgExtAggregator.monthly(avg_ext, var),
-            yearly=AvgExtAggregator.annual(avg_ext, var)
+            yearly=AvgExtAggregator.annual(avg_ext, var),
+            water_year=AvgExtAggregator.water_year(avg_ext, var)
         )
