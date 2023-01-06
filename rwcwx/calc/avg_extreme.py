@@ -42,16 +42,6 @@ class SummaryStats:
         return {"avg": self.avg, **asdict(self)}
 
 
-@dataclass
-class MonthlySummary:
-    summary: SummaryStats
-
-
-@dataclass
-class AnnualSummary:
-    summary: SummaryStats
-
-
 class ObsVar(ABC):
 
     # More options to try: https://stackoverflow.com/questions/2736255/abstract-attributes-in-python
@@ -124,14 +114,6 @@ class ObsVar(ABC):
             min_at=min_at,
             max_at=max_at
         )
-
-    @classmethod
-    def month_summary(cls, avg_exts: List[AvgExt]) -> MonthlySummary:
-        return MonthlySummary(summary=cls.multiday_summary(avg_exts))
-
-    @classmethod
-    def year_summary(cls, avg_exts: List[AvgExt]) -> AnnualSummary:
-        return AnnualSummary(summary=cls.multiday_summary(avg_exts))
 
 
 ObsVarT = Type[ObsVar]
@@ -264,7 +246,7 @@ class MonthSummary:
             by_type[(ae.var, ae.type)].append(ae)
         stats = {}
         for (var, typ), aes in by_type.items():
-            stats[f"{var}_{typ}"] = ObsVar.month_summary(aes).summary.as_dict
+            stats[f"{var}_{typ}"] = ObsVar.multiday_summary(aes).as_dict
         return stats
 
 
@@ -285,7 +267,7 @@ class YearSummary:
             by_type[(ae.var, ae.type)].append(ae)
         stats = {}
         for (var, typ), aes in by_type.items():
-            stats[f"{var}_{typ}"] = ObsVar.year_summary(aes).summary.as_dict
+            stats[f"{var}_{typ}"] = ObsVar.multiday_summary(aes).as_dict
         return stats
 
 
@@ -306,7 +288,7 @@ class WaterYearRainSummary:
             by_type[(ae.var, ae.type)].append(ae)
         stats = {}
         for (var, typ), aes in by_type.items():
-            stats[f"{var}_{typ}"] = ObsVar.year_summary(aes).summary.as_dict
+            stats[f"{var}_{typ}"] = ObsVar.multiday_summary(aes).as_dict
         return stats
 
 
@@ -324,7 +306,7 @@ class AvgExtAggregator:
 
         return [
             dict(
-                summary=OBS_VAR_MAP[var].month_summary(aes).summary.as_dict,
+                summary=OBS_VAR_MAP[var].multiday_summary(aes).as_dict,
                 m=period
             )
             for period, aes in by_month.items()
@@ -338,21 +320,7 @@ class AvgExtAggregator:
 
         return [
             dict(
-                summary=OBS_VAR_MAP[var].water_year_summary(aes).summary.as_dict,
-                m=yr
-            )
-            for yr, aes in by_yr.items()
-        ]
-
-    @staticmethod
-    def water_year(avg_exts: List[AvgExt], var: str):
-        by_yr = defaultdict(list)
-        for ae in avg_exts:
-            by_yr[ae.d.year].append(ae)
-
-        return [
-            dict(
-                summary=OBS_VAR_MAP[var].year_summary(aes).summary.as_dict,
+                summary=OBS_VAR_MAP[var].multiday_summary(aes).as_dict,
                 m=yr
             )
             for yr, aes in by_yr.items()
@@ -364,5 +332,4 @@ class AvgExtAggregator:
             daily=AvgExtAggregator.daily(avg_ext, var),
             monthly=AvgExtAggregator.monthly(avg_ext, var),
             yearly=AvgExtAggregator.annual(avg_ext, var),
-            water_year=AvgExtAggregator.water_year(avg_ext, var)
         )

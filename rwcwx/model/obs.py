@@ -80,11 +80,14 @@ class ObsQ:
     @staticmethod
     def rain_24hrs() -> float:
         now = DateUtil.utc_now().replace(second=0, microsecond=0)
+        now_backup = now - timedelta(minutes=1)
         day_ago = now - timedelta(hours=24)
-        yest_end = DateUtil.yesterday().replace(hour=23, minute=59, second=0, microsecond=0)
-        amounts = db.s.query(Obs).filter(Obs.t.in_((day_ago, yest_end, now))).order_by(Obs.t.desc()).all()
+        yest_end = DateUtil.yesterday().replace(hour=23, minute=59, second=0, microsecond=0).astimezone(UTC)
+        amounts = db.s.query(Obs).filter(Obs.t.in_((day_ago, yest_end, now, now_backup))).order_by(Obs.t.desc()).all()
         # return amounts
-        try:
+        if len(amounts) == 4:
+            return amounts[0].rain + amounts[2].rain - amounts[3].rain
+        elif len(amounts) == 3:
             return amounts[0].rain + amounts[1].rain - amounts[2].rain
-        except IndexError:
+        else:
             return None
