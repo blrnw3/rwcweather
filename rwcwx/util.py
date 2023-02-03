@@ -51,3 +51,17 @@ class DateStampConverter(BaseConverter):
 
     def to_url(self, value: date) -> str:
         return value.strftime(self.FMAT)
+
+
+class DatetimeConverter(BaseConverter):
+    FMAT = "%Y%m%d-%H%M"
+
+    @staticmethod
+    def from_str(value: str):
+        return datetime.strptime(value, DatetimeConverter.FMAT)
+
+    def to_python(self, value: str) -> date:
+        return datetime.strptime(value, self.FMAT)
+
+    def to_url(self, value: date) -> str:
+        return value.strftime(self.FMAT)
