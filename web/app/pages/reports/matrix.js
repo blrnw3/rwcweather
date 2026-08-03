@@ -221,7 +221,7 @@ export default function Obs() {
         }
     }
 
-    return <Page name="reports" title="Reports | matrix">
+    return <Page name="reports" sub="annual" title="Reports | matrix">
         <Heading as="h1" size="1">
             Reports: Annual matrix
         </Heading>
