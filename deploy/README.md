@@ -1,67 +1,119 @@
-# Deploying redwoodcityweather
+# Production deployment
 
-## Server setup
-* Ubuntu 20
-    * Digital Ocean shared server - 1 GB RAM, 1 CPU, 25 GB SSD
-    * Change ssh port in `/etc/ssh/sshd_config`
-    * Setup firewall - `ufw allow 8294/tcp`, `ufw enable`
-    * Add user - `adduser ben`, `usermod -aG sudo ben`
-     
-* Mysql 8
-    * `sudo apt install mysql-server`
-    * `sudo mysql_secure_installation`
-    
-    * Login as root - `sudo mysql`
-    * `create schema wx;`
-    * Add `svc` user
-    * Grant - `grant all on wx.* to svc@localhost with grant option;`
-    * Future access: `mysql -u svc -p`
+Production runs on a DigitalOcean Ubuntu host:
 
-* Nginx - Follow DO tutorial (install, add to ufw, add domain in config)
-    * sites-available are in deploy/
-    
-* SSL cert - Follow DO tutorial
+- nginx terminates TLS for `https://rwcweather.com`.
+- Next.js runs under PM2 as `rwcwx-app` on port 3000.
+- Flask/uWSGI runs under systemd as `rwcwx` and serves `/api/`.
+- The checkout is `/home/ben/rwcweather` on `ben@138.68.56.237:8294`.
 
+The deployment scripts do not commit or push source control changes. Commit and push separately so GitHub remains the source of truth.
 
-### Flask app setup
-* [Tutorial for flask on nginx](https://www.digitalocean.com/community/tutorials/how-to-serve-flask-applications-with-uwsgi-and-nginx-on-ubuntu-20-04)
-    * `python3.8 -m venv venv_prod` within ~/rwcweather and `source venv_prod/bin/activate` and `pip install -r requirements.txt`
-    * Use files deploy/rwcwx.ini and .service
+## Frontend quick start
 
+Requirements on the local machine:
 
-### Next.js setup
-* https://www.digitalocean.com/community/tutorials/how-to-set-up-a-node-js-application-for-production-on-ubuntu-20-04
-    * Skip step 2 and for pm2 start cmd, do `pm2 start npm --name "rwcwx-app" -- start` 
+- SSH access to the production host using the normal SSH agent/key.
+- Node.js, npm, rsync, curl, and Python 3.
+- Frontend dependencies installed in `web/app/node_modules`.
+- The same Next.js version locally and on production.
 
-### Demon scripts
-* Configure Cumulus to FTP to the server
-    * Use SFTP so no FTP setup required (SSH settings can be used)
-* For webcam setup, may actually need to setup an FTP server (DO tutorial)
-    * Use config file: deploy/vsftpd.config
-* Add deploy/crontab to ben user's crontab
-* Within ~/rwcweather run `MYSQL_URL=svc:<PASS>@127.0.0.1:3306/wx PYTHONPATH=/home/ben/rwcweather nohup python3 rwcwx/job/save_latest.py -o /var/www/rwc/html/cumulus/realtime.txt -e out_prod  &>> log/get_latest.log &`
-    * Change <PASS> to the prod password
-    * TODO: make this into a system service so it does not need restarting on system reboot / code changes
-* Setup cam_save.sh script to run
-    * nohup ./cam_save.sh &> /dev/null &
-    * TODO make a daemon
+From the repository root:
 
-## Ongoing deployment
-* Within web/app run `npm run build` to compile the web app (DO NOT do this on server - too slow)
-* Sync all the code from outside root dir:
- `rsync -ruv -e 'ssh -p 8294 -i ~/.ssh/digitalocean_private_ben_centos_openssh' rwcweather ben@138.68.56.237:~/ --exclude=".git/" --exclude="venv/" --exclude="web/app/.next/cache" --exclude="web/app/node_modules/"`
-* If requirements.txt has been updated, activate venv_prod and install them
-* If package.json has been updated, run `npm install` from within web/app/
-* On the server, run `sudo systemctl restart rwcwx` and `pm2 restart rwcwx-app`
-* If updates to the save_latest script have been made:
-    * Kill running process: ps -aux | grep python to find it
-    * see 'demon scripts' for restart command
-    
-### Troubleshooting
-* Node logs: `pm2 logs`
-* Flask logs: `journalctl -u rwcwx --since today`
-* Nginx access logs: `sudo tail -f /var/log/nginx/access.log`
-    * Error log is at error.log
-    
-### Upgrading
-* https://nextjs.org/docs/upgrading
+```sh
+cd web/app
+npm install --no-package-lock --legacy-peer-deps
+cd ../..
+./deploy/deploy_frontend.sh
+```
+
+Preview the files that would be synchronized without restarting or changing production:
+
+```sh
+./deploy/deploy_frontend.sh --dry-run
+```
+
+The script:
+
+1. Checks SSH access and verifies that local and production Next.js versions match.
+2. Builds the optimized frontend locally. For modern Node versions it enables the OpenSSL compatibility mode required by Next 11.
+3. Syncs frontend source and `.next`, excluding dependencies, package manifests, and the build cache.
+4. Restarts only the `rwcwx-app` PM2 process.
+5. Verifies the public monthly report and the all-periods API.
+
+Override production settings with environment variables when necessary:
+
+| Variable | Default |
+| --- | --- |
+| `RWCWX_DEPLOY_HOST` | `ben@138.68.56.237` |
+| `RWCWX_DEPLOY_PORT` | `8294` |
+| `RWCWX_REMOTE_ROOT` | `/home/ben/rwcweather` |
+| `RWCWX_PUBLIC_URL` | `https://rwcweather.com` |
+| `RWCWX_FRONTEND_PROCESS` | `rwcwx-app` |
+
+To verify production without deploying:
+
+```sh
+./deploy/verify.sh
+```
+
+## Dependency changes
+
+The frontend server is intentionally small, so builds happen locally. When `package.json` changes:
+
+1. Install and test the exact dependency set locally.
+2. Sync `package.json` to production manually; the normal frontend script deliberately excludes package manifests.
+3. Run `npm install --no-package-lock --legacy-peer-deps` in `/home/ben/rwcweather/web/app` on production.
+4. Confirm `node -p 'require("next/package.json").version'` matches locally and remotely.
+5. Run `./deploy/deploy_frontend.sh`.
+
+Do not deploy a `.next` build produced by a different Next.js version than the production runtime.
+
+## Backend deployment
+
+Sync backend changes from the repository root:
+
+```sh
+rsync -rlptv -e 'ssh -p 8294' \
+  rwcwx requirements.txt wsgi.py \
+  ben@138.68.56.237:/home/ben/rwcweather/
+```
+
+If `requirements.txt` changed, activate `/home/ben/rwcweather/venv_prod` and install it before restarting:
+
+```sh
+ssh -p 8294 ben@138.68.56.237
+cd /home/ben/rwcweather
+source venv_prod/bin/activate
+pip install -r requirements.txt
+sudo systemctl restart rwcwx
+systemctl status rwcwx --no-pager
+```
+
+Verify the API afterward:
+
+```sh
+curl --fail --silent --show-error https://rwcweather.com/api/lol
+```
+
+Changes to `rwcwx/job/save_latest.py` require restarting that separate ingestion process as documented in the server runbook.
+
+## Operations and troubleshooting
+
+Useful production commands:
+
+```sh
+# Frontend status and logs
+pm2 status rwcwx-app
+pm2 logs rwcwx-app --lines 100 --nostream
+
+# Flask status and logs
+sudo systemctl status rwcwx --no-pager
+journalctl -u rwcwx --since today
+
+# nginx logs
+sudo tail -n 100 /var/log/nginx/access.log
+sudo tail -n 100 /var/log/nginx/error.log
+```
+
+If frontend verification fails, inspect PM2 logs, fix or revert the source locally, and rerun the frontend deployment script. The rsync step does not delete older hashed assets, so clients already loading the previous build can finish their requests during deployment.
