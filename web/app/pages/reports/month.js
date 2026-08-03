@@ -6,9 +6,21 @@ import { Page, UnitCtx } from "../../components/Page";
 import RadioCard from "../../components/RadioCard";
 import { convFunction, formatObs, scaleForObsType } from "../../format";
 
-const yearStart = 2020;
+const yearStart = 2021;
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const months = Array.from(Array(12).keys());
+
+const countThresholds = {
+    temp: ["0", "5", "10", "15", "20", "25", "30", "35"],
+    wind: ["0", "5", "10", "15", "20", "25"],
+    humi: ["0", "40", "50", "60", "70", "80", "90"],
+    pres: ["0", "1000", "1010", "1020", "1030"],
+    aqi: ["0", "50", "100", "150", "200"],
+    rain: ["0", "0.01", "0.1", "0.25", "0.5", "1"],
+    wdir: ["0", "45", "90", "135", "180", "225", "270", "315"],
+    dewpt: ["0", "5", "10", "15", "20", "25"],
+    gust: ["0", "10", "20", "30", "40"],
+};
 
 const summaryNames = {
     min: "Minimum",
@@ -36,6 +48,22 @@ function RadioButtonGroup(props) {
     </Flex>;
 }
 
+function CountThresholdSelector({ obs, value, fn }) {
+    const unit = useContext(UnitCtx);
+    const obsObj = OBS.get(obs);
+
+    return <Box mt="1">
+        <Text fontWeight="bold">Count days greater than:</Text>
+        <RadioButtonGroup
+            name="threshold"
+            value={value}
+            options={countThresholds[obs]}
+            optFormat={(threshold) => formatObs(unit, Number(threshold), obsObj.fmat)}
+            fn={fn}
+        />
+    </Box>;
+}
+
 function styleForScaleValue(value, scale) {
     if (value == null) {
         return { bg: "gray.300", col: "black" };
@@ -51,32 +79,35 @@ function styleForScaleValue(value, scale) {
     };
 }
 
-function styleForValue(value, obsType, unit, summary) {
+function styleForValue(value, obsType, unit, summary, annual = false) {
     if (summary === "count") {
-        return styleForScaleValue(value, [1, 5, 10, 15, 20, 25, 28, 31]);
+        const scale = annual
+            ? [1, 50, 100, 150, 200, 250, 300, 365]
+            : [1, 5, 10, 15, 20, 25, 28, 31];
+        return styleForScaleValue(value, scale);
     }
     const convertedValue = value == null ? null : convFunction(unit, obsType)(value);
     return styleForScaleValue(convertedValue, scaleForObsType(unit, obsType));
 }
 
-function useMonthlySummaries(obs, summary) {
-    // Each selected summary uses the matching daily series. Count uses the
-    // variable's canonical series so it represents days with usable data.
+function useSummaries(obs, summary) {
+    // Each selected summary uses the matching daily series. Threshold counts
+    // use the variable's canonical series (daily mean, or daily rain total).
     // Rain is cumulative during a day, so all of its monthly statistics must
     // be derived from daily totals rather than intraday readings.
     const dailyAggregation = obs === "rain"
         ? "total"
         : (summary === "count" ? OBS.get(obs).summary : summary);
-    const url = "/api/var/monthly/" + obs + "/" + dailyAggregation
+    const url = "/api/var/all_periods/" + obs + "/" + dailyAggregation
         + "/?start=" + yearStart + "0101&include_today=1";
     return useSWR(url, fetcher, { refreshInterval: 300000 });
 }
 
-function MonthlyMatrix({ obs, summary }) {
+function MonthlyMatrix({ obs, summary, threshold }) {
     const obsObj = OBS.get(obs);
     const unit = useContext(UnitCtx);
-    const { data: response, error, isValidating } = useMonthlySummaries(obs, summary);
-    const results = response?.result || [];
+    const { data: response, error, isValidating } = useSummaries(obs, summary);
+    const results = response?.result || {};
     const serverDate = response?.server?.date || [new Date().getFullYear(), new Date().getMonth() + 1, 1];
     const currentYear = serverDate[0];
     const currentMonth = serverDate[1] - 1;
@@ -85,16 +116,41 @@ function MonthlyMatrix({ obs, summary }) {
     const summaryKey = summary === "min" ? "min_val" : summary === "max" ? "max_val" : summary;
 
     const matrix = new Map();
-    for (const result of results) {
-        const [year, month] = result.m;
-        if (!matrix.has(year)) {
-            matrix.set(year, new Map());
+    const annual = new Map();
+
+    if (summary === "count") {
+        const numericThreshold = Number(threshold);
+        for (const result of results.daily || []) {
+            const [year, month] = result.d;
+            if (!matrix.has(year)) {
+                matrix.set(year, new Map());
+            }
+            if (!matrix.get(year).has(month - 1)) {
+                matrix.get(year).set(month - 1, 0);
+            }
+            if (!annual.has(year)) {
+                annual.set(year, 0);
+            }
+            if (result.val > numericThreshold) {
+                matrix.get(year).set(month - 1, matrix.get(year).get(month - 1) + 1);
+                annual.set(year, annual.get(year) + 1);
+            }
         }
-        matrix.get(year).set(month - 1, result.summary[summaryKey]);
+    } else {
+        for (const result of results.monthly || []) {
+            const [year, month] = result.m;
+            if (!matrix.has(year)) {
+                matrix.set(year, new Map());
+            }
+            matrix.get(year).set(month - 1, result.summary[summaryKey]);
+        }
+        for (const result of results.yearly || []) {
+            annual.set(result.m, result.summary[summaryKey]);
+        }
     }
 
     return <Grid id="obs-monthly-matrix"
-        templateColumns="0.8fr repeat(12, 1fr)"
+        templateColumns="0.8fr repeat(13, 1fr)"
         templateRows="30px auto"
         overflow="auto"
         marginTop="4"
@@ -106,6 +162,7 @@ function MonthlyMatrix({ obs, summary }) {
         {months.map((month) =>
             <Box key={month} fontWeight="bold" textAlign="center">{monthNames[month]}</Box>
         )}
+        <Box fontWeight="bold" textAlign="center">Annual</Box>
         {years.map((year) =>
             <Box key={year} display="contents" sx={{ ":hover > div": { backgroundColor: "gray.400" } }}>
                 <Box minW="46px" py="2" fontWeight="bold" textAlign="center">{year}</Box>
@@ -133,6 +190,29 @@ function MonthlyMatrix({ obs, summary }) {
                         {isFuture ? "" : formattedValue}
                     </Box>;
                 })}
+                {(() => {
+                    const hasValue = annual.has(year);
+                    const value = hasValue ? annual.get(year) : null;
+                    const formattedValue = summary === "count"
+                        ? (value == null ? "-" : value.toString())
+                        : formatObs(unit, value, obsObj.fmat, false, false);
+                    const { bg, col } = styleForValue(value, obsObj.fmat, unit, summary, true);
+
+                    return <Box key={year + "-annual"}
+                        className="cell annual"
+                        textAlign="center"
+                        backgroundColor={bg}
+                        color={col}
+                        border="1px solid transparent"
+                        borderLeft="2px solid"
+                        borderLeftColor="gray.400"
+                        _hover={hasValue ? { border: "1px solid " + col, borderLeft: "2px solid" } : {}}
+                        py="2"
+                        px="1"
+                    >
+                        {formattedValue}
+                    </Box>;
+                })()}
             </Box>
         )}
         {error && <Text gridColumn="1 / -1" color="red.600">Unable to load monthly data.</Text>}
@@ -142,11 +222,13 @@ function MonthlyMatrix({ obs, summary }) {
 export default function MonthlyReport() {
     const [obs, setObs] = useState("temp");
     const [summary, setSummary] = useState("avg");
+    const [threshold, setThreshold] = useState("0");
     const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust"];
     const summaryOptions = ["min", "max", OBS.get(obs).summary, "count"];
 
     const handleObsChange = (nextObs) => {
         setObs(nextObs);
+        setThreshold("0");
         const nextMiddleSummary = OBS.get(nextObs).summary;
         if (summary === "avg" || summary === "total") {
             setSummary(nextMiddleSummary);
@@ -161,12 +243,14 @@ export default function MonthlyReport() {
 
         <RadioButtonGroup name="obs" value={obs} options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
         <RadioButtonGroup name="summary" value={summary} options={summaryOptions} optFormat={(value) => summaryNames[value]} fn={setSummary} />
+        {summary === "count" && <CountThresholdSelector obs={obs} value={threshold} fn={setThreshold} />}
 
-        <MonthlyMatrix obs={obs} summary={summary} />
+        <MonthlyMatrix obs={obs} summary={summary} threshold={threshold} />
 
         <Text mt="3">
-            Each row is a year and each column is a month. Minimum and maximum use daily extremes,
-            mean uses daily means, and count is the number of days represented. Rainfall statistics use daily totals.
+            Each row is a year, with monthly columns followed by an annual summary. Minimum and maximum use daily
+            extremes, mean uses daily means, and count is the number of days above the selected threshold. Rainfall
+            statistics use daily totals.
         </Text>
     </Page>;
 }
