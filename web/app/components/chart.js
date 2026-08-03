@@ -246,3 +246,72 @@ export function SummaryChart(props) {
         />
     </Box>
 }
+
+
+function stationWallTime(localTimestamp) {
+    const match = localTimestamp?.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+    if (!match) {
+        return null;
+    }
+    return Date.UTC(
+        Number(match[1]), Number(match[2]) - 1, Number(match[3]),
+        Number(match[4]), Number(match[5]), Number(match[6])
+    );
+}
+
+export function DailyChart({ observations, obs, dateLabel, isLoading, ...boxProps }) {
+    const unit = useContext(UnitCtx);
+    const obsObj = OBS.get(obs);
+    const { unitSymbol, precision } = unitAndPrecisionForObsType(unit, obsObj.fmat);
+    const converter = convFunction(unit, obsObj.fmat);
+    const data = (observations || [])
+        .filter((reading) => reading[obs] != null)
+        .map((reading) => [stationWallTime(reading.t_local), converter(reading[obs])])
+        .filter(([timestamp]) => timestamp != null);
+    const hasData = data.length > 0;
+
+    const options = {
+        chart: {
+            height: responsiveheight("responsive"),
+            spacing: responsiveSpacing([20, 20, 25, 10]),
+            backgroundColor: isLoading ? "#00000022" : "#fff",
+        },
+        legend: { enabled: false },
+        credits: { href: null, text: "@rwcweather" },
+        title: {
+            text: isLoading
+                ? "Loading daily chart…"
+                : (hasData ? obsObj.name + " on " + dateLabel : "No " + obsObj.name.toLowerCase() + " observations"),
+            style: { fontSize: responsiveFontSize(18) },
+        },
+        time: { timezoneOffset: 0 },
+        xAxis: {
+            type: "datetime",
+            title: { text: "Local time" },
+        },
+        yAxis: {
+            title: {
+                text: obsObj.name + " / " + unitSymbol,
+                style: { fontSize: responsiveFontSize(13) },
+            },
+        },
+        series: [{
+            type: obs === "wdir" ? "scatter" : "line",
+            data,
+            name: obsObj.name,
+            tooltip: {
+                valueDecimals: precision,
+                xDateFormat: "%H:%M",
+            },
+            color: {
+                linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
+                stops: [[0, "#ff5511"], [1, "#ff9933"]],
+            },
+            connectNulls: false,
+        }],
+    };
+
+    return <Box {...boxProps}>
+        <HighchartsReact highcharts={Highcharts} options={options} />
+    </Box>;
+}

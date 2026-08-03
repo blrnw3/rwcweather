@@ -215,8 +215,9 @@ class DaySummary:
     def for_yesterday(cls) -> DaySummary:
         return DaySummary(DateUtil.now().date())
 
-    def stats(self) -> Dict[ObsVarT, SummaryStats]:
-        day_obs = ObsQ.day(self.day)
+    def stats(self, day_obs: Optional[List[Obs]] = None) -> Dict[ObsVarT, SummaryStats]:
+        if day_obs is None:
+            day_obs = ObsQ.day(self.day)
         total_cnt = len(day_obs)
         # if total_cnt == 0:
         #     raise ValueError(f"No obs for {self.day}")
@@ -225,8 +226,8 @@ class DaySummary:
             stats[f] = f.summary_stats(day_obs)
         return stats
 
-    def stats_json(self):
-        return {k.name: v.as_dict for k, v in self.stats().items()}
+    def stats_json(self, day_obs: Optional[List[Obs]] = None):
+        return {k.name: v.as_dict for k, v in self.stats(day_obs).items()}
 
 
 class MonthSummary:

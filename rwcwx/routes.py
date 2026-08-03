@@ -85,6 +85,18 @@ def day_summary(d: date = None):
     )
 
 
+def day_report(d: date):
+    """Summary and minute observations for a single local calendar day."""
+    observations = ObsQ.day(d)
+    return _wrap_result(
+        dict(
+            summary=DaySummary(d).stats_json(observations),
+            observations=observations,
+        ),
+        date=d,
+    )
+
+
 def month_summary(mnth: date = None):
     summary = MonthSummary(mnth)
     return _wrap_result(

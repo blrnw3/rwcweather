@@ -15,9 +15,11 @@ class ObsQ:
     @staticmethod
     def day(d: date) -> List[Obs]:
         """ All records for a given day """
-        st = datetime(d.year, d.month, d.day, tzinfo=TZ).astimezone(UTC)
-        en = st + timedelta(days=1)
-        q = db.s.query(Obs).filter(Obs.t.between(st, en))
+        local_start = datetime(d.year, d.month, d.day, tzinfo=TZ)
+        local_end = local_start + timedelta(days=1)
+        st = local_start.astimezone(UTC)
+        en = local_end.astimezone(UTC)
+        q = db.s.query(Obs).filter(Obs.t >= st).filter(Obs.t < en)
         return q.order_by(Obs.t.asc()).all()
 
     @staticmethod

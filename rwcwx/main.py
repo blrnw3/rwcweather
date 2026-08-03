@@ -44,6 +44,7 @@ app.add_url_rule("/api/lol", view_func=r.lol)
 # Dashboard-optimized
 app.add_url_rule("/api/web/dashboard/live", view_func=r.dashboard_live)
 app.add_url_rule("/api/web/dashboard/summary", view_func=r.dashboard_summary)
+app.add_url_rule("/api/web/report/day/<datestamp:d>", view_func=r.day_report)
 
 # Live / recent data
 app.add_url_rule("/api/obs/current", view_func=r.current)

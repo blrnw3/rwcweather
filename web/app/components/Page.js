@@ -17,6 +17,7 @@ export const UnitCtx = createContext(null);
 const NAV = new Map([
   ["home", "/"],
   ["reports", new Map([
+    ["daily", "/reports/day"],
     ["annual", "/reports/matrix"],
     ["monthly", "/reports/month"],
     ["ranking", "/reports/ranking"]
@@ -149,6 +150,7 @@ function Footer(props) {
     lineHeight={{base: 6, lg: 7}} alignItems="flex-end">
     <Box>
       <ChakraLink variant="subtle" color="inherit" href="/" display="block">Dashboard</ChakraLink>
+      <ChakraLink variant="subtle" color="inherit" href="/reports/day" display="block">Daily Report</ChakraLink>
       <ChakraLink variant="subtle" color="inherit" href="/reports/matrix" display="block">Data Matrix</ChakraLink>
       <ChakraLink variant="subtle" color="inherit" href="/reports/month" display="block">Monthly Matrix</ChakraLink>
       <ChakraLink variant="subtle" color="inherit" href="/reports/ranking" display="block">Rankings</ChakraLink>
