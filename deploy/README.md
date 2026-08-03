@@ -71,30 +71,40 @@ Do not deploy a `.next` build produced by a different Next.js version than the p
 
 ## Backend deployment
 
-Sync backend changes from the repository root:
+Deploy backend changes from the repository root:
 
 ```sh
-rsync -rlptv -e 'ssh -p 8294' \
-  rwcwx requirements.txt wsgi.py \
-  ben@138.68.56.237:/home/ben/rwcweather/
+./deploy/deploy_backend.sh
 ```
 
-If `requirements.txt` changed, activate `/home/ben/rwcweather/venv_prod` and install it before restarting:
+Preview the files that would be synchronized without changing or restarting production:
 
 ```sh
-ssh -p 8294 ben@138.68.56.237
-cd /home/ben/rwcweather
-source venv_prod/bin/activate
-pip install -r requirements.txt
-sudo systemctl restart rwcwx
-systemctl status rwcwx --no-pager
+./deploy/deploy_backend.sh --dry-run
 ```
 
-Verify the API afterward:
+If `requirements.txt` changed, review it and explicitly allow installation:
 
 ```sh
-curl --fail --silent --show-error https://rwcweather.com/api/lol
+./deploy/deploy_backend.sh --install-deps
 ```
+
+The backend deploy script:
+
+1. Syntax-checks every local Python file.
+2. Confirms SSH access, the production virtualenv, and whether dependencies changed.
+3. Synchronizes the backend package, entrypoint, requirements, and uWSGI configuration without deleting remote files.
+4. Compiles and imports the uploaded application using the production runtime and environment.
+5. Gracefully reloads the `rwcwx` uWSGI master with `SIGHUP`; the service account owns that process, so deployment does not depend on interactive sudo access.
+6. Verifies the health endpoint, live-dashboard response shape, and a default two-second latency ceiling.
+
+Run the backend verification independently with:
+
+```sh
+./deploy/verify_backend.sh
+```
+
+Override the latency ceiling with `RWCWX_MAX_LIVE_SECONDS`. The host, port, remote root, public URL, service name, and remote environment file can be overridden with `RWCWX_DEPLOY_HOST`, `RWCWX_DEPLOY_PORT`, `RWCWX_REMOTE_ROOT`, `RWCWX_PUBLIC_URL`, `RWCWX_BACKEND_SERVICE`, and `RWCWX_REMOTE_ENV_FILE`.
 
 Changes to `rwcwx/job/save_latest.py` require restarting that separate ingestion process as documented in the server runbook.
 

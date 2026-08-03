@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, date
-from typing import Dict, List
+from functools import lru_cache
+from typing import Dict, List, Optional
 
 from dateutil.tz import UTC
 from sqlalchemy import text
 
 from rwcwx.config import TZ
-from rwcwx.models import db, Obs
+from rwcwx.models import AvgExt, db, Obs
 from rwcwx.util import DateUtil
 
 
@@ -54,23 +55,29 @@ class ObsQ:
         return dict(zip([0] + periods, trend_result))
 
     @staticmethod
-    def last_rain() -> datetime:
-        q = """
-         select t, diff
-          from (
-            select t, rain, (rain - lag(rain) over w) as diff
-            from obs
-            where t > '2023-01-03' and rain > 0
-            window w as (order by t)
-            ) x
-            where diff != 0
-            order by t desc
-            limit 1
-         """
-        if "test" in db._database_url:
-            # TODO: update test mysql to support window fns
-            q = "select t from obs where rain > 0 order by t desc limit 1"
-        return db.s.execute(q).fetchone()[0]
+    def last_rain() -> Optional[datetime]:
+        """Return the most recent rain increment, cached for one minute."""
+        minute = int(DateUtil.utc_now().timestamp() // 60)
+        return ObsQ._last_rain_for_minute(minute)
+
+    @staticmethod
+    @lru_cache(maxsize=2)
+    def _last_rain_for_minute(_minute: int) -> Optional[datetime]:
+        """
+        Daily rain is cumulative, so the time its maximum was first reached is
+        the final rain increment for that day. These persisted summaries are
+        updated each minute and indexed by variable, type, and date.
+        """
+        latest = (
+            db.s.query(AvgExt.at)
+            .filter(AvgExt.var == "rain")
+            .filter(AvgExt.type == "max")
+            .filter(AvgExt.val > 0)
+            .filter(AvgExt.at.isnot(None))
+            .order_by(AvgExt.d.desc())
+            .first()
+        )
+        return latest[0] if latest else None
 
     @staticmethod
     def rain_last_n_mins(mins: int) -> float:

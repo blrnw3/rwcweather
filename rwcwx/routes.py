@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 from typing import Any, Dict, List, Union
 
 from dateutil.tz import UTC
@@ -35,16 +36,17 @@ def dashboard_live():
     """
     Amalgamates all useful data for a live dashboard to reduce number of http calls
     """
+    now = DateUtil.now()
     trends = ObsQ.trend([10, 60, 180, 1440])
     last_rain = ObsQ.last_rain()
     return _wrap_result(
         dict(
-            now=ObsQ.latest(1)[0],
+            now=trends[0],
             trends=trends,
-            today=DaySummary(DateUtil.now().date()).stats_json(),
+            today=_today_stats(now.date(), int(now.timestamp() // 60)),
             last_rain=last_rain,
             rain_trend=dict(
-                last=ObsQ.last_rain(),
+                last=last_rain,
                 hr24=ObsQ.rain_24hrs(),
                 m10=trends[0].rain - trends[10].rain,
                 hr1=trends[0].rain - trends[60].rain,
@@ -52,6 +54,12 @@ def dashboard_live():
             )
         )
     )
+
+
+@lru_cache(maxsize=2)
+def _today_stats(day: date, _minute: int) -> dict:
+    """Compute today's dashboard summary at most once per minute per worker."""
+    return DaySummary(day).stats_json()
 
 
 def dashboard_summary():
