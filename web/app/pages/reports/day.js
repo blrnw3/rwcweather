@@ -4,6 +4,8 @@ import {
     Flex,
     Heading,
     Input,
+    Link as ChakraLink,
+    SimpleGrid,
     Spinner,
     Table,
     Tbody,
@@ -43,6 +45,15 @@ function stationToday() {
     }).formatToParts(new Date());
     const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
     return values.year + "-" + values.month + "-" + values.day;
+}
+
+function stationHour() {
+    const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: STATION_TIME_ZONE,
+        hour: "2-digit",
+        hourCycle: "h23",
+    }).formatToParts(new Date());
+    return Number(parts.find(({ type }) => type === "hour")?.value || 0);
 }
 
 function shiftDate(date, amount) {
@@ -116,14 +127,120 @@ function DailySummary({ summary }) {
     </Box>;
 }
 
+function formatHour(hour) {
+    if (hour === 0) {
+        return "12:00 AM";
+    }
+    if (hour === 12) {
+        return "12:00 PM";
+    }
+    return (hour % 12) + ":00 " + (hour < 12 ? "AM" : "PM");
+}
+
+function stationDateTimeParts(timestamp) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: STATION_TIME_ZONE,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+    }).formatToParts(new Date(timestamp));
+    return Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+}
+
+function stationOffsetMs(timestamp) {
+    const parts = stationDateTimeParts(timestamp);
+    const wallTimeAsUtc = Date.UTC(
+        Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+        Number(parts.hour), Number(parts.minute)
+    );
+    return wallTimeAsUtc - timestamp;
+}
+
+function webcamArchiveStamp(date, hour) {
+    const [year, month, day] = date.split("-").map(Number);
+    const desiredWallTime = Date.UTC(year, month - 1, day, hour);
+    const noonUtc = Date.UTC(year, month - 1, day, 12);
+    let archiveTime = desiredWallTime - stationOffsetMs(noonUtc);
+    archiveTime = desiredWallTime - stationOffsetMs(archiveTime);
+
+    const stationParts = stationDateTimeParts(archiveTime);
+    if (Number(stationParts.year) !== year
+        || Number(stationParts.month) !== month
+        || Number(stationParts.day) !== day
+        || Number(stationParts.hour) !== hour) {
+        return null;
+    }
+
+    const utc = new Date(archiveTime);
+    return utc.getUTCFullYear().toString()
+        + (utc.getUTCMonth() + 1).toString().padStart(2, "0")
+        + utc.getUTCDate().toString().padStart(2, "0")
+        + "_"
+        + utc.getUTCHours().toString().padStart(2, "0")
+        + "00";
+}
+
+function HourlyWebcamImage({ date, dateLabel, hour }) {
+    const [missing, setMissing] = useState(false);
+    const hourLabel = formatHour(hour);
+    const archiveStamp = webcamArchiveStamp(date, hour);
+    const imageUrl = archiveStamp
+        ? "https://rwcweather.com/cumulus/camdump/sky_lg/" + archiveStamp + ".jpg"
+        : null;
+
+    return <Box border="1px solid" borderColor="gray.300" borderRadius="md" overflow="hidden" backgroundColor="white">
+        {missing || !imageUrl
+            ? <Flex aspectRatio="16 / 9" align="center" justify="center" backgroundColor="gray.200" color="gray.600">
+                <Text>No archived image</Text>
+            </Flex>
+            : <ChakraLink href={imageUrl} isExternal display="block" title={"Open " + hourLabel + " image"}>
+                <Box
+                    as="img"
+                    src={imageUrl}
+                    alt={"Redwood City webcam at " + hourLabel + " on " + dateLabel}
+                    loading="lazy"
+                    width="100%"
+                    aspectRatio="16 / 9"
+                    objectFit="cover"
+                    onError={() => setMissing(true)}
+                />
+            </ChakraLink>}
+        <Text px="3" py="2" fontWeight="bold">{hourLabel}</Text>
+    </Box>;
+}
+
+function HourlyWebcamGallery({ date, dateLabel, isToday, currentHour }) {
+    const hours = Array.from({ length: isToday ? currentHour + 1 : 24 }, (_, hour) => hour);
+
+    return <Box mt="6">
+        <Heading as="h3" size="3">Hourly webcam</Heading>
+        <Text mb="3">Images captured at the start of each hour, in Redwood City local time.</Text>
+        <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="3">
+            {hours.map((hour) =>
+                <HourlyWebcamImage
+                    key={date + "-" + hour}
+                    date={date}
+                    dateLabel={dateLabel}
+                    hour={hour}
+                />
+            )}
+        </SimpleGrid>
+    </Box>;
+}
+
 export default function DailyReport() {
     const [today, setToday] = useState("");
+    const [currentHour, setCurrentHour] = useState(0);
     const [selectedDate, setSelectedDate] = useState("");
     const [obs, setObs] = useState("temp");
 
     useEffect(() => {
         const currentDate = stationToday();
         setToday(currentDate);
+        setCurrentHour(stationHour());
         setSelectedDate(currentDate);
     }, []);
 
@@ -189,6 +306,13 @@ export default function DailyReport() {
                     mx={{ base: 0, md: 4, xl: 6 }}
                 />
             </Box>
+
+            <HourlyWebcamGallery
+                date={selectedDate}
+                dateLabel={dateLabel}
+                isToday={selectedDate === today}
+                currentHour={currentHour}
+            />
         </>}
     </Page>;
 }

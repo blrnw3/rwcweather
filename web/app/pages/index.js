@@ -127,11 +127,12 @@ function LiveTime(props) {
     }
   }
 
-  let icon = isLoading ? <Spinner mr="3" size="sm" speed="1s" color={status} /> : <IconContext.Provider value={{ color: status, size: "1.6em", style: { display: "inline" } }} >
+  let icon = isLoading ? <Spinner size="sm" speed="1s" color={status} /> : <IconContext.Provider value={{ color: status, size: "1.6em", style: { display: "block" } }} >
     <VscCircleFilled /></IconContext.Provider>
-  return <Text as="div" display="inline-block">
-    <Box width="30px" height="30px" display="inline-block">{icon}</Box> {t}
-  </Text>;
+  return <Flex align="center" gap="2">
+    <Box width="30px" height="30px" display="flex" alignItems="center" justifyContent="center" flexShrink="0">{icon}</Box>
+    <Text>{t}</Text>
+  </Flex>;
 }
 
 function LiveDate(props) {
@@ -590,7 +591,14 @@ function HomePage(props) {
     <Heading as="h1" size="1">
       Live Weather for Redwood City, CA
     </Heading>
-    <Flex justify="space-between" pb="2" px={{ base: 1, sm: 2, md: 4, lg: 5 }}>
+    <Flex
+      justify="space-between"
+      align={{ base: "flex-start", md: "center" }}
+      direction={{ base: "column", md: "row" }}
+      gap={{ base: 1, md: 4 }}
+      pb="2"
+      px={{ base: 1, sm: 2, md: 4, lg: 5 }}
+    >
       <Box mx={2}>
         <LiveTime dash={data} />
       </Box>
