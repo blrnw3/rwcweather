@@ -30,6 +30,13 @@ const summaryNames = {
     count: "Count",
 };
 
+const dailyAggregationNames = {
+    min: "Daily Low",
+    max: "Daily High",
+    avg: "Daily Mean",
+    total: "Daily Total",
+};
+
 function RadioButtonGroup(props) {
     const { getRootProps, getRadioProps } = useRadioGroup({
         name: props.name,
@@ -90,23 +97,16 @@ function styleForValue(value, obsType, unit, summary, annual = false) {
     return styleForScaleValue(convertedValue, scaleForObsType(unit, obsType));
 }
 
-function useSummaries(obs, summary) {
-    // Each selected summary uses the matching daily series. Threshold counts
-    // use the variable's canonical series (daily mean, or daily rain total).
-    // Rain is cumulative during a day, so all of its monthly statistics must
-    // be derived from daily totals rather than intraday readings.
-    const dailyAggregation = obs === "rain"
-        ? "total"
-        : (summary === "count" ? OBS.get(obs).summary : summary);
+function useSummaries(obs, dailyAggregation) {
     const url = "/api/var/all_periods/" + obs + "/" + dailyAggregation
         + "/?start=" + yearStart + "0101&include_today=1";
     return useSWR(url, fetcher, { refreshInterval: 300000 });
 }
 
-function MonthlyMatrix({ obs, summary, threshold }) {
+function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
     const obsObj = OBS.get(obs);
     const unit = useContext(UnitCtx);
-    const { data: response, error, isValidating } = useSummaries(obs, summary);
+    const { data: response, error, isValidating } = useSummaries(obs, dailyAggregation);
     const results = response?.result || {};
     const serverDate = response?.server?.date || [new Date().getFullYear(), new Date().getMonth() + 1, 1];
     const currentYear = serverDate[0];
@@ -164,7 +164,7 @@ function MonthlyMatrix({ obs, summary, threshold }) {
         )}
         <Box fontWeight="bold" textAlign="center">Annual</Box>
         {years.map((year) =>
-            <Box key={year} display="contents" sx={{ ":hover > div": { backgroundColor: "gray.400" } }}>
+            <Box key={year} display="contents">
                 <Box minW="46px" py="2" fontWeight="bold" textAlign="center">{year}</Box>
                 {months.map((month) => {
                     const isFuture = year === currentYear && month > currentMonth;
@@ -221,13 +221,16 @@ function MonthlyMatrix({ obs, summary, threshold }) {
 
 export default function MonthlyReport() {
     const [obs, setObs] = useState("temp");
+    const [dailyAggregation, setDailyAggregation] = useState("avg");
     const [summary, setSummary] = useState("avg");
     const [threshold, setThreshold] = useState("0");
     const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust"];
+    const dailyAggregationOptions = obs === "rain" ? ["total"] : ["min", "max", "avg"];
     const summaryOptions = ["min", "max", OBS.get(obs).summary, "count"];
 
     const handleObsChange = (nextObs) => {
         setObs(nextObs);
+        setDailyAggregation(OBS.get(nextObs).summary);
         setThreshold("0");
         const nextMiddleSummary = OBS.get(nextObs).summary;
         if (summary === "avg" || summary === "total") {
@@ -238,19 +241,28 @@ export default function MonthlyReport() {
     return <Page name="reports" sub="monthly" title="Reports | monthly matrix">
         <Heading as="h1" size="1">Reports: Monthly matrix</Heading>
         <Heading as="h2" size="2">
-            Monthly {summaryNames[summary]} {OBS.get(obs).name}
+            {summaryNames[summary]} of {dailyAggregationNames[dailyAggregation]} {OBS.get(obs).name}
         </Heading>
 
+        <Text fontWeight="bold">Variable:</Text>
         <RadioButtonGroup name="obs" value={obs} options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
+        <Text mt="1" fontWeight="bold">Daily statistic:</Text>
+        <RadioButtonGroup
+            name="daily-aggregation"
+            value={dailyAggregation}
+            options={dailyAggregationOptions}
+            optFormat={(value) => dailyAggregationNames[value]}
+            fn={setDailyAggregation}
+        />
+        <Text mt="1" fontWeight="bold">Monthly and annual summary:</Text>
         <RadioButtonGroup name="summary" value={summary} options={summaryOptions} optFormat={(value) => summaryNames[value]} fn={setSummary} />
         {summary === "count" && <CountThresholdSelector obs={obs} value={threshold} fn={setThreshold} />}
 
-        <MonthlyMatrix obs={obs} summary={summary} threshold={threshold} />
+        <MonthlyMatrix obs={obs} dailyAggregation={dailyAggregation} summary={summary} threshold={threshold} />
 
         <Text mt="3">
-            Each row is a year, with monthly columns followed by an annual summary. Minimum and maximum use daily
-            extremes, mean uses daily means, and count is the number of days above the selected threshold. Rainfall
-            statistics use daily totals.
+            Choose a daily series first, then summarize those daily values independently for each month and year.
+            Count is the number of selected daily values above the chosen threshold. Rainfall uses daily totals.
         </Text>
     </Page>;
 }
