@@ -106,7 +106,8 @@ Run the backend verification independently with:
 
 Override the latency ceiling with `RWCWX_MAX_LIVE_SECONDS`. The host, port, remote root, public URL, service name, and remote environment file can be overridden with `RWCWX_DEPLOY_HOST`, `RWCWX_DEPLOY_PORT`, `RWCWX_REMOTE_ROOT`, `RWCWX_PUBLIC_URL`, `RWCWX_BACKEND_SERVICE`, and `RWCWX_REMOTE_ENV_FILE`.
 
-Changes to `rwcwx/job/save_latest.py` require restarting that separate ingestion process as documented in the server runbook.
+Changes to `rwcwx/job/save_latest.py` require restarting that separate ingestion process (kill the nohup then re-run w e.g.)
+(venv_prod) ben@rwcweather:~/rwcweather$ MYSQL_URL=svc:<PW_SECRET>>@127.0.0.1:3306/wx PYTHONPATH=/home/ben/rwcweather nohup python3 rwcwx/job/save_latest.py -o /var/www/rwc/html/cumulus/realtime.txt -e out_prod  &>> /dev/null &
 
 ## Operations and troubleshooting
 

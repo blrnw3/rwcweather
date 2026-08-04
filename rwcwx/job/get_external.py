@@ -14,7 +14,7 @@ class ExternalDataGrabber:
     Get and save external weather data
     """
 
-    PURPLE_AIR_URI = "https://api.purpleair.com/v1/sensors/65517?fields=pm2.5"
+    PURPLE_AIR_URI = "https://api.purpleair.com/v1/sensors/65141?fields=pm2.5"
     API_KEY = os.getenv("PA_API_KEY")
     ALT_STATION_URI = ""
 
