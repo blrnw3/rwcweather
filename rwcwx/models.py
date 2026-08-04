@@ -42,6 +42,8 @@ class Obs(Base):
 
     @property
     def dewpt(self) -> float:
+        if self.humi == 0:
+            return 0
         t = float(self.temp)
         gamma = (17.271 * t) / (237.7 + t) + math.log(self.humi / 100)
         return (237.7 * gamma) / (17.271 - gamma)

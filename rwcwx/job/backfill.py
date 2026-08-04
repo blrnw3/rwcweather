@@ -1,6 +1,7 @@
 """
 Backfill the obs table with optional value interpolation
-e.g. backfill -s 20230129-2059 -e 20230129-2359 --obs="temp:6.9_6,wind:1,gust:1,wdir:0,humi:80,pres:1013,pm2:4,rain:0.02"
+e.g. backfill -s 20230129-2059 -e 20230129-2359 --obs-raw="temp:6.9_6,wind:1,gust:1,wdir:0,humi:80,pres:1013,pm2:4,rain:0.02"
+NB: datetimes should be in PT; they will be cast to UTC in the db.
 """
 
 from datetime import datetime, timedelta
@@ -78,3 +79,58 @@ def main(datetime_start: str, datetime_end: str, obs_raw: str, wet: bool) -> Non
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""

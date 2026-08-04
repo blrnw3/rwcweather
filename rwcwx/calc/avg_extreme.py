@@ -276,7 +276,7 @@ class WaterYearRainSummary:
 
     def __init__(self, year: Optional[int]) -> None:
         if year is None:
-            year = DateUtil.now().year
+            year = (1 if DateUtil.now().month >= 10 else 0) + DateUtil.now().year
         self.year: int = year
 
     @classmethod

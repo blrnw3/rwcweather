@@ -86,7 +86,7 @@ class CumulusObsImporter:
         try:
             with open(aqi_path) as f:
                 air_data = json.load(f)
-                last_seen = datetime.fromtimestamp(air_data["sensor"]["last_seen"])
+                last_seen = datetime.fromtimestamp(air_data["data_time_stamp"])
                 age = datetime.now() - last_seen
                 if age > self.AIR_AGE_THRESHOLD:
                     logger.error(f"Air data out of date. Age: {age}")
