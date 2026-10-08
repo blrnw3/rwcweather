@@ -1,20 +1,22 @@
 // =============================================================================
 //  CLIMATE NORMALS for the Redwood City (rwcweather) station
 //
-//  !!! PLACEHOLDER VALUES !!!
-//  Every number below is a DUMMY, round-number placeholder chosen only to be
-//  roughly plausible for Redwood City so the climate-comparison UI can be built
-//  and tested. They are NOT real normals and must be replaced with researched
-//  long-term averages (e.g. NOAA 1991-2020 normals for a nearby station) before
-//  the comparisons mean anything. While `placeholder` is true the site shows a
-//  "placeholder climate normals" notice next to every comparison.
+//  Source: PRISM Climate Group (Oregon State University) 1991-2020 800 m
+//  monthly normals (dataset an91/r2207h, normals/9120.b, version M5), sampled
+//  at the grid cell centred 37.4667, -122.2667, which contains the station
+//  (approx 37.470, -122.265, Emerald Lake Hills, ~125 m above sea level).
+//  Period: 1991-2020. Methods, candidate stations and validation notes are in
+//  the research write-up (climate-normals/METHODS.md, built 2026-10-08).
 //
-//  This is the ONLY place climate normals live. To drop in real values:
-//    1. Replace the `monthly` arrays (Jan..Dec, 12 numbers each).
-//    2. Optionally set `annual` (otherwise it is derived: sum of the monthly
-//       values for totals, mean of the monthly values for averages) and, for
-//       rain, `waterYear` (Oct-Sep; otherwise the same derived sum).
-//    3. Fill in `source` / `period`, and set `placeholder: false`.
+//    - temp.min / temp.max: PRISM tmin / tmax at the cell.
+//    - temp.avg: not stored; derived as (min + max) / 2 (NOAA convention).
+//    - rain.total: PRISM ppt at the cell (617 mm = 24.30 in/yr). Precipitation
+//      is the most location-sensitive normal: the surrounding 3x3 cells range
+//      21.2-26.7 in/yr. The water-year (Oct-Sep) normal equals the annual.
+//    - wind: deliberately omitted. There is no representative normal for this
+//      sheltered, low-mounted anemometer, so wind shows no comparison.
+//
+//  This is the ONLY place climate normals live.
 //
 //  Shape:   NORMALS[var][dailyStat] = { unit, monthly[12], annual?, waterYear? }
 //    - `var` and `dailyStat` are the API's variable and daily-aggregation names
@@ -22,46 +24,41 @@
 //    - Values are in the station's NATIVE (database/API) units, NOT display
 //      units: temperature in degC, rainfall in inches, wind speed in mph.
 //      The UI converts to the visitor's chosen units.
-//    - temp.min / temp.max are the normal daily low / high for the month;
-//      temp.avg is the normal daily mean (if omitted it is derived as the mean
-//      of temp.min and temp.max, the usual NOAA convention).
-//    - rain.total is the normal monthly precipitation total.
-//    - wind.avg is the normal monthly mean wind speed (optional; no comparison
-//      is shown for variables or stats that have no entry here).
+//    - `annual` is optional (derived: sum of monthly for totals, mean of
+//      monthly for averages); `waterYear` (rain only) defaults to the sum.
+//    - Variables / stats with no entry simply get no comparison.
+//    - Set `placeholder: true` to flag values as dummies in the UI.
 //  Daily normals (used on the daily report) are interpolated from the monthly
 //  values, anchored at mid-month.
 // =============================================================================
 
 export const CLIMATE_NORMALS = {
-    placeholder: true,
-    source: "PLACEHOLDER - dummy values, pending research",
-    period: "PLACEHOLDER",
+    placeholder: false,
+    source: "PRISM 1991-2020 800 m normals, cell center 37.4667,-122.2667 "
+        + "(station approx 37.470,-122.265, Emerald Lake Hills)",
+    period: "1991-2020",
 
     normals: {
         temp: {
-            //        Jan   Feb   Mar   Apr   May   Jun   Jul   Aug   Sep   Oct   Nov   Dec
+            //        Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
             min: {
                 unit: "degC",
-                monthly: [4.0, 5.0, 6.0, 7.0, 9.0, 11.0, 12.5, 13.0, 12.0, 9.5, 6.0, 4.0],
+                monthly: [5.62, 6.21, 6.82, 7.63, 9.48, 11.02, 12.29, 12.51, 11.92, 10.43, 7.53, 5.47],
             },
             max: {
                 unit: "degC",
-                monthly: [14.5, 16.5, 18.5, 20.5, 23.0, 26.0, 27.5, 27.5, 27.0, 23.5, 18.0, 14.5],
+                monthly: [15.40, 16.84, 18.68, 20.24, 22.84, 26.13, 27.15, 27.50, 27.74, 24.95, 19.08, 15.28],
             },
             // avg omitted: derived as (min + max) / 2
         },
         rain: {
             total: {
                 unit: "in",
-                monthly: [4.0, 4.0, 3.0, 1.5, 0.5, 0.1, 0.02, 0.05, 0.2, 1.0, 2.5, 3.5],
-                // annual / waterYear omitted: derived as the sum of monthly (20.37 in)
+                monthly: [4.82, 4.76, 3.68, 1.74, 0.65, 0.17, 0.02, 0.05, 0.08, 1.02, 2.29, 5.03],
+                annual: 24.30,
+                waterYear: 24.30,
             },
         },
-        wind: {
-            avg: {
-                unit: "mph",
-                monthly: [3.0, 3.5, 4.0, 4.5, 5.0, 5.0, 5.0, 4.5, 4.0, 3.5, 3.0, 3.0],
-            },
-        },
+        // wind: intentionally omitted (no representative normal) - no comparison shown.
     },
 };

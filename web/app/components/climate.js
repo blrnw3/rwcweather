@@ -6,8 +6,9 @@ import { OBS } from "./conf";
 // Climate comparison, modelled on nw3weather: a value is followed, in brackets
 // on the line below, by how it compares with the long-term normal for the
 // same period. Totals (rainfall) are shown as a percentage of normal, e.g.
-// "(85%)"; averages (temperature, wind) as a signed difference in the
-// visitor's units, e.g. "(+1.2)". Normals live in data/climate.js.
+// "(85%)"; averages (e.g. temperature) as a signed difference in the
+// visitor's units, e.g. "(+1.2)". Normals live in data/climate.js; any
+// variable / statistic without normals there (e.g. wind) gets no comparison.
 
 export const CLIMATE_IS_PLACEHOLDER = !!CLIMATE_NORMALS.placeholder;
 
@@ -129,8 +130,8 @@ export function ClimateAnom({ value, normal, obs, stat, unit }) {
 /** Footnote explaining bracketed figures (and flagging placeholder normals). */
 export function ClimateNote({ currentPeriodNote = true, ...props }) {
     return <Text mt="2" className="climate-note" {...props}>
-        Figures in brackets compare with the long-term climate normal for the same period: the difference
-        for temperature and wind, and the percentage of normal for rainfall.
+        Figures in brackets compare with the {CLIMATE_NORMALS.period} climate normal for the same period: the
+        difference for temperature, and the percentage of normal for rainfall.
         {currentPeriodNote && " The comparison for the current month and year is not adjusted for how much of the period has passed."}
         {CLIMATE_IS_PLACEHOLDER && <Text as="span" fontWeight="bold" color="red.600">
             {" "}Climate normals are currently placeholders, not real averages.
