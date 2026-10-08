@@ -1,4 +1,4 @@
-import { Text } from "@chakra-ui/react";
+import { Link as ChakraLink, Text } from "@chakra-ui/react";
 import { CLIMATE_NORMALS } from "../data/climate";
 import { formatObs } from "../format";
 import { OBS } from "./conf";
@@ -11,6 +11,14 @@ import { OBS } from "./conf";
 // variable / statistic without normals there (e.g. wind) gets no comparison.
 
 export const CLIMATE_IS_PLACEHOLDER = !!CLIMATE_NORMALS.placeholder;
+export const CLIMATE_PAGE = "/reports/climate";
+
+/** Descriptive metadata from data/climate.js (shown on the climate page). */
+export const CLIMATE_META = {
+    source: CLIMATE_NORMALS.source || "",
+    period: CLIMATE_NORMALS.period || "",
+    notes: CLIMATE_NORMALS.notes || [],
+};
 
 const MONTHLY_KEYS = Array.from(Array(12).keys());
 
@@ -48,6 +56,11 @@ function normalsFor(obs, stat) {
 
 export function hasClimate(obs, stat) {
     return normalsFor(obs, stat) != null;
+}
+
+/** All 12 monthly normals (Jan..Dec), or null if there are none. */
+export function monthlyNormals(obs, stat) {
+    return normalsFor(obs, stat)?.monthly ?? null;
 }
 
 /** Normal for calendar month `month` (1-12). */
@@ -130,8 +143,9 @@ export function ClimateAnom({ value, normal, obs, stat, unit }) {
 /** Footnote explaining bracketed figures (and flagging placeholder normals). */
 export function ClimateNote({ currentPeriodNote = true, ...props }) {
     return <Text mt="2" className="climate-note" {...props}>
-        Figures in brackets compare with the {CLIMATE_NORMALS.period} climate normal for the same period: the
-        difference for temperature, and the percentage of normal for rainfall.
+        Figures in brackets compare with the {CLIMATE_NORMALS.period}{" "}
+        <ChakraLink href={CLIMATE_PAGE} color="inherit" textDecoration="underline">climate normal</ChakraLink>
+        {" "}for the same period: the difference for temperature, and the percentage of normal for rainfall.
         {currentPeriodNote && " The comparison for the current month and year is not adjusted for how much of the period has passed."}
         {CLIMATE_IS_PLACEHOLDER && <Text as="span" fontWeight="bold" color="red.600">
             {" "}Climate normals are currently placeholders, not real averages.

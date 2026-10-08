@@ -28,6 +28,8 @@
 //      monthly for averages); `waterYear` (rain only) defaults to the sum.
 //    - Variables / stats with no entry simply get no comparison.
 //    - Set `placeholder: true` to flag values as dummies in the UI.
+//    - `source`, `period` and `notes` (list of sentences) are shown verbatim on
+//      the climate page (/reports/climate), so update them with the values.
 //  Daily normals (used on the daily report) are interpolated from the monthly
 //  values, anchored at mid-month.
 // =============================================================================
@@ -37,6 +39,17 @@ export const CLIMATE_NORMALS = {
     source: "PRISM 1991-2020 800 m normals, cell center 37.4667,-122.2667 "
         + "(station approx 37.470,-122.265, Emerald Lake Hills)",
     period: "1991-2020",
+    notes: [
+        "Temperature and rainfall normals are PRISM Climate Group (Oregon State University) 1991-2020 "
+            + "800 m gridded monthly normals, sampled at the grid cell centred on 37.4667, -122.2667 that "
+            + "contains the station (approx. 37.470, -122.265, Emerald Lake Hills, ~125 m above sea level).",
+        "Mean temperature is the average of the normal daily low and high. The water year runs from "
+            + "1 October to 30 September.",
+        "Rainfall is the most location-sensitive normal: the neighbouring 800 m cells range from about "
+            + "21.2 to 26.7 inches a year.",
+        "Wind speed has no representative normal for this station's sheltered, low-mounted anemometer, "
+            + "so it is not included.",
+    ],
 
     normals: {
         temp: {
