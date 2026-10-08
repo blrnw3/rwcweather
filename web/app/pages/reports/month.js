@@ -16,6 +16,7 @@ import {
     styleForReportValue,
 } from "../../components/report";
 import { formatObs } from "../../format";
+import { annualNormal, ClimateAnom, ClimateNote, hasClimate, monthlyNormal } from "../../components/climate";
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const months = Array.from(Array(12).keys());
@@ -37,6 +38,9 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
     const years = Array.from(Array(currentYear - REPORT_YEAR_START + 1).keys())
         .map((offset) => currentYear - offset);
     const selectedSummaryKey = summaryKey(summary);
+    // Climate comparison (as on nw3weather) only for the mean / total summary
+    // of a daily series that has normals, e.g. mean of daily highs, rain total.
+    const showClimate = summary === obsObj.summary && hasClimate(obs, dailyAggregation);
 
     const matrix = new Map();
     const annual = new Map();
@@ -111,6 +115,8 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
                         px="1"
                     >
                         {isFuture ? "" : formattedValue}
+                        {showClimate && !isFuture && <ClimateAnom value={value} obs={obs} stat={dailyAggregation} unit={unit}
+                            normal={monthlyNormal(obs, dailyAggregation, month + 1)} />}
                     </Box>;
                 })}
                 {(() => {
@@ -134,11 +140,14 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
                         px="1"
                     >
                         {formattedValue}
+                        {showClimate && <ClimateAnom value={value} obs={obs} stat={dailyAggregation} unit={unit}
+                            normal={annualNormal(obs, dailyAggregation)} />}
                     </Box>;
                 })()}
             </Box>
         )}
         {error && <Text gridColumn="1 / -1" color="red.600">Unable to load monthly data.</Text>}
+        {showClimate && <ClimateNote gridColumn="1 / -1" />}
     </Grid>;
 }
 

@@ -6,6 +6,7 @@ import { daysInMonth } from "../../components/dateUtil";
 import { Page, UnitCtx } from "../../components/Page";
 import RadioCard from "../../components/RadioCard";
 import { convFunction, formatObs, scaleForObsType } from '../../format';
+import { ClimateAnom, ClimateNote, hasClimate, monthlyNormal } from "../../components/climate";
 
 const yrStart = 2020;
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -155,6 +156,8 @@ function MonthlyMatrix(props) {
     summaries.set("min_val", "Min");
     summaries.set("max_val", "Max");
     summaries.set(obsObj.summary, (obsObj.summary == "avg") ? "Avg" : "Total");
+    // Climate comparison (as on nw3weather) on the monthly mean / total row.
+    const showClimate = hasClimate(obs, agg);
 
     // Convert input to matrix structure (map of month->summary_obj)
     let data = new Map();
@@ -194,10 +197,15 @@ function MonthlyMatrix(props) {
                         _hover={hover}
                         py="2" px="1"
                     >
-                        {v}</Box>
+                        {v}
+                        {showClimate && k === obsObj.summary && data.has(m) &&
+                            <ClimateAnom value={data.get(m)[k]} normal={monthlyNormal(obs, agg, m + 1)}
+                                obs={obs} stat={agg} unit={unit} />}
+                    </Box>
                 })}
             </Fragment>
         })}
+        {showClimate && <ClimateNote gridColumn="1 / -1" />}
     </Grid>
 
 }
