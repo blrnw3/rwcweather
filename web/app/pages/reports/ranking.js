@@ -13,6 +13,7 @@ import {
 import { useContext, useState } from "react";
 import useSWR from "swr";
 import { fetcher, fmatObsOpt, OBS } from "../../components/conf";
+import { ClimateNormalsLink } from "../../components/climate";
 import { Page, UnitCtx } from "../../components/Page";
 import {
     CountThresholdSelector,
@@ -27,7 +28,6 @@ import {
     styleForReportValue,
 } from "../../components/report";
 import { formatObs } from "../../format";
-import { ClimateNormalsLink } from "../../components/climate";
 
 const PERIOD_NAMES = {
     daily: "Daily",
