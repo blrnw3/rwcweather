@@ -16,6 +16,7 @@ import {
     styleForReportValue,
 } from "../../components/report";
 import { formatObs } from "../../format";
+import { useWaterYears, WaterYearCell, WaterYearHeader, WaterYearNote } from "../../components/waterYear";
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const months = Array.from(Array(12).keys());
@@ -34,8 +35,12 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
     const serverDate = response?.server?.date || [new Date().getFullYear(), new Date().getMonth() + 1, 1];
     const currentYear = serverDate[0];
     const currentMonth = serverDate[1] - 1;
-    const years = Array.from(Array(currentYear - REPORT_YEAR_START + 1).keys())
-        .map((offset) => currentYear - offset);
+    // Rain also gets a water-year column; from October the in-progress water
+    // year ends next calendar year, so it needs its own (otherwise future) row.
+    const waterYears = useWaterYears(obs, summary, threshold);
+    const lastYear = Math.max(currentYear, waterYears?.currentWaterYear || currentYear);
+    const years = Array.from(Array(lastYear - REPORT_YEAR_START + 1).keys())
+        .map((offset) => lastYear - offset);
     const selectedSummaryKey = summaryKey(summary);
 
     const matrix = new Map();
@@ -73,7 +78,7 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
     }
 
     return <Grid id="obs-monthly-matrix"
-        templateColumns="0.8fr repeat(13, 1fr)"
+        templateColumns={"0.8fr repeat(" + (waterYears ? 14 : 13) + ", 1fr)"}
         templateRows="30px auto"
         overflow="auto"
         marginTop="4"
@@ -86,11 +91,12 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
             <Box key={month} fontWeight="bold" textAlign="center">{monthNames[month]}</Box>
         )}
         <Box fontWeight="bold" textAlign="center">Annual</Box>
+        {waterYears && <WaterYearHeader />}
         {years.map((year) =>
             <Box key={year} display="contents">
                 <Box minW="46px" py="2" fontWeight="bold" textAlign="center">{year}</Box>
                 {months.map((month) => {
-                    const isFuture = year === currentYear && month > currentMonth;
+                    const isFuture = year > currentYear || (year === currentYear && month > currentMonth);
                     const hasValue = matrix.get(year)?.has(month);
                     const value = hasValue ? matrix.get(year).get(month) : null;
                     const formattedValue = summary === "count"
@@ -116,10 +122,13 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
                 {(() => {
                     const hasValue = annual.has(year);
                     const value = hasValue ? annual.get(year) : null;
-                    const formattedValue = summary === "count"
+                    const isFuture = year > currentYear;
+                    const formattedValue = isFuture ? "" : summary === "count"
                         ? (value == null ? "-" : value.toString())
                         : formatObs(unit, value, obsObj.fmat, false, false);
-                    const { bg, col } = styleForReportValue(value, obsObj.fmat, unit, summary, true);
+                    const { bg, col } = isFuture
+                        ? { bg: "gray.200", col: "black" }
+                        : styleForReportValue(value, obsObj.fmat, unit, summary, true);
 
                     return <Box key={year + "-annual"}
                         className="cell annual"
@@ -136,9 +145,12 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
                         {formattedValue}
                     </Box>;
                 })()}
+                {waterYears && <WaterYearCell waterYear={year} data={waterYears} obs={obs} unit={unit} summary={summary} />}
             </Box>
         )}
         {error && <Text gridColumn="1 / -1" color="red.600">Unable to load monthly data.</Text>}
+        {waterYears?.error && <Text gridColumn="1 / -1" color="red.600">Unable to load water-year data.</Text>}
+        {waterYears && <Box gridColumn="1 / -1"><WaterYearNote data={waterYears} obs={obs} unit={unit} summary={summary} /></Box>}
     </Grid>;
 }
 
