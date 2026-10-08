@@ -36,36 +36,24 @@
 //      monthly for averages); `waterYear` (rain only) defaults to the sum.
 //    - Variables / stats with no entry simply get no comparison.
 //    - Set `placeholder: true` to flag values as dummies in the UI.
-//    - `source`, `period` and `notes` (list of sentences) are shown verbatim on
-//      the climate page (/reports/climate), so update them with the values.
+//    - `source`, `period` and `notes` (list of short, user-facing sentences)
+//      are shown verbatim on the climate page (/reports/climate).
 //  Daily normals (used on the daily report) are interpolated from the monthly
 //  values, anchored at mid-month.
 // =============================================================================
 
 export const CLIMATE_NORMALS = {
     placeholder: false,
-    source: "PRISM 1991-2020 800 m normals, cell centre 37.4667,-122.2667 "
-        + "(station approx 37.470,-122.265, Emerald Lake Hills); daily low calibrated to the station (+1.5 °C)",
+    source: "PRISM 1991-2020 800 m normals, cell center 37.4667,-122.2667 "
+        + "(station approx 37.470,-122.265, Emerald Lake Hills)",
     period: "1991-2020",
+    // Shown on /reports/climate. Keep these short and non-technical; the
+    // detailed adjustment reasoning lives in the header comment above.
     notes: [
         "Temperature and rainfall normals are PRISM Climate Group (Oregon State University) 1991-2020 "
             + "800 m gridded monthly normals, sampled at the grid cell centred on 37.4667, -122.2667 that "
             + "contains the station (approx. 37.470, -122.265, Emerald Lake Hills, ~125 m above sea level).",
-        "Daily lows are station-calibrated: PRISM's minimum plus 1.5 °C (±0.3) in every month. Comparing "
-            + "69 months of station data (Jan 2021 – Sep 2026) with PRISM, the station's nights were warmer every "
-            + "month, most likely because it sits in the hillside thermal belt, and possibly partly from some "
-            + "sensor warmth at night.",
-        "Daily highs and rainfall are raw PRISM: highs show no consistent offset, and the station's rain "
-            + "has averaged 0.99 times PRISM.",
-        "No elevation (lapse-rate) correction was applied: the grid cell is at about 120 m and the station at "
-            + "about 125 m, a difference of only ~0.03 °C, and PRISM already accounts for elevation, so it would "
-            + "be double-counted.",
-        "Mean temperature is the average of the normal daily low and high. The water year runs from "
-            + "1 October to 30 September.",
-        "Rainfall is the most location-sensitive normal: the neighbouring 800 m cells range from about "
-            + "21.2 to 26.7 inches a year.",
-        "Wind speed has no representative normal for this station's sheltered, low-mounted anemometer, "
-            + "so it is not included.",
+        "Adjustments were made for the sensor's location (hillside thermal belt).",
     ],
 
     normals: {
