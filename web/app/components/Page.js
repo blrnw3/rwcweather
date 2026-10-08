@@ -19,7 +19,7 @@ const NAV = new Map([
   ["reports", new Map([
     ["daily", "/reports/day"],
     ["annual", "/reports/matrix"],
-    ["all-time", "/reports/month"],
+    ["all-time", "/reports/alltime"],
     ["ranking", "/reports/ranking"]
   ])],
   ["charts", new Map([
@@ -152,7 +152,7 @@ function Footer(props) {
       <ChakraLink variant="subtle" color="inherit" href="/" display="block">Dashboard</ChakraLink>
       <ChakraLink variant="subtle" color="inherit" href="/reports/day" display="block">Daily Report</ChakraLink>
       <ChakraLink variant="subtle" color="inherit" href="/reports/matrix" display="block">Data Matrix</ChakraLink>
-      <ChakraLink variant="subtle" color="inherit" href="/reports/month" display="block">All-time</ChakraLink>
+      <ChakraLink variant="subtle" color="inherit" href="/reports/alltime" display="block">All-time</ChakraLink>
       <ChakraLink variant="subtle" color="inherit" href="/reports/ranking" display="block">Rankings</ChakraLink>
       <ChakraLink variant="subtle" color="inherit" href="/charts/latest" display="block">Latest Charts</ChakraLink>
       <ChakraLink variant="subtle" color="inherit" href="/charts/summary" display="block">Summary Charts</ChakraLink>

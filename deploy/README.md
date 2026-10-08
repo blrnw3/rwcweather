@@ -39,7 +39,7 @@ The script:
 2. Builds the optimized frontend locally. For modern Node versions it enables the OpenSSL compatibility mode required by Next 11.
 3. Syncs frontend source and `.next`, excluding dependencies, package manifests, and the build cache.
 4. Restarts only the `rwcwx-app` PM2 process.
-5. Verifies the public monthly report and the all-periods API.
+5. Verifies the public all-time report and the all-periods API.
 
 Override production settings with environment variables when necessary:
 

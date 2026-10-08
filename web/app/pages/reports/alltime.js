@@ -26,16 +26,14 @@ function useSummaries(obs, dailyAggregation) {
     return useSWR(url, fetcher, { refreshInterval: 300000 });
 }
 
-function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
-    const obsObj = OBS.get(obs);
-    const unit = useContext(UnitCtx);
+// Shared by the year-by-month matrix and the all-time summary so both always
+// show the same underlying values for the selected variable and statistics.
+function useMatrixData(obs, dailyAggregation, summary, threshold) {
     const { data: response, error, isValidating } = useSummaries(obs, dailyAggregation);
     const results = response?.result || {};
     const serverDate = response?.server?.date || [new Date().getFullYear(), new Date().getMonth() + 1, 1];
     const currentYear = serverDate[0];
     const currentMonth = serverDate[1] - 1;
-    const years = Array.from(Array(currentYear - REPORT_YEAR_START + 1).keys())
-        .map((offset) => currentYear - offset);
     const selectedSummaryKey = summaryKey(summary);
 
     const matrix = new Map();
@@ -71,6 +69,17 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
             annual.set(result.m, result.summary[selectedSummaryKey]);
         }
     }
+
+    return { matrix, annual, currentYear, currentMonth, response, error, isValidating };
+}
+
+function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
+    const obsObj = OBS.get(obs);
+    const unit = useContext(UnitCtx);
+    const { matrix, annual, currentYear, currentMonth, response, error, isValidating }
+        = useMatrixData(obs, dailyAggregation, summary, threshold);
+    const years = Array.from(Array(currentYear - REPORT_YEAR_START + 1).keys())
+        .map((offset) => currentYear - offset);
 
     return <Grid id="obs-monthly-matrix"
         templateColumns="0.8fr repeat(13, 1fr)"
@@ -142,99 +151,71 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
     </Grid>;
 }
 
-function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
-    const obsObj = OBS.get(obs);
-    const unit = useContext(UnitCtx);
-    const { data: response, error, isValidating } = useSummaries(obs, dailyAggregation);
-    const results = response?.result || {};
-    const serverDate = response?.server?.date || [new Date().getFullYear(), new Date().getMonth() + 1, 1];
-    const currentYear = serverDate[0];
-    const currentMonth = serverDate[1] - 1;
-    const selectedSummaryKey = summaryKey(summary);
+function calcStats(values) {
+    const valid = values.filter((v) => v != null && !Number.isNaN(v));
+    if (valid.length === 0) {
+        return null;
+    }
+    return {
+        min: Math.min(...valid),
+        max: Math.max(...valid),
+        avg: valid.reduce((a, b) => a + b, 0) / valid.length,
+        n: valid.length,
+    };
+}
 
-    // Calculate min, max, avg for each month across all years
-    const monthStats = new Map();
-    
-    if (summary === "count") {
-        const numericThreshold = Number(threshold);
-        const monthCounts = new Map();
-        
-        for (const result of results.daily || []) {
-            const [year, month] = result.d;
-            const monthIndex = month - 1;
-            
-            // Skip incomplete current month
-            if (year === currentYear && monthIndex >= currentMonth) {
+// Per-month and annual min/max/avg across years. Years without a value are
+// skipped (not counted as zero). The in-progress month and year are left out
+// because their partial totals/means would skew the all-time figures.
+function allTimeStats(matrix, annual, currentYear, currentMonth) {
+    const byMonth = months.map((month) => {
+        const values = [];
+        for (const [year, monthMap] of matrix) {
+            if (year === currentYear && month >= currentMonth) {
                 continue;
             }
-            
-            if (!monthCounts.has(monthIndex)) {
-                monthCounts.set(monthIndex, []);
-            }
-            
-            // Get count for this month (year)
-            if (!monthCounts.get(monthIndex).find(x => x.year === year)) {
-                monthCounts.get(monthIndex).push({ year, count: 0 });
-            }
-            
-            if (result.val > numericThreshold) {
-                const yearData = monthCounts.get(monthIndex).find(x => x.year === year);
-                yearData.count++;
+            if (monthMap.has(month)) {
+                values.push(monthMap.get(month));
             }
         }
-        
-        // Calculate stats
-        for (const [monthIndex, yearCounts] of monthCounts) {
-            const counts = yearCounts.map(x => x.count);
-            if (counts.length > 0) {
-                monthStats.set(monthIndex, {
-                    min: Math.min(...counts),
-                    max: Math.max(...counts),
-                    avg: counts.reduce((a, b) => a + b, 0) / counts.length
-                });
-            }
-        }
-    } else {
-        const monthValues = new Map();
-        
-        for (const result of results.monthly || []) {
-            const [year, month] = result.m;
-            const monthIndex = month - 1;
-            const value = result.summary[selectedSummaryKey];
-            
-            // Skip incomplete current month
-            if (year === currentYear && monthIndex >= currentMonth) {
-                continue;
-            }
-            
-            if (value != null) {
-                if (!monthValues.has(monthIndex)) {
-                    monthValues.set(monthIndex, []);
-                }
-                monthValues.get(monthIndex).push(value);
-            }
-        }
-        
-        // Calculate stats
-        for (const [monthIndex, values] of monthValues) {
-            if (values.length > 0) {
-                monthStats.set(monthIndex, {
-                    min: Math.min(...values),
-                    max: Math.max(...values),
-                    avg: values.reduce((a, b) => a + b, 0) / values.length
-                });
-            }
+        return calcStats(values);
+    });
+
+    const annualValues = [];
+    for (const [year, value] of annual) {
+        if (year !== currentYear) {
+            annualValues.push(value);
         }
     }
 
-    const summaryRows = [
+    return { byMonth, annual: calcStats(annualValues) };
+}
+
+function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
+    const obsObj = OBS.get(obs);
+    const unit = useContext(UnitCtx);
+    const { matrix, annual, currentYear, currentMonth, response, error, isValidating }
+        = useMatrixData(obs, dailyAggregation, summary, threshold);
+    const stats = allTimeStats(matrix, annual, currentYear, currentMonth);
+
+    const rows = [
         { key: "min", label: "Min" },
         { key: "max", label: "Max" },
-        { key: "avg", label: "Avg" }
+        { key: "avg", label: "Avg" },
     ];
 
+    const formatValue = (value, key) => {
+        if (value == null) {
+            return "-";
+        }
+        if (summary === "count") {
+            return key === "avg" ? value.toFixed(1) : value.toString();
+        }
+        return formatObs(unit, value, obsObj.fmat, false, false);
+    };
+
     return <Grid id="obs-alltime-summary"
-        templateColumns="0.8fr repeat(12, 1fr)"
+        templateColumns="0.8fr repeat(13, 1fr)"
         templateRows="30px auto"
         overflow="auto"
         marginTop="4"
@@ -246,15 +227,12 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
         {months.map((month) =>
             <Box key={month} fontWeight="bold" textAlign="center">{monthNames[month]}</Box>
         )}
-        {summaryRows.map(({ key, label }) =>
+        <Box fontWeight="bold" textAlign="center">Annual</Box>
+        {rows.map(({ key, label }) =>
             <Box key={key} display="contents">
                 <Box minW="46px" py="2" fontWeight="bold" textAlign="center">{label}</Box>
                 {months.map((month) => {
-                    const stats = monthStats.get(month);
-                    const value = stats?.[key];
-                    const formattedValue = summary === "count"
-                        ? (value == null ? "-" : value.toFixed(1))
-                        : formatObs(unit, value, obsObj.fmat, false, false);
+                    const value = stats.byMonth[month]?.[key] ?? null;
                     const { bg, col } = styleForReportValue(value, obsObj.fmat, unit, summary);
 
                     return <Box key={month + "-" + key}
@@ -267,16 +245,35 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
                         py="2"
                         px="1"
                     >
-                        {formattedValue}
+                        {formatValue(value, key)}
                     </Box>;
                 })}
+                {(() => {
+                    const value = stats.annual?.[key] ?? null;
+                    const { bg, col } = styleForReportValue(value, obsObj.fmat, unit, summary, true);
+
+                    return <Box key={key + "-annual"}
+                        className="cell annual"
+                        textAlign="center"
+                        backgroundColor={bg}
+                        color={col}
+                        border="1px solid transparent"
+                        borderLeft="2px solid"
+                        borderLeftColor="gray.400"
+                        _hover={value != null ? { border: "1px solid " + col, borderLeft: "2px solid" } : {}}
+                        py="2"
+                        px="1"
+                    >
+                        {formatValue(value, key)}
+                    </Box>;
+                })()}
             </Box>
         )}
         {error && <Text gridColumn="1 / -1" color="red.600">Unable to load summary data.</Text>}
     </Grid>;
 }
 
-export default function MonthlyReport() {
+export default function AllTimeReport() {
     const [obs, setObs] = useState("temp");
     const [dailyAggregation, setDailyAggregation] = useState("avg");
     const [summary, setSummary] = useState("avg");
@@ -316,13 +313,17 @@ export default function MonthlyReport() {
 
         <MonthlyMatrix obs={obs} dailyAggregation={dailyAggregation} summary={summary} threshold={threshold} />
 
-        <Heading as="h3" size="3" mt="6">All-time summary (across all years)</Heading>
+        <Heading as="h3" size="3" mt="6">Min, max and average across all years</Heading>
         <AllTimeSummary obs={obs} dailyAggregation={dailyAggregation} summary={summary} threshold={threshold} />
 
         <Text mt="3">
             Choose a daily series first, then summarize those daily values independently for each month and year.
             Count is the number of selected daily values above the chosen threshold. Rainfall uses daily totals.
-            The all-time summary shows the minimum, maximum, and average for each month across all complete years.
+        </Text>
+        <Text mt="2">
+            The table above compares the same month (or full year) across years: its min, max and average are
+            taken over the values in the matrix. Years with no data for a month are ignored rather than counted as
+            zero. The current, still in-progress month and year are excluded so partial data does not skew the results.
         </Text>
     </Page>;
 }
