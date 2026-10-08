@@ -22,7 +22,7 @@ import { fetcher, fmatObsOpt, OBS } from "../../components/conf";
 import { Page, UnitCtx } from "../../components/Page";
 import { RadioButtonGroup, REPORT_OBS_OPTIONS, styleForReportValue } from "../../components/report";
 import { formatObs } from "../../format";
-import { ClimateAnom, ClimateNote, dailyNormal, hasClimate } from "../../components/climate";
+import { ClimateAnom, ClimateNormalsLink, ClimateNote, dailyNormal, hasClimate } from "../../components/climate";
 
 const STATION_TIME_ZONE = "America/Los_Angeles";
 const SUMMARY_ROWS = [
@@ -273,6 +273,7 @@ export default function DailyReport() {
     return <Page name="reports" sub="daily" title="Reports | daily">
         <Heading as="h1" size="1">Reports: Daily weather</Heading>
         <Heading as="h2" size="2">{dateLabel || "Choose a date"}</Heading>
+        <ClimateNormalsLink />
 
         <Text fontWeight="bold">Date:</Text>
         <Flex align="center" wrap="wrap" gap="2" mb="3">

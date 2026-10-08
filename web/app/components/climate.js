@@ -1,4 +1,5 @@
 import { Link as ChakraLink, Text } from "@chakra-ui/react";
+import NextLink from "next/link";
 import { CLIMATE_NORMALS } from "../data/climate";
 import { formatObs } from "../format";
 import { OBS } from "./conf";
@@ -150,5 +151,14 @@ export function ClimateNote({ currentPeriodNote = true, ...props }) {
         {CLIMATE_IS_PLACEHOLDER && <Text as="span" fontWeight="bold" color="red.600">
             {" "}Climate normals are currently placeholders, not real averages.
         </Text>}
+    </Text>;
+}
+
+/** Small "Climate normals" link shown under the heading of each report page. */
+export function ClimateNormalsLink(props) {
+    return <Text className="climate-normals-link" fontSize="sm" mt="-1" mb="2" {...props}>
+        <NextLink href={CLIMATE_PAGE} passHref>
+            <ChakraLink>Climate normals{CLIMATE_NORMALS.period && " (" + CLIMATE_NORMALS.period + ")"}</ChakraLink>
+        </NextLink>
     </Text>;
 }

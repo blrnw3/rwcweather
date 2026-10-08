@@ -27,6 +27,7 @@ import {
     styleForReportValue,
 } from "../../components/report";
 import { formatObs } from "../../format";
+import { ClimateNormalsLink } from "../../components/climate";
 
 const PERIOD_NAMES = {
     daily: "Daily",
@@ -178,6 +179,7 @@ export default function RankingReport() {
         <Heading as="h2" size="2">
             {rankingTitle} {OBS.get(obs).name}{monthSuffix}
         </Heading>
+        <ClimateNormalsLink />
 
         <Text fontWeight="bold">Period:</Text>
         <RadioButtonGroup name="period" value={period} options={["daily", "monthly"]} optFormat={(value) => PERIOD_NAMES[value]} fn={setPeriod} />

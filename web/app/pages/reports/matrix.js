@@ -6,7 +6,7 @@ import { daysInMonth } from "../../components/dateUtil";
 import { Page, UnitCtx } from "../../components/Page";
 import RadioCard from "../../components/RadioCard";
 import { convFunction, formatObs, scaleForObsType } from '../../format';
-import { ClimateAnom, ClimateNote, hasClimate, monthlyNormal } from "../../components/climate";
+import { ClimateAnom, ClimateNormalsLink, ClimateNote, hasClimate, monthlyNormal } from "../../components/climate";
 
 const yrStart = 2020;
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -236,6 +236,7 @@ export default function Obs() {
         <Heading as="h2" size="2">
             Daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} for {year}
         </Heading>
+        <ClimateNormalsLink />
 
         <RadioButtonGroup name="obs" options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
         <RadioButtonGroup name="agg" options={aggOpts} optFormat={fmatAggTypeOpt} fn={setAggType} />

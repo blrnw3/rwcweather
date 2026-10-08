@@ -16,7 +16,7 @@ import {
     styleForReportValue,
 } from "../../components/report";
 import { formatObs } from "../../format";
-import { annualNormal, ClimateAnom, ClimateNote, hasClimate, monthlyNormal } from "../../components/climate";
+import { annualNormal, ClimateAnom, ClimateNormalsLink, ClimateNote, hasClimate, monthlyNormal } from "../../components/climate";
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const months = Array.from(Array(12).keys());
@@ -174,6 +174,7 @@ export default function MonthlyReport() {
         <Heading as="h2" size="2">
             {SUMMARY_NAMES[summary]} of {DAILY_AGGREGATION_NAMES[dailyAggregation]} {OBS.get(obs).name}
         </Heading>
+        <ClimateNormalsLink />
 
         <Text fontWeight="bold">Variable:</Text>
         <RadioButtonGroup name="obs" value={obs} options={REPORT_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
