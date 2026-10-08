@@ -5,14 +5,22 @@
 //  monthly normals (dataset an91/r2207h, normals/9120.b, version M5), sampled
 //  at the grid cell centred 37.4667, -122.2667, which contains the station
 //  (approx 37.470, -122.265, Emerald Lake Hills, ~125 m above sea level).
-//  Period: 1991-2020. Methods, candidate stations and validation notes are in
-//  the research write-up (climate-normals/METHODS.md, built 2026-10-08).
+//  Period: 1991-2020. Full methods, candidate stations and the calibration
+//  analysis are in the research write-up (climate-normals/METHODS.md, §9).
 //
-//    - temp.min / temp.max: PRISM tmin / tmax at the cell.
-//    - temp.avg: not stored; derived as (min + max) / 2 (NOAA convention).
-//    - rain.total: PRISM ppt at the cell (617 mm = 24.30 in/yr). Precipitation
-//      is the most location-sensitive normal: the surrounding 3x3 cells range
-//      21.2-26.7 in/yr. The water-year (Oct-Sep) normal equals the annual.
+//    - temp.min: PRISM tmin + 1.5 degC (+/-0.3) in every month, calibrated
+//      against the station: in all 69 months of Jan 2021 - Sep 2026 the
+//      station's nights ran warmer than PRISM. Likely the hillside thermal
+//      belt, possibly also some sensor warmth at night.
+//    - temp.max: raw PRISM tmax (the station shows no consistent offset).
+//    - temp.avg: not stored; derived as (min + max) / 2, so it uses the
+//      calibrated min.
+//    - rain.total: raw PRISM ppt (617 mm = 24.30 in/yr; the station has
+//      averaged 0.99x PRISM). Rain is the most location-sensitive normal:
+//      neighbouring cells range 21.2-26.7 in/yr. Water year = annual.
+//    - No elevation (lapse-rate) correction: the cell is at ~120 m vs the
+//      station's ~125 m (~0.03 degC), and PRISM already models elevation,
+//      so correcting again would double-count.
 //    - wind: deliberately omitted. There is no representative normal for this
 //      sheltered, low-mounted anemometer, so wind shows no comparison.
 //
@@ -36,13 +44,22 @@
 
 export const CLIMATE_NORMALS = {
     placeholder: false,
-    source: "PRISM 1991-2020 800 m normals, cell center 37.4667,-122.2667 "
-        + "(station approx 37.470,-122.265, Emerald Lake Hills)",
+    source: "PRISM 1991-2020 800 m normals, cell centre 37.4667,-122.2667 "
+        + "(station approx 37.470,-122.265, Emerald Lake Hills); daily low calibrated to the station (+1.5 °C)",
     period: "1991-2020",
     notes: [
         "Temperature and rainfall normals are PRISM Climate Group (Oregon State University) 1991-2020 "
             + "800 m gridded monthly normals, sampled at the grid cell centred on 37.4667, -122.2667 that "
             + "contains the station (approx. 37.470, -122.265, Emerald Lake Hills, ~125 m above sea level).",
+        "Daily lows are station-calibrated: PRISM's minimum plus 1.5 °C (±0.3) in every month. Comparing "
+            + "69 months of station data (Jan 2021 – Sep 2026) with PRISM, the station's nights were warmer every "
+            + "month, most likely because it sits in the hillside thermal belt, and possibly partly from some "
+            + "sensor warmth at night.",
+        "Daily highs and rainfall are raw PRISM: highs show no consistent offset, and the station's rain "
+            + "has averaged 0.99 times PRISM.",
+        "No elevation (lapse-rate) correction was applied: the grid cell is at about 120 m and the station at "
+            + "about 125 m, a difference of only ~0.03 °C, and PRISM already accounts for elevation, so it would "
+            + "be double-counted.",
         "Mean temperature is the average of the normal daily low and high. The water year runs from "
             + "1 October to 30 September.",
         "Rainfall is the most location-sensitive normal: the neighbouring 800 m cells range from about "
@@ -56,7 +73,8 @@ export const CLIMATE_NORMALS = {
             //        Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
             min: {
                 unit: "degC",
-                monthly: [5.62, 6.21, 6.82, 7.63, 9.48, 11.02, 12.29, 12.51, 11.92, 10.43, 7.53, 5.47],
+                // PRISM tmin + 1.5 degC (station-calibrated; raw PRISM Jan = 5.62)
+                monthly: [7.12, 7.71, 8.32, 9.13, 10.98, 12.52, 13.79, 14.01, 13.42, 11.93, 9.03, 6.97],
             },
             max: {
                 unit: "degC",
