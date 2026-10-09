@@ -11,9 +11,14 @@ from rwcwx.model.db import Db
 from rwcwx.model.wx import Model
 
 mysql_url = os.getenv("MYSQL_URL", "root:test@127.0.0.1:3307/wx")
+# Pooled connections are pid-checked and pinged on checkout (see Db._install_pool_guards); pool_recycle also
+# replaces connections older than an hour.
 db = Db(f"mysql://{mysql_url}", echo_pool=True, pool_recycle=3600)
 # For non-ORM inserts. For ORM-queries, use the models below
 m = Model(db)
+# Table reflection above opened a connection at import time. Close it now so that a process which forks after
+# importing (the uWSGI master) leaves no shared MySQL socket behind for its workers; each process connects lazily.
+db.engine.dispose()
 
 
 Base = declarative_base()

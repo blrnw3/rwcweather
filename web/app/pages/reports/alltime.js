@@ -19,7 +19,9 @@ import {
 } from "../../components/report";
 import { formatObs } from "../../format";
 import { annualNormal, ClimateAnom, ClimateNormalsLink, ClimateNote, hasClimate, monthlyNormal } from "../../components/climate";
-import { useWaterYears, WaterYearCell, WaterYearHeader, WaterYearNote } from "../../components/waterYear";
+import {
+    completeWaterYearStats, useWaterYears, WaterYearCell, WaterYearHeader, WaterYearNote,
+} from "../../components/waterYear";
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const months = Array.from(Array(12).keys());
@@ -164,12 +166,14 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
                             normal={annualNormal(obs, dailyAggregation)} />}
                     </Box>;
                 })()}
-                {waterYears && <WaterYearCell waterYear={year} data={waterYears} obs={obs} unit={unit} summary={summary} />}
+                {waterYears && <WaterYearCell waterYear={year} data={waterYears} obs={obs} unit={unit} summary={summary}
+                    showClimate={showClimate} />}
             </Box>
         )}
         {error && <Text gridColumn="1 / -1" color="red.600">Unable to load monthly data.</Text>}
         {waterYears?.error && <Text gridColumn="1 / -1" color="red.600">Unable to load water-year data.</Text>}
-        {waterYears && <Box gridColumn="1 / -1"><WaterYearNote data={waterYears} obs={obs} unit={unit} summary={summary} /></Box>}
+        {waterYears && <Box gridColumn="1 / -1"><WaterYearNote data={waterYears} obs={obs} unit={unit} summary={summary}
+            showClimate={showClimate} /></Box>}
         {showClimate && <ClimateNote gridColumn="1 / -1" />}
     </Grid>;
 }
@@ -220,6 +224,10 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
     const { matrix, annual, currentYear, currentMonth, response, error, isValidating }
         = useMatrixData(obs, dailyAggregation, summary, threshold);
     const stats = allTimeStats(matrix, annual, currentYear, currentMonth);
+    // Same water-year column as the matrix (rain only), over complete water
+    // years: the in-progress and any partial first water year are left out.
+    const waterYears = useWaterYears(obs, summary, threshold);
+    const waterYearStats = waterYears ? completeWaterYearStats(waterYears.waterYears) : null;
 
     const rows = [
         { key: "min", label: "Min" },
@@ -238,7 +246,7 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
     };
 
     return <Grid id="obs-alltime-summary"
-        templateColumns="0.8fr repeat(13, 1fr)"
+        templateColumns={"0.8fr repeat(" + (waterYears ? 14 : 13) + ", 1fr)"}
         templateRows="30px auto"
         overflow="auto"
         marginTop="4"
@@ -251,6 +259,7 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
             <Box key={month} fontWeight="bold" textAlign="center">{monthNames[month]}</Box>
         )}
         <Box fontWeight="bold" textAlign="center">Annual</Box>
+        {waterYears && <WaterYearHeader />}
         {rows.map(({ key, label }) =>
             <Box key={key} display="contents">
                 <Box minW="46px" py="2" fontWeight="bold" textAlign="center">{label}</Box>
@@ -284,6 +293,29 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
                         borderLeft="2px solid"
                         borderLeftColor="gray.400"
                         _hover={value != null ? { border: "1px solid " + col, borderLeft: "2px solid" } : {}}
+                        py="2"
+                        px="1"
+                    >
+                        {formatValue(value, key)}
+                    </Box>;
+                })()}
+                {waterYears && (() => {
+                    const entry = waterYearStats?.[key];
+                    const value = entry == null ? null : key === "avg" ? entry : entry.value;
+                    const { bg, col } = styleForReportValue(value, obsObj.fmat, unit, summary, true);
+
+                    return <Box key={key + "-water-year"}
+                        className="cell annual water-year-summary"
+                        textAlign="center"
+                        backgroundColor={bg}
+                        color={col}
+                        border="1px solid transparent"
+                        borderLeft="2px solid"
+                        borderLeftColor="gray.400"
+                        _hover={value != null ? { border: "1px solid " + col, borderLeft: "2px solid" } : {}}
+                        title={entry?.waterYear ? "WY" + entry.waterYear
+                            : waterYearStats ? "Complete water years WY" + waterYearStats.first + "–WY" + waterYearStats.last
+                                : undefined}
                         py="2"
                         px="1"
                     >
@@ -358,7 +390,9 @@ export default function AllTimeReport() {
         <Text mt="2">
             The table above compares the same month (or full year) across years: its min, max and average are
             taken over the values in the matrix. Years with no data for a month are ignored rather than counted as
-            zero. The current, still in-progress month and year are excluded so partial data does not skew the results.
+            zero. The current, still in-progress month and year are excluded so partial data does not skew the results;
+            for rain, the Water yr column likewise covers complete water years only (in-progress and partial
+            water years are excluded).
         </Text>
     </Page>;
 }

@@ -1,6 +1,7 @@
 import { Box, Grid, Text } from "@chakra-ui/react";
 import useSWR from "swr";
 import { formatObs } from "../format";
+import { annualNormal, ClimateAnom, waterYearNormal } from "./climate";
 import { fetcher, OBS } from "./conf";
 import { REPORT_YEAR_START, styleForReportValue } from "./report";
 
@@ -142,6 +143,18 @@ export function useWaterYears(obs, summary, threshold) {
     return { ...waterYearSummaries(response, summary, threshold), response, error };
 }
 
+// Climate comparison for a water year (nw3weather style, e.g. "(91%)"): only
+// for rain totals, against the Oct-Sep normal. Like the current calendar month
+// and year, the in-progress water year is compared unprorated (to date). A
+// "partial" water year (records start after 1 Oct, e.g. WY2021 from 27 Dec
+// 2020) is missing most of its wettest months, so it gets no comparison.
+export function waterYearClimateNormal(info) {
+    if (!info || info.value == null || info.status === "partial") {
+        return null;
+    }
+    return waterYearNormal("rain", "total");
+}
+
 export function formatWaterYearValue(value, obs, unit, summary) {
     if (value == null) {
         return "-";
@@ -161,7 +174,8 @@ export function WaterYearHeader() {
 
 // One cell of the "Water yr" column: the water year ending in `waterYear`.
 // Partial and in-progress water years are marked with an asterisk.
-export function WaterYearCell({ waterYear, data, obs, unit, summary }) {
+// `showClimate` adds the bracketed percent-of-normal (Total summary only).
+export function WaterYearCell({ waterYear, data, obs, unit, summary, showClimate = false }) {
     const info = data?.waterYears.get(waterYear);
     const value = info ? info.value : null;
     const flagged = info && info.status !== "complete";
@@ -181,11 +195,12 @@ export function WaterYearCell({ waterYear, data, obs, unit, summary }) {
         px="1"
     >
         {formatWaterYearValue(value, obs, unit, summary)}{flagged ? "*" : ""}
+        {showClimate && <ClimateAnom value={value} normal={waterYearClimateNormal(info)} obs={obs} stat="total" unit={unit} />}
     </Box>;
 }
 
 // Explanatory footnote, including min/max/avg over complete water years.
-export function WaterYearNote({ data, obs, unit, summary }) {
+export function WaterYearNote({ data, obs, unit, summary, showClimate = false }) {
     if (!data) {
         return null;
     }
@@ -201,6 +216,10 @@ export function WaterYearNote({ data, obs, unit, summary }) {
             Water yr is the rain year from 1 October to 30 September, labelled by the year it ends
             (e.g. {waterYearLabel(2026)} = {waterYearRange(2026)}), shown alongside the calendar-year Annual figure.
             {flagged.length > 0 && <> * Partial: {flagged.join("; ")}.</>}
+            {showClimate && <> Bracketed water-year figures are the percentage of the
+                {" "}{formatObs(unit, waterYearNormal("rain", "total"), OBS.get("rain").fmat, false, true)} water-year normal;
+                {" "}the in-progress water year is compared to date, and a water year whose records start after
+                {" "}1 October has no comparison.</>}
         </Text>
         {stats && <Text mt="1">
             Complete water years ({waterYearLabel(stats.first)}–{waterYearLabel(stats.last)}):
@@ -234,6 +253,8 @@ export function WaterYearTotals({ year, calendarTotal, serverDate, unit }) {
             range: calendarRange,
             value: calendarTotal,
             flagged: calendarInProgress || calendarPartial,
+            // Same rule as water years: in progress = to date, partial = none.
+            normal: calendarPartial ? null : annualNormal("rain", "total"),
         },
     ];
     for (const waterYear of [yearNum, yearNum + 1]) {
@@ -247,6 +268,7 @@ export function WaterYearTotals({ year, calendarTotal, serverDate, unit }) {
             range: info.status === "complete" ? waterYearRange(waterYear) : info.note.replace(/^WY\d+ /, ""),
             value: info.value,
             flagged: info.status !== "complete",
+            normal: waterYearClimateNormal(info),
         });
     }
 
@@ -266,6 +288,7 @@ export function WaterYearTotals({ year, calendarTotal, serverDate, unit }) {
                     px="1"
                 >
                     {formatWaterYearValue(c.value, "rain", unit, "total")}{c.flagged ? "*" : ""}
+                    <ClimateAnom value={c.value} normal={c.normal} obs="rain" stat="total" unit={unit} />
                 </Box>;
             })}
             {columns.map((c) => <Box key={c.key + "-range"} textAlign="center" fontSize="sm" color="gray.500">
