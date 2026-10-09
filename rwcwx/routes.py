@@ -7,6 +7,7 @@ from flask import request
 
 from rwcwx.astronomy import get_all_times_rwc, getTimes
 from rwcwx.calc.avg_extreme import AvgExtAggregator, MonthSummary, DaySummary, YearSummary, WaterYearRainSummary
+from rwcwx.calc.rolling import ROLLING_DAYS, ROLLING_VARS, min_days_required, rolling_ranking
 from rwcwx.config import TZ
 from rwcwx.model.avgext import AvgExtQ
 from rwcwx.model.obs import ObsQ
@@ -129,6 +130,37 @@ def var_yearly(var: str, typ: str):
 
 def var_all_periods(var: str, typ: str):
     return _wrap_result(AvgExtAggregator.all_summaries(_var_avg_exts_from_request(var, typ), var))
+
+
+def var_rolling(var: str, typ: str):
+    """
+    Non-overlapping N-day period rankings, e.g. /api/var/rolling/rain/total/?days=3
+    Query params: days (3, 7, 14 or 30), order (highest|lowest), limit (1-100).
+    """
+    try:
+        days = int(request.args.get("days", "3"))
+        limit = int(request.args.get("limit", "25"))
+    except ValueError:
+        return {"error": "days and limit must be integers"}, 400
+    order = request.args.get("order", "highest")
+    if typ not in ROLLING_VARS.get(var, {}) or days not in ROLLING_DAYS \
+            or order not in ("highest", "lowest") or not 1 <= limit <= 100:
+        return {
+            "error": "Unsupported rolling ranking",
+            "supported": dict(vars={v: list(t) for v, t in ROLLING_VARS.items()}, days=list(ROLLING_DAYS),
+                              order=["highest", "lowest"], limit="1-100"),
+        }, 400
+    now = DateUtil.now()
+    return _wrap_result(
+        _rolling_cached(var, typ, days, order, limit, now.date(), int(now.timestamp() // 300)),
+        var=var, type=typ, days=days, order=order, min_days=min_days_required(days),
+    )
+
+
+@lru_cache(maxsize=64)
+def _rolling_cached(var: str, typ: str, days: int, order: str, limit: int, today: date, _bucket: int) -> list:
+    """Each ranking is computed at most once per 5 minutes per worker (the reports refresh every 5 minutes)."""
+    return rolling_ranking(AvgExtQ.daily_values(var, typ), var, typ, days, order, limit, today)
 
 
 def obs_latest():

@@ -1,6 +1,7 @@
 import {
     Box,
     Heading,
+    Link as ChakraLink,
     Spinner,
     Table,
     Tbody,
@@ -10,6 +11,7 @@ import {
     Thead,
     Tr,
 } from "@chakra-ui/react";
+import NextLink from "next/link";
 import { useContext } from "react";
 import useSWR from "swr";
 import { fetcher, fmatObsOpt, OBS } from "../../components/conf";
@@ -34,6 +36,7 @@ import { hasWaterYears, useWaterYears, waterYearLabel, waterYearRange } from "..
 
 const PERIOD_NAMES = {
     daily: "Daily",
+    rolling: "Multi-day",
     monthly: "Monthly",
     annual: "Annual",
     wateryear: "Water year",
@@ -42,8 +45,25 @@ const PERIOD_NAMES = {
 // Periods built by summarising daily values (all but "daily" itself).
 const SUMMARY_PERIODS = ["monthly", "annual", "wateryear"];
 
+// Multi-day periods: N consecutive days, ranked server-side from the daily
+// table (see rwcwx/calc/rolling.py). Only rain totals and temperature means.
+const ROLLING_OBS = ["rain", "temp"];
+const ROLLING_DAYS = ["3", "7", "14", "30"];
+const MIN_COVERAGE = { 3: 3, 7: 7, 14: 13, 30: 27 };
+
 function periodOptions(obs) {
-    return hasWaterYears(obs) ? ["daily", "monthly", "annual", "wateryear"] : ["daily", "monthly", "annual"];
+    return [
+        "daily",
+        ...(ROLLING_OBS.includes(obs) ? ["rolling"] : []),
+        "monthly",
+        "annual",
+        ...(hasWaterYears(obs) ? ["wateryear"] : []),
+    ];
+}
+
+// The driest N-day spells are all zero, so rain multi-day only ranks highest.
+function orderOptions(obs, period) {
+    return period === "rolling" && obs === "rain" ? ["highest"] : ["highest", "lowest"];
 }
 
 const ORDER_NAMES = {
@@ -146,6 +166,76 @@ function rankingRecords(results, server, period, summary, threshold, waterYears)
     }));
 }
 
+function isoDate(parts) {
+    return parts.map((part, i) => i === 0 ? String(part) : String(part).padStart(2, "0")).join("-");
+}
+
+function formatSpan(start, end) {
+    const short = (d) => monthNames[d[1] - 1] + " " + d[2];
+    return start[0] === end[0]
+        ? short(start) + " – " + short(end) + ", " + end[0]
+        : short(start) + ", " + start[0] + " – " + short(end) + ", " + end[0];
+}
+
+function DayLink({ date, children }) {
+    return <NextLink href={"/reports/day?date=" + isoDate(date)} passHref>
+        <ChakraLink>{children}</ChakraLink>
+    </NextLink>;
+}
+
+function RollingRankingTable({ obs, dailyAggregation, days, order, limit }) {
+    const unit = useContext(UnitCtx);
+    const obsObj = OBS.get(obs);
+    const url = "/api/var/rolling/" + obs + "/" + dailyAggregation + "/?days=" + days + "&order=" + order + "&limit=" + limit;
+    const { data: response, error, isValidating } = useSWR(url, fetcher, { refreshInterval: 300000 });
+
+    if (error || response?.error) {
+        return <Text mt="4" color="red.600">Unable to load ranking data.</Text>;
+    }
+    if (!response) {
+        return <Box mt="5"><Spinner size="md" /> Loading rankings…</Box>;
+    }
+    const records = response.result || [];
+    let previousValue = null;
+    let displayedRank = 0;
+
+    return <Box mt="5" overflowX="auto">
+        {isValidating && <Text color="gray.500" fontSize="sm">Refreshing…</Text>}
+        <Table id="ranking-table" variant="simple" size="md">
+            <Thead>
+                <Tr>
+                    <Th isNumeric>Rank</Th>
+                    <Th>{days}-day period</Th>
+                    <Th isNumeric>{obsObj.name} ({obs === "rain" ? "total" : "mean"})</Th>
+                </Tr>
+            </Thead>
+            <Tbody>
+                {records.map((record, index) => {
+                    if (record.val !== previousValue) {
+                        displayedRank = index + 1;
+                        previousValue = record.val;
+                    }
+                    const { bg, col } = styleForReportValue(record.val, obsObj.fmat, unit, obs === "rain" ? "total" : null);
+                    const span = formatSpan(record.start, record.end);
+                    return <Tr key={record.end.join("-")} className="rolling-row">
+                        <Td isNumeric fontWeight="bold">{displayedRank}</Td>
+                        <Td>
+                            <DayLink date={record.start}>{span.split(" – ")[0]}</DayLink>
+                            {" – "}
+                            <DayLink date={record.end}>{span.split(" – ")[1]}</DayLink>
+                            {record.days < record.n && <Text as="span" color="gray.500" fontSize="sm">
+                                {" "}({record.days} of {record.n} days with data)
+                            </Text>}
+                        </Td>
+                        <Td isNumeric backgroundColor={bg} color={col}>{formatObs(unit, record.val, obsObj.fmat)}</Td>
+                    </Tr>;
+                })}
+            </Tbody>
+        </Table>
+        {records.length === 0 && <Text py="4">No ranking data is available.</Text>}
+    </Box>;
+}
+
 function RankingTable({ obs, dailyAggregation, period, summary, threshold, month, order, limit }) {
     const unit = useContext(UnitCtx);
     const obsObj = OBS.get(obs);
@@ -218,7 +308,8 @@ const monthFromParam = (value) => {
     return index >= 0 ? (index + 1).toString() : value;
 };
 
-// Selections kept in the URL, e.g. /reports/ranking?var=rain&period=wateryear
+// Selections kept in the URL, e.g. /reports/ranking?var=rain&period=wateryear,
+// /reports/ranking?var=rain&period=rolling&days=7
 // or /reports/ranking?period=monthly&month=jul&order=lowest. Keys resolve in
 // order, so the period can depend on the variable (water years: rain only).
 const RANKING_URL_STATE = {
@@ -241,13 +332,14 @@ const RANKING_URL_STATE = {
         def: () => "all", valid: inList(monthOptions), toUrl: monthParam, fromUrl: monthFromParam,
         use: (s) => s.period === "daily" || s.period === "monthly",
     },
-    order: { def: () => "highest", valid: inList(["highest", "lowest"]) },
+    days: { def: () => "3", valid: inList(ROLLING_DAYS), use: (s) => s.period === "rolling" },
+    order: { def: () => "highest", valid: (v, s) => orderOptions(s.obs, s.period).includes(v) },
     limit: { param: "rows", def: () => "25", valid: inList(["10", "25", "50", "100"]) },
 };
 
 export default function RankingReport() {
     const [state, update] = useUrlState(RANKING_URL_STATE);
-    const { period, obs, dailyAggregation, summary, threshold, month, order, limit } = state;
+    const { period, obs, dailyAggregation, summary, threshold, month, days, order, limit } = state;
     const dailyOptions = dailyAggregationOptions(obs);
     const monthlySummaryOptions = summaryOptions(obs);
 
@@ -259,7 +351,9 @@ export default function RankingReport() {
         // so switching to rain selects Total; other summaries stay selectable.
         summary: nextObs === "rain" || summary === "avg" || summary === "total" ? OBS.get(nextObs).summary : summary,
         // Water years are rain-only; other variables fall back to calendar years.
-        period: period === "wateryear" && !hasWaterYears(nextObs) ? "annual" : period,
+        // Multi-day periods are rain/temperature only; others fall back to daily.
+        period: period === "wateryear" && !hasWaterYears(nextObs) ? "annual"
+            : period === "rolling" && !ROLLING_OBS.includes(nextObs) ? "daily" : period,
     });
 
     const handlePeriodChange = (nextPeriod) => update({
@@ -272,12 +366,16 @@ export default function RankingReport() {
     const setSummary = (value) => update({ summary: value });
     const setThreshold = (value) => update({ threshold: value });
     const setOrder = (value) => update({ order: value });
+    const setDays = (value) => update({ days: value });
     const setLimit = (value) => update({ limit: value });
 
     const isSummaryPeriod = SUMMARY_PERIODS.includes(period);
     const byMonth = period === "daily" || period === "monthly";
     const rankingTitle = period === "daily"
         ? ORDER_NAMES[order] + " " + limit + " " + DAILY_AGGREGATION_NAMES[dailyAggregation]
+        : period === "rolling"
+        ? ORDER_NAMES[order] + " " + limit + " " + days + "-day " + (obs === "rain" ? "totals" : "means")
+            + " of " + DAILY_AGGREGATION_NAMES[dailyAggregation]
         : ORDER_NAMES[order] + " " + limit + " " + PERIOD_NAMES[period] + " " + SUMMARY_NAMES[summary]
             + " of " + DAILY_AGGREGATION_NAMES[dailyAggregation];
     const monthSuffix = !byMonth || month === "all" ? "" : " in " + monthNames[Number(month) - 1];
@@ -301,6 +399,10 @@ export default function RankingReport() {
                 fn={setMonth}
             />
         </>}
+        {period === "rolling" && <>
+            <Text mt="1" fontWeight="bold">Length:</Text>
+            <RadioButtonGroup name="days" value={days} options={ROLLING_DAYS} optFormat={(value) => value + " days"} fn={setDays} />
+        </>}
         <Text mt="1" fontWeight="bold">Variable:</Text>
         <RadioButtonGroup name="obs" value={obs} options={REPORT_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
         <Text mt="1" fontWeight="bold">Daily statistic:</Text>
@@ -311,11 +413,17 @@ export default function RankingReport() {
             {summary === "count" && <CountThresholdSelector obs={obs} value={threshold} fn={setThreshold} />}
         </>}
         <Text mt="1" fontWeight="bold">Order:</Text>
-        <RadioButtonGroup name="order" value={order} options={["highest", "lowest"]} optFormat={(value) => ORDER_NAMES[value]} fn={setOrder} />
+        <RadioButtonGroup name="order" value={order} options={orderOptions(obs, period)} optFormat={(value) => ORDER_NAMES[value]} fn={setOrder} />
         <Text mt="1" fontWeight="bold">Results:</Text>
         <RadioButtonGroup name="limit" value={limit} options={["10", "25", "50", "100"]} optFormat={(value) => value + " rows"} fn={setLimit} />
 
-        <RankingTable
+        {period === "rolling" ? <RollingRankingTable
+            obs={obs}
+            dailyAggregation={dailyAggregation}
+            days={days}
+            order={order}
+            limit={limit}
+        /> : <RankingTable
             obs={obs}
             dailyAggregation={dailyAggregation}
             period={period}
@@ -324,7 +432,7 @@ export default function RankingReport() {
             month={month}
             order={order}
             limit={limit}
-        />
+        />}
         <Text mt="3">
             Daily rankings compare the selected daily series directly. Monthly rankings first summarize that same
             daily series within each month. Rankings use records from {REPORT_YEAR_START} onward.
@@ -333,6 +441,12 @@ export default function RankingReport() {
             Annual rankings use calendar years; water-year rankings (rainfall only) use 1 October to 30 September,
             labelled by the year they end (e.g. {waterYearLabel(2026)} = {waterYearRange(2026)}). Both only rank
             complete years: the current, still in-progress year and any partially recorded first year are left out.
+        </Text>
+        <Text mt="2">
+            Multi-day rankings (rainfall and temperature) use N consecutive days: the rain total, or the mean of the
+            chosen daily temperature. Listed periods never overlap, so one storm or heatwave appears only once. A
+            period needs data for at least 90% of its days ({MIN_COVERAGE[7]} of 7, {MIN_COVERAGE[14]} of 14,
+            {" "}{MIN_COVERAGE[30]} of 30); temperature periods only use complete days, so today is left out.
         </Text>
     </Page>;
 }
