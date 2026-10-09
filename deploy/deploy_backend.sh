@@ -102,6 +102,10 @@ echo "Syncing uWSGI configuration..."
 rsync "${RSYNC_ARGS[@]}" -e "$RSYNC_SSH" \
     "$REPO_ROOT/deploy/rwcwx.ini" "$DEPLOY_HOST:$REMOTE_ROOT/deploy/"
 
+echo "Syncing ingestion start script..."
+rsync "${RSYNC_ARGS[@]}" -e "$RSYNC_SSH" \
+    "$REPO_ROOT/scripts/start_save_latest.sh" "$DEPLOY_HOST:$REMOTE_ROOT/scripts/"
+
 if [[ "$DRY_RUN" == true ]]; then
     echo "Dry run complete; production was not changed or restarted."
     exit 0
@@ -133,3 +137,5 @@ echo "Verifying production backend..."
 RWCWX_PUBLIC_URL="$PUBLIC_URL" "$SCRIPT_DIR/verify_backend.sh"
 
 echo "Backend deployment complete: $PUBLIC_URL/api/web/dashboard/live"
+echo "Note: the save_latest.py ingestion daemon is not restarted by this script. If rwcwx/job/save_latest.py or a"
+echo "module it imports changed, run on the server: $REMOTE_ROOT/scripts/start_save_latest.sh restart"

@@ -2,9 +2,10 @@
 Modified from https://github.com/rshk/flask-sqlalchemy-core/blob/master/flask_sqlalchemy_core/__init__.py
 """
 import logging
+import os
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, MetaData
+from sqlalchemy import create_engine, event, exc, MetaData
 from sqlalchemy.engine import Engine, ResultProxy
 from sqlalchemy.orm import sessionmaker, Session
 
@@ -12,6 +13,41 @@ from werkzeug.local import Local, release_local, LocalManager
 
 logger = logging.getLogger(__name__)
 logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+
+
+def _install_pool_guards(engine: Engine) -> None:
+    """
+    Make every pooled connection safe to hand out. On each checkout, in this order:
+
+    1. Never reuse a connection opened by another process. If a process forks while a connection sits in the
+       pool (uWSGI without lazy-apps loads the app in its master and then forks the workers), every worker
+       inherits the same MySQL socket, and concurrent use of it fails with "Lost connection to MySQL server
+       during query", i.e. a 500 per worker after each start or reload. The connection is detached *without
+       closing it*, because closing would send COM_QUIT on the socket the parent and siblings still share.
+       (Recipe from the SQLAlchemy 1.4 docs, "Using Connection Pools with Multiprocessing or os.fork()".)
+    2. Ping it, and reconnect if MySQL has dropped it (server restart, wait_timeout). This replaces
+       pool_pre_ping=True, which in SQLAlchemy 1.4 pings *before* checkout listeners run, i.e. it would ping
+       an inherited socket from several processes at once, which can hang a worker.
+
+    Raising DisconnectionError makes the pool discard the record and transparently open a new connection.
+    """
+    @event.listens_for(engine, "connect")
+    def _tag_pid(dbapi_connection, connection_record):
+        connection_record.info["pid"] = os.getpid()
+
+    @event.listens_for(engine, "checkout")
+    def _check_connection(dbapi_connection, connection_record, connection_proxy):
+        pid = os.getpid()
+        owner = connection_record.info.get("pid")
+        if owner != pid:
+            logger.info("Discarding pooled DB connection opened by pid %s (now pid %s)", owner, pid)
+            connection_record.connection = connection_proxy.connection = None
+            raise exc.DisconnectionError(f"Connection opened by pid {owner}, checked out in pid {pid}")
+        try:
+            dbapi_connection.ping(False)
+        except Exception as e:
+            logger.warning("Pooled DB connection failed ping, reconnecting: %s", e)
+            raise exc.DisconnectionError(f"Ping failed: {e}") from e
 
 
 class Db:
@@ -27,7 +63,9 @@ class Db:
         self.session = self.session_mkr(autocommit=True)  # type: Session
 
     def create_engine(self) -> Engine:
-        return create_engine(self._database_url, **self._options)
+        engine = create_engine(self._database_url, **self._options)
+        _install_pool_guards(engine)
+        return engine
 
     def connect(self):
         try:
