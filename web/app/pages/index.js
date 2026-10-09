@@ -1,13 +1,13 @@
 import {
-  Box,
+  Box, Button, Collapse,
   Flex, Grid, Heading, Link, Spinner, Text,
   Tooltip,
-  useRadioGroup, Image
+  useDisclosure, useRadioGroup, Image
 } from '@chakra-ui/react';
 import { useContext, useEffect, useState } from 'react';
 import { IconContext } from "react-icons";
 import { GiDew } from "react-icons/gi";
-import { FiWind } from "react-icons/fi";
+import { FiChevronDown, FiWind } from "react-icons/fi";
 import { ImArrowDown, ImArrowUp } from "react-icons/im";
 import { IoTelescopeOutline } from "react-icons/io5";
 import { RiHazeLine } from "react-icons/ri";
@@ -341,9 +341,35 @@ function RainHomeCard(props) {
       Monthly: <Text as="span" fontWeight="bold">{monthly}</Text>
       {date && <ClimateAnom inline value={monthTotal} normal={monthlyNormal("rain", "total", date[1])} obs="rain" stat="total" unit={unit} />}
     </Text>
-    <Text>Water Year: <Text as="span" fontWeight="bold">{water_yr}</Text></Text>
-    <WaterYearClimate total={wyTotal} date={date} />
+    <WaterYearLine value={water_yr} total={wyTotal} date={date} />
   </HomeCard>
+}
+
+// "Water Year: 0.00 in (0%)" with the percent of the normal expected by today,
+// plus a chevron that expands the full comparison (WaterYearClimate). It starts
+// collapsed so the rain card stays the same height as its neighbours.
+function WaterYearLine({ value, total, date }) {
+  const { isOpen, onToggle } = useDisclosure();
+  const expected = date ? waterYearNormalToDate("rain", "total", ...date) : null;
+  const details = total != null && date != null;
+  return <>
+    <Text className="water-year-line">
+      Water Year: <Text as="span" fontWeight="bold">{value}</Text>
+      <ClimateAnom inline value={total} normal={expected >= 0.005 ? expected : null} obs="rain" stat="total" unit={unit} />
+      {details && <Button className="wy-details-toggle" variant="ghost" size="xs" minW="auto" h="auto" px="1" py="0" ml="1"
+        verticalAlign="baseline" fontWeight="normal" color="gray.600"
+        onClick={onToggle} aria-expanded={isOpen} aria-controls="water-year-details"
+        aria-label={isOpen ? "Hide water-year climate details" : "Show water-year climate details"}
+        title={isOpen ? "Hide details" : "Compare with the water-year normal"}>
+        <Box as={FiChevronDown} transition="transform 0.2s" transform={isOpen ? "rotate(180deg)" : undefined} />
+      </Button>}
+    </Text>
+    {details && <Collapse in={isOpen} animateOpacity>
+      <Box id="water-year-details">
+        <WaterYearClimate total={total} date={date} />
+      </Box>
+    </Collapse>}
+  </>;
 }
 
 // Water-year rain to date against (1) the full Oct-Sep normal, as an
