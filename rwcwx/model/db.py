@@ -44,7 +44,9 @@ def _install_pool_guards(engine: Engine) -> None:
             connection_record.connection = connection_proxy.connection = None
             raise exc.DisconnectionError(f"Connection opened by pid {owner}, checked out in pid {pid}")
         try:
-            dbapi_connection.ping(False)
+            # No argument: ping(False) makes mysqlclient set MYSQL_OPT_RECONNECT, and libmysqlclient 8.0.34+ then
+            # prints a deprecation WARNING to stderr on every checkout. Plain ping() just checks the connection.
+            dbapi_connection.ping()
         except Exception as e:
             logger.warning("Pooled DB connection failed ping, reconnecting: %s", e)
             raise exc.DisconnectionError(f"Ping failed: {e}") from e
