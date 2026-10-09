@@ -7,6 +7,7 @@ import { Page, UnitCtx } from "../../components/Page";
 import RadioCard from "../../components/RadioCard";
 import { convFunction, formatObs, scaleForObsType } from '../../format';
 import { ClimateAnom, ClimateNormalsLink, ClimateNote, hasClimate, monthlyNormal } from "../../components/climate";
+import { hasWaterYears, WaterYearTotals } from "../../components/waterYear";
 
 const yrStart = 2020;
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -210,6 +211,16 @@ function MonthlyMatrix(props) {
 
 }
 
+// Rain only: the calendar-year total for the selected year, supplemented by
+// the water years (Oct-Sep) that overlap it.
+function RainTotals(props) {
+    const summary = useSummary("rain", "total", props.year);
+    const unit = useContext(UnitCtx);
+    const yearly = (summary?.yearly || []).find((r) => r["m"] === Number(props.year));
+    return <WaterYearTotals year={props.year} calendarTotal={yearly ? yearly["summary"]["total"] : null}
+        serverDate={summary?.["server"]?.["date"]} unit={unit} />
+}
+
 export default function Obs() {
     const [obs, setObs] = useState("temp");
     const [aggType, setAggType] = useState("max");
@@ -244,6 +255,7 @@ export default function Obs() {
         
         <DailyMatrix obs={obs} aggType={aggType} year={year} />
         <MonthlyMatrix obs={obs} aggType={aggType} year={year} />
+        {hasWaterYears(obs) && <RainTotals year={year} />}
 
         <Text mt="3">
             Description: daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} data for every day in the year {year}, along with
