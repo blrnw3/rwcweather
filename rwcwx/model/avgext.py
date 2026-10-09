@@ -1,7 +1,7 @@
 from calendar import monthrange
 from collections import defaultdict
 from datetime import datetime, timedelta, date
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from dateutil.tz import UTC
 from sqlalchemy import text
@@ -22,6 +22,13 @@ class AvgExtQ:
         if end_date:
             q = q.filter(AvgExt.d <= end_date)
         return q.order_by(AvgExt.d.desc(), AvgExt.type.asc()).all()
+
+    @staticmethod
+    def daily_values(var: str, typ: str) -> List[Tuple[date, float]]:
+        """(date, value) for every day of one variable/statistic; served by the var_type_d index."""
+        q = (db.s.query(AvgExt.d, AvgExt.val)
+             .filter(AvgExt.var == var).filter(AvgExt.type == typ).filter(AvgExt.period == "day"))
+        return [(d, v) for d, v in q.order_by(AvgExt.d.asc()).all()]
 
     @staticmethod
     def for_var_and_year(var: str, typ: str, year: int) -> List[AvgExt]:
