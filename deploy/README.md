@@ -106,8 +106,36 @@ Run the backend verification independently with:
 
 Override the latency ceiling with `RWCWX_MAX_LIVE_SECONDS`. The host, port, remote root, public URL, service name, and remote environment file can be overridden with `RWCWX_DEPLOY_HOST`, `RWCWX_DEPLOY_PORT`, `RWCWX_REMOTE_ROOT`, `RWCWX_PUBLIC_URL`, `RWCWX_BACKEND_SERVICE`, and `RWCWX_REMOTE_ENV_FILE`.
 
-Changes to `rwcwx/job/save_latest.py` require restarting that separate ingestion process (kill the nohup then re-run w e.g.)
-(venv_prod) ben@rwcweather:~/rwcweather$ MYSQL_URL=svc:<PW_SECRET>>@127.0.0.1:3306/wx PYTHONPATH=/home/ben/rwcweather nohup python3 rwcwx/job/save_latest.py -o /var/www/rwc/html/cumulus/realtime.txt -e out_prod  &>> /dev/null &
+uWSGI loads the app separately in each worker (`lazy-apps = true` in `deploy/rwcwx.ini`), and pooled DB connections are
+checked on checkout (opened by this process, still alive), so a reload does not produce a burst of 500s from a MySQL
+connection shared across forked workers. Changes to `deploy/rwcwx.ini` take effect on the deploy script's `SIGHUP`
+reload, because uWSGI re-reads its ini file when it reloads; no `systemctl restart` (and so no sudo) is needed. The systemd
+unit itself (`/etc/systemd/system/rwcwx.service`) is not synced by the deploy and does need sudo to change.
+
+### Ingestion daemon (`save_latest.py`)
+
+`rwcwx/job/save_latest.py` runs as a separate long-lived process (not under systemd) that reads Cumulus'
+`realtime.txt` and writes to the database. The backend deploy does not restart it. When `save_latest.py`, or a module it
+imports (`rwcwx/models.py`, `rwcwx/model/*`, `rwcwx/calc/avg_extreme.py`, `rwcwx/util.py`, `rwcwx/config.py`), changes,
+restart it on the server as `ben`:
+
+```sh
+~/rwcweather/scripts/start_save_latest.sh restart   # SIGTERM the running one (SIGKILL after 10s), then start
+~/rwcweather/scripts/start_save_latest.sh status    # running process and the last log lines
+```
+
+The script runs from `~/rwcweather`, takes `MYSQL_URL` from `/etc/rwcwx.env`, uses `venv_prod`, and detaches with
+`setsid nohup` so it survives the SSH session. It must also be started by hand after a server reboot.
+
+Logs:
+
+- `~/rwcweather/log/save_latest.log`: application log, rotated at 5 MB with 5 old files kept. It holds startup and
+  shutdown, errors with tracebacks, the first of a run of air-data failures, and a heartbeat every 15 minutes with the
+  number of updates saved (a warning if none were). Per-update messages are DEBUG only (`--verbose`). Override with
+  `--log-file`, `--log-max-bytes` and `--log-backups`, or the `SAVE_LATEST_LOG`, `SAVE_LATEST_LOG_MAX_BYTES` and
+  `SAVE_LATEST_LOG_BACKUPS` environment variables. `--log-file -` logs to stderr only.
+- `~/rwcweather/log/save_latest.out`: the process's stdout and stderr, for anything printed before logging is set
+  up (e.g. an import error) or by the interpreter itself.
 
 ## Operations and troubleshooting
 
@@ -121,6 +149,10 @@ pm2 logs rwcwx-app --lines 100 --nostream
 # Flask status and logs
 sudo systemctl status rwcwx --no-pager
 journalctl -u rwcwx --since today
+
+# Ingestion daemon status and log
+~/rwcweather/scripts/start_save_latest.sh status
+tail -n 100 ~/rwcweather/log/save_latest.log
 
 # nginx logs
 sudo tail -n 100 /var/log/nginx/access.log
