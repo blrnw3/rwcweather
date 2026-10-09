@@ -226,11 +226,21 @@ export default function RankingReport() {
         setObs(nextObs);
         setDailyAggregation(nextObs === "rain" ? "total" : "max");
         setThreshold("0");
-        if (summary === "avg" || summary === "total") {
+        // Rain is mostly ranked by totals (wettest month / year / water year),
+        // so switching to rain selects Total; other summaries stay selectable.
+        if (nextObs === "rain" || summary === "avg" || summary === "total") {
             setSummary(OBS.get(nextObs).summary);
         }
         if (period === "wateryear" && !hasWaterYears(nextObs)) {
             setPeriod("annual");
+        }
+    };
+
+    const handlePeriodChange = (nextPeriod) => {
+        setPeriod(nextPeriod);
+        // Water years exist to compare rain totals, so open them on Total.
+        if (nextPeriod === "wateryear" && nextPeriod !== period) {
+            setSummary(OBS.get(obs).summary);
         }
     };
 
@@ -250,7 +260,7 @@ export default function RankingReport() {
         <ClimateNormalsLink />
 
         <Text fontWeight="bold">Period:</Text>
-        <RadioButtonGroup name="period" value={period} options={periodOptions(obs)} optFormat={(value) => PERIOD_NAMES[value]} fn={setPeriod} />
+        <RadioButtonGroup name="period" value={period} options={periodOptions(obs)} optFormat={(value) => PERIOD_NAMES[value]} fn={handlePeriodChange} />
         {byMonth && <>
             <Text mt="1" fontWeight="bold">Month:</Text>
             <RadioButtonGroup
