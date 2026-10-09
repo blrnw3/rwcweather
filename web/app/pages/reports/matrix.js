@@ -1,9 +1,10 @@
 import { Box, Flex, Grid, Heading, Spinner, Text, useRadioGroup } from "@chakra-ui/react";
-import { Fragment, useContext, useState } from 'react';
+import { Fragment, useContext } from 'react';
 import useSWR from 'swr';
 import { fetcher, fmatAggTypeOpt, fmatObsOpt, fmatYrOpt, OBS } from '../../components/conf';
 import { daysInMonth } from "../../components/dateUtil";
 import { Page, UnitCtx } from "../../components/Page";
+import { inList, useUrlState } from "../../components/urlState";
 import RadioCard from "../../components/RadioCard";
 import { convFunction, formatObs, scaleForObsType } from '../../format';
 import { ClimateAnom, ClimateNormalsLink, ClimateNote, hasClimate, monthlyNormal } from "../../components/climate";
@@ -51,7 +52,7 @@ function getStyleForObsValue(val, obsType, unit) {
 function RadioButtonGroup(props) {
     let { getRootProps, getRadioProps } = useRadioGroup({
         name: props.name,
-        defaultValue: props.options[0],
+        value: props.value,
         onChange: props.fn,
     })
     const group = getRootProps()
@@ -221,24 +222,25 @@ function RainTotals(props) {
         serverDate={summary?.["server"]?.["date"]} unit={unit} />
 }
 
+const OBS_OPTIONS = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust"];
+const aggOptionsFor = (obs) => obs === "rain" ? ["total"] : ["max", "min", "avg"];
+
+// Selections kept in the URL, e.g. /reports/matrix?var=rain&year=2023
+const MATRIX_URL_STATE = {
+    obs: { param: "var", def: () => "temp", valid: inList(OBS_OPTIONS) },
+    aggType: { param: "daily", def: (s) => aggOptionsFor(s.obs)[0], valid: (v, s) => aggOptionsFor(s.obs).includes(v) },
+    year: { def: () => yrEnd.toString(), valid: inList(years) },
+};
+
 export default function Obs() {
-    const [obs, setObs] = useState("temp");
-    const [aggType, setAggType] = useState("max");
-    const [aggOpts, setAggOpts] = useState(["max", "min", "avg"]);
-    const [year, setYear] = useState(yrEnd.toString());
+    const [{ obs, aggType, year }, update] = useUrlState(MATRIX_URL_STATE);
+    const aggOpts = aggOptionsFor(obs);
+    const obsOptions = OBS_OPTIONS;
 
-    const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust"];
-
-    const handleObsChange = (x) => {
-        setObs(x);
-        let aggOptsOk = (x === "rain") ? ["total"] : ["max", "min", "avg"];
-        setAggOpts(aggOptsOk);
-        if (x === "rain") {
-            setAggType("total");
-        } else if (aggType === "total") {
-            setAggType("max");
-        }
-    }
+    // Rain only has daily totals; other variables keep their statistic.
+    const handleObsChange = (x) => update({ obs: x, aggType: x === "rain" ? "total" : aggType === "total" ? "max" : aggType });
+    const setAggType = (value) => update({ aggType: value });
+    const setYear = (value) => update({ year: value });
 
     return <Page name="reports" sub="annual" title="Reports | matrix">
         <Heading as="h1" size="1">
@@ -249,9 +251,9 @@ export default function Obs() {
         </Heading>
         <ClimateNormalsLink />
 
-        <RadioButtonGroup name="obs" options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
-        <RadioButtonGroup name="agg" options={aggOpts} optFormat={fmatAggTypeOpt} fn={setAggType} />
-        <RadioButtonGroup name="yr" options={years} optFormat={fmatYrOpt} fn={setYear} />
+        <RadioButtonGroup name="obs" value={obs} options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
+        <RadioButtonGroup name="agg" value={aggType} options={aggOpts} optFormat={fmatAggTypeOpt} fn={setAggType} />
+        <RadioButtonGroup name="yr" value={year} options={years} optFormat={fmatYrOpt} fn={setYear} />
         
         <DailyMatrix obs={obs} aggType={aggType} year={year} />
         <MonthlyMatrix obs={obs} aggType={aggType} year={year} />

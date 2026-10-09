@@ -10,12 +10,14 @@ import {
     Thead,
     Tr,
 } from "@chakra-ui/react";
-import { useContext, useState } from "react";
+import { useContext } from "react";
 import useSWR from "swr";
 import { fetcher, fmatObsOpt, OBS } from "../../components/conf";
 import { ClimateNormalsLink } from "../../components/climate";
 import { Page, UnitCtx } from "../../components/Page";
+import { inList, useUrlState } from "../../components/urlState";
 import {
+    COUNT_THRESHOLDS,
     CountThresholdSelector,
     DAILY_AGGREGATION_NAMES,
     dailyAggregationOptions,
@@ -210,39 +212,67 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
     </Box>;
 }
 
+const monthParam = (value) => value === "all" ? "all" : monthNames[Number(value) - 1].toLowerCase();
+const monthFromParam = (value) => {
+    const index = monthNames.findIndex((name) => name.toLowerCase() === String(value).toLowerCase());
+    return index >= 0 ? (index + 1).toString() : value;
+};
+
+// Selections kept in the URL, e.g. /reports/ranking?var=rain&period=wateryear
+// or /reports/ranking?period=monthly&month=jul&order=lowest. Keys resolve in
+// order, so the period can depend on the variable (water years: rain only).
+const RANKING_URL_STATE = {
+    obs: { param: "var", def: () => "temp", valid: inList(REPORT_OBS_OPTIONS) },
+    period: { def: () => "daily", valid: (v, s) => periodOptions(s.obs).includes(v) },
+    dailyAggregation: {
+        param: "daily", def: (s) => s.obs === "rain" ? "total" : "max",
+        valid: (v, s) => dailyAggregationOptions(s.obs).includes(v),
+    },
+    summary: {
+        def: (s) => s.obs === "rain" ? "total" : "max",
+        valid: (v, s) => summaryOptions(s.obs).includes(v),
+        use: (s) => SUMMARY_PERIODS.includes(s.period),
+    },
+    threshold: {
+        def: () => "0", valid: (v, s) => COUNT_THRESHOLDS[s.obs].includes(v),
+        use: (s) => SUMMARY_PERIODS.includes(s.period) && s.summary === "count",
+    },
+    month: {
+        def: () => "all", valid: inList(monthOptions), toUrl: monthParam, fromUrl: monthFromParam,
+        use: (s) => s.period === "daily" || s.period === "monthly",
+    },
+    order: { def: () => "highest", valid: inList(["highest", "lowest"]) },
+    limit: { param: "rows", def: () => "25", valid: inList(["10", "25", "50", "100"]) },
+};
+
 export default function RankingReport() {
-    const [period, setPeriod] = useState("daily");
-    const [obs, setObs] = useState("temp");
-    const [dailyAggregation, setDailyAggregation] = useState("max");
-    const [summary, setSummary] = useState("max");
-    const [threshold, setThreshold] = useState("0");
-    const [month, setMonth] = useState("all");
-    const [order, setOrder] = useState("highest");
-    const [limit, setLimit] = useState("25");
+    const [state, update] = useUrlState(RANKING_URL_STATE);
+    const { period, obs, dailyAggregation, summary, threshold, month, order, limit } = state;
     const dailyOptions = dailyAggregationOptions(obs);
     const monthlySummaryOptions = summaryOptions(obs);
 
-    const handleObsChange = (nextObs) => {
-        setObs(nextObs);
-        setDailyAggregation(nextObs === "rain" ? "total" : "max");
-        setThreshold("0");
+    const handleObsChange = (nextObs) => update({
+        obs: nextObs,
+        dailyAggregation: nextObs === "rain" ? "total" : "max",
+        threshold: "0",
         // Rain is mostly ranked by totals (wettest month / year / water year),
         // so switching to rain selects Total; other summaries stay selectable.
-        if (nextObs === "rain" || summary === "avg" || summary === "total") {
-            setSummary(OBS.get(nextObs).summary);
-        }
-        if (period === "wateryear" && !hasWaterYears(nextObs)) {
-            setPeriod("annual");
-        }
-    };
+        summary: nextObs === "rain" || summary === "avg" || summary === "total" ? OBS.get(nextObs).summary : summary,
+        // Water years are rain-only; other variables fall back to calendar years.
+        period: period === "wateryear" && !hasWaterYears(nextObs) ? "annual" : period,
+    });
 
-    const handlePeriodChange = (nextPeriod) => {
-        setPeriod(nextPeriod);
+    const handlePeriodChange = (nextPeriod) => update({
+        period: nextPeriod,
         // Water years exist to compare rain totals, so open them on Total.
-        if (nextPeriod === "wateryear" && nextPeriod !== period) {
-            setSummary(OBS.get(obs).summary);
-        }
-    };
+        ...(nextPeriod === "wateryear" && nextPeriod !== period ? { summary: OBS.get(obs).summary } : {}),
+    });
+    const setMonth = (value) => update({ month: value });
+    const setDailyAggregation = (value) => update({ dailyAggregation: value });
+    const setSummary = (value) => update({ summary: value });
+    const setThreshold = (value) => update({ threshold: value });
+    const setOrder = (value) => update({ order: value });
+    const setLimit = (value) => update({ limit: value });
 
     const isSummaryPeriod = SUMMARY_PERIODS.includes(period);
     const byMonth = period === "daily" || period === "monthly";

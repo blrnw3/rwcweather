@@ -1,9 +1,11 @@
 import { Box, Flex, Grid, Heading, Spinner, Text } from "@chakra-ui/react";
-import { useContext, useState } from "react";
+import { useContext } from "react";
 import useSWR from "swr";
 import { fetcher, fmatObsOpt, OBS } from "../../components/conf";
 import { Page, UnitCtx } from "../../components/Page";
+import { inList, useUrlState } from "../../components/urlState";
 import {
+    COUNT_THRESHOLDS,
     CountThresholdSelector,
     DAILY_AGGREGATION_NAMES,
     dailyAggregationOptions,
@@ -294,23 +296,34 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
     </Grid>;
 }
 
+// Selections kept in the URL, e.g. /reports/alltime?var=rain&summary=count&threshold=0.1
+const ALLTIME_URL_STATE = {
+    obs: { param: "var", def: () => "temp", valid: inList(REPORT_OBS_OPTIONS) },
+    dailyAggregation: {
+        param: "daily", def: (s) => OBS.get(s.obs).summary, valid: (v, s) => dailyAggregationOptions(s.obs).includes(v),
+    },
+    summary: { def: (s) => OBS.get(s.obs).summary, valid: (v, s) => summaryOptions(s.obs).includes(v) },
+    threshold: {
+        def: () => "0", valid: (v, s) => COUNT_THRESHOLDS[s.obs].includes(v), use: (s) => s.summary === "count",
+    },
+};
+
 export default function AllTimeReport() {
-    const [obs, setObs] = useState("temp");
-    const [dailyAggregation, setDailyAggregation] = useState("avg");
-    const [summary, setSummary] = useState("avg");
-    const [threshold, setThreshold] = useState("0");
+    const [{ obs, dailyAggregation, summary, threshold }, update] = useUrlState(ALLTIME_URL_STATE);
     const dailyOptions = dailyAggregationOptions(obs);
     const monthlySummaryOptions = summaryOptions(obs);
 
-    const handleObsChange = (nextObs) => {
-        setObs(nextObs);
-        setDailyAggregation(OBS.get(nextObs).summary);
-        setThreshold("0");
-        const nextMiddleSummary = OBS.get(nextObs).summary;
-        if (summary === "avg" || summary === "total") {
-            setSummary(nextMiddleSummary);
-        }
-    };
+    // Switching variable resets the daily statistic and threshold; a Mean/Total
+    // summary follows the new variable (Min/Max/Count are kept).
+    const handleObsChange = (nextObs) => update({
+        obs: nextObs,
+        dailyAggregation: OBS.get(nextObs).summary,
+        threshold: "0",
+        summary: summary === "avg" || summary === "total" ? OBS.get(nextObs).summary : summary,
+    });
+    const setDailyAggregation = (value) => update({ dailyAggregation: value });
+    const setSummary = (value) => update({ summary: value });
+    const setThreshold = (value) => update({ threshold: value });
 
     return <Page name="reports" sub="all-time" title="Reports | all-time">
         <Heading as="h1" size="1">Reports: All-time</Heading>
