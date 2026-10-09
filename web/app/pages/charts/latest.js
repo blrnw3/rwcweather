@@ -1,15 +1,15 @@
 import { Flex, Heading, Text, useRadioGroup } from "@chakra-ui/react";
-import { useState } from 'react';
 import { LatestChart } from "../../components/chart";
 import { fmatObsOpt, fmatTimeOpt, OBS } from '../../components/conf';
 import { Page } from "../../components/Page";
+import { inList, useUrlState } from "../../components/urlState";
 import RadioCard from "../../components/RadioCard";
 
 
 function RadioButtonGroup(props) {
   let { getRootProps, getRadioProps } = useRadioGroup({
     name: props.name,
-    defaultValue: props.default,
+    value: props.value,
     onChange: props.fn,
   })
   const group = getRootProps()
@@ -25,12 +25,19 @@ function RadioButtonGroup(props) {
   </Flex>
 }
 
-export default function Charts() {
-  const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust"];
-  const hrsOptions = ["6", "12", "24", "48", "72", "120", "168", "336", "744", "2208"];
+const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust"];
+const hrsOptions = ["6", "12", "24", "48", "72", "120", "168", "336", "744", "2208"];
 
-  const [obs, setObs] = useState("temp");
-  const [hrs, setHrs] = useState("12");
+// Selections kept in the URL, e.g. /charts/latest?var=wind&hours=48
+const LATEST_URL_STATE = {
+  obs: { param: "var", def: () => "temp", valid: inList(obsOptions) },
+  hrs: { param: "hours", def: () => "12", valid: inList(hrsOptions) },
+};
+
+export default function Charts() {
+  const [{ obs, hrs }, update] = useUrlState(LATEST_URL_STATE);
+  const setObs = (value) => update({ obs: value });
+  const setHrs = (value) => update({ hrs: value });
 
   return (
     <Page name="charts" sub="latest" title="Charts | latest">
@@ -41,9 +48,9 @@ export default function Charts() {
         Last {fmatTimeOpt(hrs)} {fmatObsOpt(obs)}
       </Heading>
       
-      <RadioButtonGroup name="obs" options={obsOptions} optFormat={fmatObsOpt} default="temp" fn={setObs} />
+      <RadioButtonGroup name="obs" value={obs} options={obsOptions} optFormat={fmatObsOpt} fn={setObs} />
       <LatestChart obs={obs} hrs={hrs} my={4} mx={{base: 0, md: 4, xl: 6}} height="responsive" spacing={[20, 20, 25, 10]} />
-      <RadioButtonGroup name="hrs" options={hrsOptions} optFormat={fmatTimeOpt} default={"12"} fn={setHrs} />
+      <RadioButtonGroup name="hrs" value={hrs} options={hrsOptions} optFormat={fmatTimeOpt} fn={setHrs} />
     </Page>
   )
 }

@@ -20,6 +20,7 @@ import useSWR from "swr";
 import { DailyChart } from "../../components/chart";
 import { fetcher, fmatObsOpt, OBS } from "../../components/conf";
 import { Page, UnitCtx } from "../../components/Page";
+import { inList, useUrlState } from "../../components/urlState";
 import { RadioButtonGroup, REPORT_OBS_OPTIONS, styleForReportValue } from "../../components/report";
 import { formatObs } from "../../format";
 import { ClimateAnom, ClimateNormalsLink, ClimateNote, dailyNormal, hasClimate } from "../../components/climate";
@@ -247,18 +248,30 @@ function HourlyWebcamGallery({ date, dateLabel, isToday, currentHour }) {
     </Box>;
 }
 
+// Selections kept in the URL, e.g. /reports/day?date=2026-10-05&var=rain
+const DAY_URL_STATE = {
+    date: {
+        def: () => "",
+        valid: (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) && v <= stationToday(),
+    },
+    obs: { param: "var", def: () => "temp", valid: inList(REPORT_OBS_OPTIONS) },
+};
+
 export default function DailyReport() {
     const [today, setToday] = useState("");
     const [currentHour, setCurrentHour] = useState(0);
-    const [selectedDate, setSelectedDate] = useState("");
-    const [obs, setObs] = useState("temp");
+    const [{ date, obs }, update, ready] = useUrlState(DAY_URL_STATE);
 
     useEffect(() => {
-        const currentDate = stationToday();
-        setToday(currentDate);
+        setToday(stationToday());
         setCurrentHour(stationHour());
-        setSelectedDate(currentDate);
     }, []);
+
+    // An empty date means "today" (the default, left out of the URL); the
+    // query is only known after hydration, so wait for it before fetching.
+    const selectedDate = ready && today ? (date || today) : "";
+    const setSelectedDate = (value) => update({ date: value === today ? "" : value });
+    const setObs = (value) => update({ obs: value });
 
     const datestamp = selectedDate.replace(/-/g, "");
     const url = datestamp ? "/api/web/report/day/" + datestamp : null;
