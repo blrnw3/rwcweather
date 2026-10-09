@@ -19,6 +19,9 @@ import { fetcher, fmatObsOptIcon, fmatTimeOpt } from '../components/conf';
 import { Page, UnitCtx } from "../components/Page";
 import RadioCard from '../components/RadioCard';
 import { aqiStatus, formatObs, moonPhase, prettySecs, timeOf } from '../format';
+import {
+  CLIMATE_PAGE, ClimateAnom, dailyNormal, monthlyNormal, waterYearNormal, waterYearNormalToDate,
+} from '../components/climate';
 import React from 'react';
 
 let isLoading = true;
@@ -157,15 +160,29 @@ function HomeCard(props) {
   </Box>
 }
 
+// Station-local calendar date [y, m, d] from the API's server block.
+function serverDate(...sources) {
+  for (const src of sources) {
+    if (src?.server?.date) {
+      return src.server.date;
+    }
+  }
+  return null;
+}
+
+// Optional `normals` = { lo, hi } (DB units) adds a bracketed climate
+// comparison after each value, e.g. "Lo: 57.2 °F (+1.3) @ 07:18".
 function LoHiCardSection(props) {
   let lo = formatObs(unit, props.hilo?.["min_val"], props.obs);
   let loAt = timeOf(props.hilo?.["min_at"]);
   let hi = formatObs(unit, props.hilo?.["max_val"], props.obs);
   let hiAt = timeOf(props.hilo?.["max_at"]);
+  const anom = (value, normal, stat) => props.normals &&
+    <ClimateAnom inline value={value} normal={normal} obs={props.obs} stat={stat} unit={unit} />;
 
   return <Box borderBottom="1px solid #ccc" borderTop="1px solid #ccc" py="1px">
-    <Text>Lo: <Text as="span" fontWeight="bold">{lo}</Text> @ {loAt}</Text>
-    <Text>Hi: <Text as="span" fontWeight="bold">{hi}</Text> @ {hiAt}</Text>
+    <Text>Lo: <Text as="span" fontWeight="bold">{lo}</Text>{anom(props.hilo?.["min_val"], props.normals?.lo, "min")} @ {loAt}</Text>
+    <Text>Hi: <Text as="span" fontWeight="bold">{hi}</Text>{anom(props.hilo?.["max_val"], props.normals?.hi, "max")} @ {hiAt}</Text>
   </Box>
 }
 
@@ -210,6 +227,14 @@ function YesterdayRange(props) {
   </Text>
 }
 
+// Today's normal low / high, interpolated daily between mid-month normals.
+function todayTempNormals(date) {
+  if (!date) {
+    return null;
+  }
+  return { lo: dailyNormal("temp", "min", ...date), hi: dailyNormal("temp", "max", ...date) };
+}
+
 function TemperatureHomeCard(props) {
   const dash = props.dash;
   const icon = <Text as="span" color="red" className="home_ico"><WiThermometer /></Text>
@@ -227,7 +252,7 @@ function TemperatureHomeCard(props) {
     <Text marginBottom="1">
       Feels like <Text as="span" fontWeight="bold">{feels}</Text><Text as="span" paddingLeft="2">{feelsIco}</Text>
     </Text>
-    <LoHiCardSection hilo={dash?.today?.temperature} obs="temp" />
+    <LoHiCardSection hilo={dash?.today?.temperature} obs="temp" normals={todayTempNormals(serverDate(dash, props.summary))} />
     <YesterdayRange summary={props.summary} name="temperature" fmat="temp" />
     <TrendArrow24hr trends={dash?.trends} obs="temp" obs_conv="abs_temp" />
   </HomeCard>
@@ -297,6 +322,9 @@ function RainHomeCard(props) {
   let monthly = formatObs(unit, props.summary?.["month"]?.["rain_total"]?.["total"], "rain");
   let annual = formatObs(unit, props.summary?.["year"]?.["rain_total"]?.["total"], "rain");
   let water_yr = formatObs(unit, props.summary?.["water_year"]?.["rain_total"]?.["total"], "rain");
+  const monthTotal = props.summary?.["month"]?.["rain_total"]?.["total"];
+  const wyTotal = props.summary?.["water_year"]?.["rain_total"]?.["total"];
+  const date = serverDate(props.summary, dash);
   let last = dash ? prettySecs(new Date(dash["now"]["t"]) - new Date(dash["last_rain"])) : "-";
 
   const icon = <Text as="span" color="blue" className="home_ico"><WiRain /></Text>
@@ -309,9 +337,36 @@ function RainHomeCard(props) {
     <Text borderBottom="1px solid #ccc">Past 10m: <Text as="span" fontWeight="bold">{rn10}</Text></Text>
     <Text>Hourly: <Text as="span" fontWeight="bold">{rnhr}</Text></Text>
     <Text borderBottom="1px solid #ccc">Past 24hrs: <Text as="span" fontWeight="bold">{rn24}</Text></Text>
-    <Text>Monthly: <Text as="span" fontWeight="bold">{monthly}</Text></Text>
+    <Text>
+      Monthly: <Text as="span" fontWeight="bold">{monthly}</Text>
+      {date && <ClimateAnom inline value={monthTotal} normal={monthlyNormal("rain", "total", date[1])} obs="rain" stat="total" unit={unit} />}
+    </Text>
     <Text>Water Year: <Text as="span" fontWeight="bold">{water_yr}</Text></Text>
+    <WaterYearClimate total={wyTotal} date={date} />
   </HomeCard>
+}
+
+// Water-year rain to date against (1) the full Oct-Sep normal, as an
+// absolute difference, and (2) the normal expected by today's date, as a
+// percentage. Early in the water year the expected amount is small, so it is
+// shown alongside the percentage; if it is ~0 the percentage is omitted.
+function WaterYearClimate({ total, date }) {
+  if (total == null || !date) {
+    return null;
+  }
+  const fullNormal = waterYearNormal("rain", "total");
+  const expected = waterYearNormalToDate("rain", "total", ...date);
+  if (fullNormal == null || expected == null) {
+    return null;
+  }
+  const normalLink = <Link href={CLIMATE_PAGE} textDecoration="underline">normal</Link>;
+  return <Text className="water-year-climate" fontSize="sm" lineHeight="short" color="gray.700">
+    <span className="wy-vs-full">({formatObs(unit, total - fullNormal, "rain", true)} vs full-year {normalLink})</span>
+    <br />
+    <span className="wy-vs-to-date">{expected >= 0.005
+      ? <>({Math.round(total / expected * 100)}% of {formatObs(unit, expected, "rain")} normal to date)</>
+      : <>(normal to date: {formatObs(unit, 0, "rain")})</>}</span>
+  </Text>
 }
 
 function PressureHomeCard(props) {
