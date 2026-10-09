@@ -95,5 +95,5 @@ echo "Verifying production..."
 RWCWX_PUBLIC_URL="$PUBLIC_URL" "$SCRIPT_DIR/verify.sh"
 
 build_id="$(<"$APP_DIR/.next/BUILD_ID")"
-echo "Frontend deployment complete: $PUBLIC_URL/reports/month"
+echo "Frontend deployment complete: $PUBLIC_URL/reports/alltime"
 echo "Build ID: $build_id"

@@ -15,10 +15,19 @@ done
 
 curl --fail --silent --show-error \
     --retry 5 --retry-delay 2 \
-    "$PUBLIC_URL/reports/month" > "$VERIFY_DIR/month.html"
+    "$PUBLIC_URL/reports/alltime" > "$VERIFY_DIR/alltime.html"
 
-if ! grep -q 'obs-monthly-matrix' "$VERIFY_DIR/month.html"; then
-    echo "Monthly matrix marker was not found in the production page." >&2
+for marker in obs-monthly-matrix obs-alltime-summary; do
+    if ! grep -q "$marker" "$VERIFY_DIR/alltime.html"; then
+        echo "All-time page marker $marker was not found in the production page." >&2
+        exit 1
+    fi
+done
+
+old_url_target="$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' \
+    --retry 5 --retry-delay 2 "$PUBLIC_URL/reports/month")"
+if [[ "$old_url_target" != "308 $PUBLIC_URL/reports/alltime" && "$old_url_target" != "301 $PUBLIC_URL/reports/alltime" ]]; then
+    echo "Old /reports/month URL did not redirect to /reports/alltime: $old_url_target" >&2
     exit 1
 fi
 
@@ -40,7 +49,7 @@ for period in ("daily", "monthly", "yearly"):
         raise SystemExit(f"Production API returned no {period} results")
 
 print(
-    "Verified monthly matrix and API: "
+    "Verified all-time page, redirect and API: "
     f"{len(result['daily'])} days, "
     f"{len(result['monthly'])} months, "
     f"{len(result['yearly'])} years"
