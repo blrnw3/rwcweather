@@ -82,6 +82,28 @@ function daysInMonth(year, month) {
     return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
+// First month of the Oct-Sep water year (kept in step with
+// WATER_YEAR_START_MONTH in waterYear.js; not imported to avoid a cycle).
+const WATER_YEAR_FIRST_MONTH = 10;
+
+/**
+ * Normal total expected by the end of `day` of `month` in the water year
+ * containing that date: the monthly normals of the water year's completed
+ * months, plus the current month's normal x (day / days in month).
+ * Totals only (rain); null for variables without monthly normals.
+ */
+export function waterYearNormalToDate(obs, stat, year, month, day) {
+    const entry = normalsFor(obs, stat);
+    if (!entry || !isTotal(stat)) {
+        return null;
+    }
+    let expected = 0;
+    for (let m = WATER_YEAR_FIRST_MONTH; m !== month; m = m % 12 + 1) {
+        expected += entry.monthly[m - 1];
+    }
+    return expected + entry.monthly[month - 1] * (day / daysInMonth(year, month));
+}
+
 /**
  * Normal for a single day. Totals: the month's normal spread evenly over its
  * days. Averages: linear interpolation between mid-month normals, so values
@@ -130,12 +152,13 @@ export function climateComparison(value, normal, obs, stat, unit) {
 }
 
 /** "(+1.2)" / "(85%)" on its own line under a value, in the cell's colour. */
-export function ClimateAnom({ value, normal, obs, stat, unit }) {
+export function ClimateAnom({ value, normal, obs, stat, unit, inline = false }) {
     const text = climateComparison(value, normal, obs, stat, unit);
     if (text == null) {
         return null;
     }
-    return <Text as="span" className="climate-anom" display="block" fontSize="sm" lineHeight="short"
+    return <Text as="span" className="climate-anom" display={inline ? "inline" : "block"} fontSize="sm"
+        lineHeight="short" ml={inline ? "1" : undefined} fontWeight="normal"
         title={CLIMATE_IS_PLACEHOLDER ? "Compared with PLACEHOLDER climate normals" : "Compared with the climate normal"}>
         ({text})
     </Text>;
