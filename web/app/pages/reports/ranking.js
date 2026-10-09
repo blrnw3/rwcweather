@@ -13,6 +13,7 @@ import {
 import { useContext, useState } from "react";
 import useSWR from "swr";
 import { fetcher, fmatObsOpt, OBS } from "../../components/conf";
+import { ClimateNormalsLink } from "../../components/climate";
 import { Page, UnitCtx } from "../../components/Page";
 import {
     CountThresholdSelector,
@@ -246,6 +247,7 @@ export default function RankingReport() {
         <Heading as="h2" size="2">
             {rankingTitle} {OBS.get(obs).name}{monthSuffix}
         </Heading>
+        <ClimateNormalsLink />
 
         <Text fontWeight="bold">Period:</Text>
         <RadioButtonGroup name="period" value={period} options={periodOptions(obs)} optFormat={(value) => PERIOD_NAMES[value]} fn={setPeriod} />

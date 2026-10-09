@@ -22,6 +22,7 @@ import { fetcher, fmatObsOpt, OBS } from "../../components/conf";
 import { Page, UnitCtx } from "../../components/Page";
 import { RadioButtonGroup, REPORT_OBS_OPTIONS, styleForReportValue } from "../../components/report";
 import { formatObs } from "../../format";
+import { ClimateAnom, ClimateNormalsLink, ClimateNote, dailyNormal, hasClimate } from "../../components/climate";
 
 const STATION_TIME_ZONE = "America/Los_Angeles";
 const SUMMARY_ROWS = [
@@ -86,16 +87,30 @@ function stationTime(timestamp) {
     }).format(new Date(timestamp));
 }
 
-function SummaryCell({ value, at, obs, summary, unit }) {
+// Daily climate comparison (as on nw3weather's daily report): temperature
+// low / high / mean and mean wind speed against that day's normal. Daily rain
+// totals are not compared, since a single day's rain vs normal is meaningless.
+function dayNormal(obs, summary, date) {
+    const stat = summary === "min" ? "min" : summary === "max" ? "max" : "avg";
+    if (!date || obs === "rain" || (obs !== "temp" && stat !== "avg") || !hasClimate(obs, stat)) {
+        return null;
+    }
+    const [year, month, day] = date.split("-").map(Number);
+    return { stat, normal: dailyNormal(obs, stat, year, month, day) };
+}
+
+function SummaryCell({ value, at, obs, summary, unit, date }) {
     const obsObj = OBS.get(obs);
     const { bg, col } = styleForReportValue(value, obsObj.fmat, unit, summary);
+    const climate = dayNormal(obs, summary, date);
     return <Td isNumeric backgroundColor={bg} color={col}>
         <Text fontWeight="bold">{formatObs(unit, value, obsObj.fmat)}</Text>
+        {climate && <ClimateAnom value={value} normal={climate.normal} obs={obs} stat={climate.stat} unit={unit} />}
         {at != null && <Text fontSize="xs">at {stationTime(at)}</Text>}
     </Td>;
 }
 
-function DailySummary({ summary }) {
+function DailySummary({ summary, date }) {
     const unit = useContext(UnitCtx);
 
     return <Box mt="5" overflowX="auto">
@@ -116,14 +131,15 @@ function DailySummary({ summary }) {
                     const middleKey = obs === "rain" ? "total" : "avg";
                     return <Tr key={summaryKey}>
                         <Td fontWeight="bold">{OBS.get(obs).name}</Td>
-                        <SummaryCell value={stats.min_val} at={stats.min_at} obs={obs} summary="min" unit={unit} />
-                        <SummaryCell value={stats.max_val} at={stats.max_at} obs={obs} summary="max" unit={unit} />
-                        <SummaryCell value={stats[middleKey]} obs={obs} summary={middleKey} unit={unit} />
+                        <SummaryCell value={stats.min_val} at={stats.min_at} obs={obs} summary="min" unit={unit} date={date} />
+                        <SummaryCell value={stats.max_val} at={stats.max_at} obs={obs} summary="max" unit={unit} date={date} />
+                        <SummaryCell value={stats[middleKey]} obs={obs} summary={middleKey} unit={unit} date={date} />
                         <Td isNumeric>{stats.count ?? 0}</Td>
                     </Tr>;
                 })}
             </Tbody>
         </Table>
+        <ClimateNote currentPeriodNote={false} />
     </Box>;
 }
 
@@ -257,6 +273,7 @@ export default function DailyReport() {
     return <Page name="reports" sub="daily" title="Reports | daily">
         <Heading as="h1" size="1">Reports: Daily weather</Heading>
         <Heading as="h2" size="2">{dateLabel || "Choose a date"}</Heading>
+        <ClimateNormalsLink />
 
         <Text fontWeight="bold">Date:</Text>
         <Flex align="center" wrap="wrap" gap="2" mb="3">
@@ -285,7 +302,7 @@ export default function DailyReport() {
         {isLoading && <Flex py="8" align="center" gap="3"><Spinner /> Loading daily report…</Flex>}
         {report && <>
             {observations.length === 0 && <Text py="3">No observations are available for this date.</Text>}
-            <DailySummary summary={report.summary} />
+            <DailySummary summary={report.summary} date={selectedDate} />
 
             <Box mt="6">
                 <Heading as="h3" size="3">Daily graph</Heading>

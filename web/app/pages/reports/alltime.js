@@ -16,6 +16,7 @@ import {
     styleForReportValue,
 } from "../../components/report";
 import { formatObs } from "../../format";
+import { annualNormal, ClimateAnom, ClimateNormalsLink, ClimateNote, hasClimate, monthlyNormal } from "../../components/climate";
 import { useWaterYears, WaterYearCell, WaterYearHeader, WaterYearNote } from "../../components/waterYear";
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -85,6 +86,9 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
     const lastYear = Math.max(currentYear, waterYears?.currentWaterYear || currentYear);
     const years = Array.from(Array(lastYear - REPORT_YEAR_START + 1).keys())
         .map((offset) => lastYear - offset);
+    // Climate comparison (as on nw3weather) only for the mean / total summary
+    // of a daily series that has normals, e.g. mean of daily highs, rain total.
+    const showClimate = summary === obsObj.summary && hasClimate(obs, dailyAggregation);
 
     return <Grid id="obs-monthly-matrix"
         templateColumns={"0.8fr repeat(" + (waterYears ? 14 : 13) + ", 1fr)"}
@@ -126,6 +130,8 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
                         px="1"
                     >
                         {isFuture ? "" : formattedValue}
+                        {showClimate && !isFuture && <ClimateAnom value={value} obs={obs} stat={dailyAggregation} unit={unit}
+                            normal={monthlyNormal(obs, dailyAggregation, month + 1)} />}
                     </Box>;
                 })}
                 {(() => {
@@ -152,6 +158,8 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
                         px="1"
                     >
                         {formattedValue}
+                        {showClimate && !isFuture && <ClimateAnom value={value} obs={obs} stat={dailyAggregation} unit={unit}
+                            normal={annualNormal(obs, dailyAggregation)} />}
                     </Box>;
                 })()}
                 {waterYears && <WaterYearCell waterYear={year} data={waterYears} obs={obs} unit={unit} summary={summary} />}
@@ -160,6 +168,7 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
         {error && <Text gridColumn="1 / -1" color="red.600">Unable to load monthly data.</Text>}
         {waterYears?.error && <Text gridColumn="1 / -1" color="red.600">Unable to load water-year data.</Text>}
         {waterYears && <Box gridColumn="1 / -1"><WaterYearNote data={waterYears} obs={obs} unit={unit} summary={summary} /></Box>}
+        {showClimate && <ClimateNote gridColumn="1 / -1" />}
     </Grid>;
 }
 
@@ -308,6 +317,7 @@ export default function AllTimeReport() {
         <Heading as="h2" size="2">
             {SUMMARY_NAMES[summary]} of {DAILY_AGGREGATION_NAMES[dailyAggregation]} {OBS.get(obs).name}
         </Heading>
+        <ClimateNormalsLink />
 
         <Text fontWeight="bold">Variable:</Text>
         <RadioButtonGroup name="obs" value={obs} options={REPORT_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
