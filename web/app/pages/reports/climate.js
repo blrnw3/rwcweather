@@ -8,6 +8,7 @@ import {
     monthlyNormals,
     waterYearNormal,
 } from "../../components/climate";
+import { DailyTempNormalsChart, MonthlyNormalsChart } from "../../components/climateCharts";
 import { Page, UnitCtx } from "../../components/Page";
 import { styleForReportValue } from "../../components/report";
 import { formatObs, unitForObsType } from "../../format";
@@ -131,6 +132,14 @@ function ClimateTable() {
     </Box>;
 }
 
+// Today's date at the station (America/Los_Angeles) as [y, m, d].
+function stationToday() {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date()).split("-");
+    return parts.map(Number);
+}
+
 export default function ClimateReport() {
     // The unit preference lives in localStorage, so render the (static) table
     // only on the client to avoid a server/client unit mismatch on hydration.
@@ -150,6 +159,18 @@ export default function ClimateReport() {
         </Text>}
 
         {mounted && <ClimateTable />}
+
+        <Heading as="h3" size="3" mt="6">Charts</Heading>
+        {mounted && <MonthlyNormalsChart period={CLIMATE_META.period} />}
+        <Text mt="2" fontSize="sm">
+            Bars span the normal monthly low to high temperature, with the mean marked; blue columns show the
+            normal monthly rainfall (right-hand axis).
+        </Text>
+        {mounted && <DailyTempNormalsChart year={stationToday()[0]} today={stationToday()} />}
+        <Text mt="2" fontSize="sm">
+            Daily normals are interpolated linearly between the monthly normals, anchored at mid-month, so they
+            change smoothly through the year. These are the values the daily report's brackets compare against.
+        </Text>
 
         <Heading as="h3" size="3" mt="6">Source and methods</Heading>
         <Box id="climate-source">

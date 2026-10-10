@@ -132,6 +132,23 @@ export function dailyNormal(obs, stat, year, month, day) {
 }
 
 /**
+ * dailyNormal() for every day of `year` (365 or 366 entries), as
+ * { month, day, value } with month 1-12. Null if there are no normals.
+ */
+export function dailyNormalsForYear(obs, stat, year) {
+    if (!hasClimate(obs, stat)) {
+        return null;
+    }
+    const days = [];
+    for (let month = 1; month <= 12; month++) {
+        for (let day = 1; day <= daysInMonth(year, month); day++) {
+            days.push({ month, day, value: dailyNormal(obs, stat, year, month, day) });
+        }
+    }
+    return days;
+}
+
+/**
  * Comparison text (without brackets) for `value` against `normal`, or null.
  * Totals: percent of normal ("85%"); averages: signed difference in the
  * visitor's units ("+1.2", "-0.4").
