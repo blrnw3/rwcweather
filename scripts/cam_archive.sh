@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# This copies wxcam images to long-term storage, and deletes old storage
+# This copies wxcam images to long-term storage, and deletes old storage.
+# Copies go to a hidden .part file in the target dir, then are atomically renamed.
 set -eu
 
 DST_XL="/var/www/rwc/html/cumulus/skycam_raw.jpg"
@@ -9,13 +10,23 @@ DST_ARCHIVE="/var/www/rwc/html/cumulus/camdump"
 
 TS=$(date +"%Y%m%d_%H%M")
 
-cp "$DST_SM" "${DST_ARCHIVE}/sky_sm/${TS}.jpg"
-cp "$DST_LG" "${DST_ARCHIVE}/sky_lg/${TS}.jpg"
-cp "$DST_XL" "${DST_ARCHIVE}/sky_xl/${TS}.jpg"
+archive() {
+  local src="$1" dir="$2"
+  local tmp="${dir}/.${TS}.jpg.part"
+  cp "$src" "$tmp" && mv -f "$tmp" "${dir}/${TS}.jpg"
+}
 
-find "${DST_ARCHIVE}/sky_xl/" -mtime +1 -regex ".*[12346789]\.jpg" -delete
-find "${DST_ARCHIVE}/sky_lg/" -mtime +3 -regex ".*[1234567895]\.jpg" -delete
-find "${DST_ARCHIVE}/sky_sm/" -mtime +7 -delete
-find "${DST_ARCHIVE}/sky_xl/" -mtime +7 -regex ".*[1245][0]\.jpg" -delete
-find "${DST_ARCHIVE}/sky_xl/" -mtime +7 -regex ".*[235][5]\.jpg" -delete
-find "${DST_ARCHIVE}/sky_xl/" -mtime +30 -regex ".*[14][5]\.jpg" -delete
+archive "$DST_SM" "${DST_ARCHIVE}/sky_sm"
+archive "$DST_LG" "${DST_ARCHIVE}/sky_lg"
+archive "$DST_XL" "${DST_ARCHIVE}/sky_xl"
+
+# clean up any stale temp files left by an interrupted run
+find "${DST_ARCHIVE}/" -name ".*.jpg.part" -mmin +10 -delete
+
+find "${DST_ARCHIVE}/sky_xl/" -mmin +300 -regex ".*[123456789]\.jpg" -delete
+find "${DST_ARCHIVE}/sky_lg/" -mtime +2 -regex ".*[123456789]\.jpg" -delete
+find "${DST_ARCHIVE}/sky_sm/" -mtime +1 -delete
+find "${DST_ARCHIVE}/sky_xl/" -mtime +2 -regex ".*[1245][0]\.jpg" -delete
+find "${DST_ARCHIVE}/sky_xl/" -mtime +7 -regex ".*30\.jpg" -delete
+find "${DST_ARCHIVE}/sky_xl/" -mtime +7 -regex ".*[13579]00.jpg" -delete
+find "${DST_ARCHIVE}/sky_lg/" -mtime +7 -regex ".*[1245][0]\.jpg" -delete
