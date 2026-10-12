@@ -67,4 +67,7 @@ def feats(img: Image.Image) -> Dict[str, float]:
         f["clip_spread"] = 0.
         f["glow"] = 0.
     f["fg_dark_skybright"] = np.percentile(top, 90) - np.percentile(bot, 50)
+    # glitch cue (not a model input): pastel magenta smear the camera's encoder leaves over the foreground
+    Rb, Gb, Bb = R[H // 2:], G[H // 2:], B[H // 2:]
+    f["pink_bot"] = ((Rb - Gb > 0.08) & (Bb - Gb > 0.08) & (np.minimum(Rb, Bb) > 0.45)).mean()
     return {k: float(v) for k, v in f.items()}

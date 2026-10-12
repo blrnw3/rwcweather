@@ -4,7 +4,8 @@ Pipeline (PLAN 3.1/3.2), identical to the research evaluation (eval/sunday.py, r
   1. grid: every UTC minute overlapping [sunrise, sunset]; weight w = overlap fraction (so a cloudless day sums to
      exactly the astronomical daylight length, rwcwx.astronomy convention: sun centre at -0.833 deg).
   2. gates: missing (no frame within +-5 min), stale (frame identical to the previous one), ir (night/IR mode,
-     Smean < 0.03 while el > 3). Gated minutes are unclassified (value NULL).
+     Smean < 0.03 while el > 3), glitch (encoder smear over the foreground, pink_bot > 0.05).
+     Gated minutes are unclassified (value NULL).
   3. main model state = p >= 0.5.
   4. low sun (el < 8 deg): carry the nearest confident main-model state (el >= 8, p < .25 or > .75) on the same side
      of solar noon (morning: next one, evening: previous one), vetoed to 0 if sky-clarity prob < 0.3. Flag 'lowsun'.
@@ -22,6 +23,7 @@ VETO = 0.3
 TOLERANCE_S = 300
 IR_SMEAN = 0.03
 IR_MIN_EL = 3.0
+GLITCH_PINK = 0.05
 
 
 @dataclass
@@ -31,6 +33,7 @@ class Frame:
     ps: float                   # sky-clarity P(clear), used for low sun
     smean: float
     stale: bool = False
+    glitch: bool = False
 
 
 @dataclass
@@ -96,6 +99,8 @@ def classify_day(frames: List[Frame], sunrise: datetime, sunset: datetime) -> Li
         m.p, m.ps, m.res_s = f.p, f.ps, abs((m.t - f.t).total_seconds())
         if f.stale:
             m.flags.add("stale")
+        elif f.glitch:
+            m.flags.add("glitch")
         elif f.smean < IR_SMEAN and m.el > IR_MIN_EL:
             m.flags.add("ir")
     if not grid:
