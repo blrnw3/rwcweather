@@ -22,6 +22,7 @@ class Unit(Enum):
     ppm = "ppm"
     mph = "mph"
     degs = "degrees"
+    hours = "h"
 
 
 @dataclass
@@ -185,30 +186,32 @@ class Wdir(ObsVar):
     db_field = "wdir"
 
 
-class Sun(ObsVar):
-    name = "sunshine_duration"
-    unit = Unit.hpa
-    db_field = "sun"
-
-    @classmethod
-    def summary_stats(cls, obs: List[Obs]) -> SummaryStats:
-        stats = super().summary_stats(obs)
-        stats.total = stats.max_val
-        return stats
-
-
 class InTemp(ObsVar):
     name = "pressure"
     unit = Unit.degc
     db_field = "intemp"
 
 
+class Sun(ObsVar):
+    """Webcam sunshine hours. Only daily totals exist (avg_extreme var='sun'), there are no obs minutes."""
+    name = "sunshine"
+    unit = Unit.hours
+    db_field = "sun"
+
+
+class SunPct(ObsVar):
+    """Derived from Sun: daily sunshine as % of possible (sunrise to sunset). Aggregates as the mean of days."""
+    name = "sunshine (% of possible)"
+    unit = Unit.pct
+    db_field = "sunpct"
+
+
 class ObsVarGroup:
-    ALL: Iterable[ObsVarT] = (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun)
+    ALL: Iterable[ObsVarT] = (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt)
 
 
 OBS_VAR_MAP = {o.db_field: o for o in (
-    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun)
+    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun, SunPct)
 )}
 
 
@@ -260,6 +263,11 @@ class MonthSummary:
         stats = {}
         for (var, typ), aes in by_type.items():
             stats[f"{var}_{typ}"] = ObsVar.multiday_summary(aes).as_dict
+        if ("sun", "total") in by_type:
+            # Sunshine as % of possible: mean of the daily %s, as in the reports (#24).
+            from rwcwx.model import sun as sun_model
+            pct = sun_model.pct_days(by_type[("sun", "total")])
+            stats[f"{sun_model.PCT_VAR}_{sun_model.PCT_TYPE}"] = ObsVar.multiday_summary(pct).as_dict
         return stats
 
 

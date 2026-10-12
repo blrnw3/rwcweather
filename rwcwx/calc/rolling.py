@@ -28,7 +28,12 @@ MIN_COVERAGE = 0.9
 ROLLING_VARS: Dict[str, Dict[str, str]] = {
     "rain": {"total": "sum"},
     "temp": {"avg": "mean", "max": "mean", "min": "mean"},
+    "sun": {"total": "sum"},
+    "sunpct": {"avg": "mean"},
 }
+
+
+PARTIAL_DAY_EXCLUDED = ("sun", "sunpct")
 
 
 def min_days_required(n: int) -> int:
@@ -83,7 +88,8 @@ def rolling_ranking(daily: Iterable[Tuple[date, float]], var: str, typ: str, n: 
                     order: str = "highest", limit: int = 25, today: Optional[date] = None) -> List[dict]:
     how = ROLLING_VARS[var][typ]
     last_day = None
-    if how == "mean" and today is not None:
+    # Partial days skew means, and a part-day sunshine total would rank as a dull spell, so both stop at yesterday.
+    if (how == "mean" or var in PARTIAL_DAY_EXCLUDED) and today is not None:
         last_day = today - timedelta(days=1)
     picked = rank_non_overlapping(rolling_windows(daily, n, how, last_day), order, limit)
     return [

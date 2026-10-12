@@ -1,7 +1,8 @@
 import { Box, Flex, Grid, Heading, Spinner, Text, useRadioGroup } from "@chakra-ui/react";
 import { Fragment, useContext } from 'react';
 import useSWR from 'swr';
-import { fetcher, fmatAggTypeOpt, fmatObsOpt, fmatYrOpt, OBS } from '../../components/conf';
+import { baseObs, fetcher, fmatAggTypeOpt, fmatObsOpt, fmatYrOpt, isTotalObs, OBS } from '../../components/conf';
+import { SunViewToggle } from '../../components/report';
 import { daysInMonth } from "../../components/dateUtil";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
@@ -223,11 +224,11 @@ function RainTotals(props) {
 }
 
 const OBS_OPTIONS = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust", "sun"];
-const aggOptionsFor = (obs) => obs === "rain" ? ["total"] : ["max", "min", "avg"];
+const aggOptionsFor = (obs) => isTotalObs(obs) ? ["total"] : (OBS.get(obs).dailyStats || ["max", "min", "avg"]);
 
 // Selections kept in the URL, e.g. /reports/matrix?var=rain&year=2023
 const MATRIX_URL_STATE = {
-    obs: { param: "var", def: () => "temp", valid: inList(OBS_OPTIONS) },
+    obs: { param: "var", def: () => "temp", valid: inList([...OBS_OPTIONS, "sunpct"]) },
     aggType: { param: "daily", def: (s) => aggOptionsFor(s.obs)[0], valid: (v, s) => aggOptionsFor(s.obs).includes(v) },
     year: { def: () => yrEnd.toString(), valid: inList(years) },
 };
@@ -238,7 +239,7 @@ export default function Obs() {
     const obsOptions = OBS_OPTIONS;
 
     // Rain only has daily totals; other variables keep their statistic.
-    const handleObsChange = (x) => update({ obs: x, aggType: x === "rain" ? "total" : aggType === "total" ? "max" : aggType });
+    const handleObsChange = (x) => update({ obs: x, aggType: aggOptionsFor(x).includes(aggType) ? aggType : aggOptionsFor(x)[0] });
     const setAggType = (value) => update({ aggType: value });
     const setYear = (value) => update({ year: value });
 
@@ -251,7 +252,8 @@ export default function Obs() {
         </Heading>
         <ClimateNormalsLink />
 
-        <RadioButtonGroup name="obs" value={obs} options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
+        <RadioButtonGroup name="obs" value={baseObs(obs)} options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
+        <SunViewToggle obs={obs} fn={handleObsChange} Group={RadioButtonGroup} />
         <RadioButtonGroup name="agg" value={aggType} options={aggOpts} optFormat={fmatAggTypeOpt} fn={setAggType} />
         <RadioButtonGroup name="yr" value={year} options={years} optFormat={fmatYrOpt} fn={setYear} />
         

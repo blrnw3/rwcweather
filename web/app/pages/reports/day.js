@@ -22,6 +22,7 @@ import { fetcher, fmatObsOpt, OBS } from "../../components/conf";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
 import { RadioButtonGroup, REPORT_OBS_OPTIONS, styleForReportValue } from "../../components/report";
+import { SunLegend, SunRibbon, useSunDay } from "../../components/sun";
 import { formatObs } from "../../format";
 import { ClimateAnom, ClimateNormalsLink, ClimateNote, dailyNormal, hasClimate } from "../../components/climate";
 
@@ -35,7 +36,6 @@ const SUMMARY_ROWS = [
     ["gust_speed", "gust"],
     ["wind_direction", "wdir"],
     ["rain", "rain"],
-    ["sunshine_duration", "sun"],
     ["aqi", "aqi"],
 ];
 
@@ -249,6 +249,28 @@ function HourlyWebcamGallery({ date, dateLabel, isToday, currentHour }) {
     </Box>;
 }
 
+// Webcam sunshine for the day: total and the minute ribbon. Hidden when there is no sunshine data for the day.
+function DailySunshine({ datestamp }) {
+    const unit = useContext(UnitCtx);
+    const { day, now } = useSunDay(datestamp);
+    if (!day || (!day.total && !(day.spells || []).length)) {
+        return null;
+    }
+    const total = day.total?.hours;
+    return <Box mt="6" className="daily-sunshine">
+        <Heading as="h3" size="3">Sunshine</Heading>
+        <Text>
+            <Text as="span" fontWeight="bold">{total != null ? formatObs(unit, total, "sun") : "–"}</Text>
+            {" of "}{formatObs(unit, day.daylight_h, "sun")} daylight
+            {total != null && day.daylight_h ? " (" + Math.round(100 * total / day.daylight_h) + "%)" : ""}
+            {day.total?.comment?.includes("scaled") ? " · estimated for gaps" : ""}
+            {day.backfill ? " · estimated from 30-min snapshots" : ""}
+        </Text>
+        <Box maxW="900px" my="2"><SunRibbon day={day} nowMs={now} height="22px" /></Box>
+        <SunLegend />
+    </Box>;
+}
+
 // Selections kept in the URL, e.g. /reports/day?date=2026-10-05&var=rain
 const DAY_URL_STATE = {
     date: {
@@ -317,6 +339,7 @@ export default function DailyReport() {
         {report && <>
             {observations.length === 0 && <Text py="3">No observations are available for this date.</Text>}
             <DailySummary summary={report.summary} date={selectedDate} />
+            <DailySunshine datestamp={datestamp} />
 
             <Box mt="6">
                 <Heading as="h3" size="3">Daily graph</Heading>

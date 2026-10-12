@@ -71,4 +71,6 @@ app.add_url_rule("/api/var/rolling/<var>/<typ>/", view_func=r.var_rolling)
 
 # Other
 app.add_url_rule("/api/astronomy", view_func=r.astronomy)
+app.add_url_rule("/api/sun/day/<datestamp:d>", view_func=r.sun_day)
+app.add_url_rule("/api/sun/day/", view_func=r.sun_day)
 app.add_url_rule("/api/rain", view_func=r.rain_stats)

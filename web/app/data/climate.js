@@ -13,8 +13,11 @@
 //      station's nights ran warmer than PRISM. Likely the hillside thermal
 //      belt, possibly also some sensor warmth at night.
 //    - temp.max: raw PRISM tmax (the station shows no consistent offset).
-//    - temp.avg: not stored; derived as (min + max) / 2, so it uses the
-//      calibrated min.
+//    - temp.avg: explicitly stored, not derived. The station's daily mean
+//      (computed from all 1-minute readings) runs below (max + min)/2 by
+//      about 0.3 °C in winter to 1.3 °C in summer (annual mean -0.82 °C).
+//      Each month's avg normal = (min + max)/2 + D, where D is the station's
+//      2021-2026 monthly mean of (daily mean - daily midpoint).
 //    - rain.total: raw PRISM ppt (617 mm = 24.30 in/yr; the station has
 //      averaged 0.99x PRISM). Rain is the most location-sensitive normal:
 //      neighbouring cells range 21.2-26.7 in/yr. Water year = annual.
@@ -66,6 +69,9 @@ export const CLIMATE_NORMALS = {
         "Adjustments were made for the sensor's location (hillside thermal belt).",
         "Sunshine duration and solar radiation normals are satellite-based: NREL NSRDB via PVGIS 5.2 (2005-2015, ~4 km grid). "
             + "Sunshine hours and percent-of-possible are estimated from the radiation and are approximate, especially in summer.",
+        "The mean-temperature normal is adjusted for how the station averages: its daily mean (all 1-minute "
+            + "readings) runs below (high + low) / 2, by about 0.3 °C in winter to 1.3 °C in summer, because "
+            + "nights are long and afternoon peaks are brief.",
     ],
 
     normals: {
@@ -80,7 +86,11 @@ export const CLIMATE_NORMALS = {
                 unit: "degC",
                 monthly: [15.40, 16.84, 18.68, 20.24, 22.84, 26.13, 27.15, 27.50, 27.74, 24.95, 19.08, 15.28],
             },
-            // avg omitted: derived as (min + max) / 2
+            avg: {
+                unit: "degC",
+                // (min + max)/2 + D, where D is the station's 2021-2026 monthly mean of (daily mean - daily midpoint)
+                monthly: [10.88, 11.80, 12.88, 13.72, 15.89, 18.13, 19.15, 19.48, 19.53, 17.73, 13.70, 10.84],
+            },
         },
         rain: {
             total: {

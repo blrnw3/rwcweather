@@ -1,7 +1,7 @@
 import { Box, Flex, Grid, Heading, Spinner, Text } from "@chakra-ui/react";
 import { useContext } from "react";
 import useSWR from "swr";
-import { fetcher, fmatObsOpt, OBS } from "../../components/conf";
+import { baseObs, defaultDailyStat, fetcher, fmatObsOpt, OBS } from "../../components/conf";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
 import {
@@ -10,12 +10,14 @@ import {
     DAILY_AGGREGATION_NAMES,
     dailyAggregationOptions,
     RadioButtonGroup,
-    REPORT_OBS_OPTIONS,
+    DAILY_VALUE_OBS_OPTIONS,
+    DAILY_VALUE_OBS_STATES,
     REPORT_YEAR_START,
     SUMMARY_NAMES,
     summaryKey,
     summaryOptions,
     styleForReportValue,
+    SunViewToggle,
 } from "../../components/report";
 import { formatObs } from "../../format";
 import { annualNormal, ClimateAnom, ClimateNormalsLink, ClimateNote, hasClimate, monthlyNormal } from "../../components/climate";
@@ -330,9 +332,9 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
 
 // Selections kept in the URL, e.g. /reports/alltime?var=rain&summary=count&threshold=0.1
 const ALLTIME_URL_STATE = {
-    obs: { param: "var", def: () => "temp", valid: inList(REPORT_OBS_OPTIONS) },
+    obs: { param: "var", def: () => "temp", valid: inList(DAILY_VALUE_OBS_STATES) },
     dailyAggregation: {
-        param: "daily", def: (s) => OBS.get(s.obs).summary, valid: (v, s) => dailyAggregationOptions(s.obs).includes(v),
+        param: "daily", def: (s) => defaultDailyStat(s.obs, OBS.get(s.obs).summary), valid: (v, s) => dailyAggregationOptions(s.obs).includes(v),
     },
     summary: { def: (s) => OBS.get(s.obs).summary, valid: (v, s) => summaryOptions(s.obs).includes(v) },
     threshold: {
@@ -349,7 +351,7 @@ export default function AllTimeReport() {
     // summary follows the new variable (Min/Max/Count are kept).
     const handleObsChange = (nextObs) => update({
         obs: nextObs,
-        dailyAggregation: OBS.get(nextObs).summary,
+        dailyAggregation: defaultDailyStat(nextObs, OBS.get(nextObs).summary),
         threshold: "0",
         summary: summary === "avg" || summary === "total" ? OBS.get(nextObs).summary : summary,
     });
@@ -365,7 +367,8 @@ export default function AllTimeReport() {
         <ClimateNormalsLink />
 
         <Text fontWeight="bold">Variable:</Text>
-        <RadioButtonGroup name="obs" value={obs} options={REPORT_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
+        <RadioButtonGroup name="obs" value={baseObs(obs)} options={DAILY_VALUE_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
+        <SunViewToggle obs={obs} fn={handleObsChange} />
         <Text mt="1" fontWeight="bold">Daily statistic:</Text>
         <RadioButtonGroup
             name="daily-aggregation"

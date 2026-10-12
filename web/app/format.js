@@ -109,6 +109,32 @@ const OBS_FORMAT = {
         us: [29.5, 29.6, 29.7, 29.8, 29.9, 30, 30.1, 30.2, 30.3]
       }
     },
+    sun: {
+      units: {
+        base: "h",
+      },
+      conv: {
+      },
+      precision: {
+        base: 1,
+      },
+      scale: {
+        base: [0.5, 2, 4, 6, 8, 10, 11, 12],
+      }
+    },
+    sunpct: {
+      units: {
+        base: "%",
+      },
+      conv: {
+      },
+      precision: {
+        base: 0,
+      },
+      scale: {
+        base: [10, 25, 40, 55, 70, 80, 90, 97],
+      }
+    },
     aqi: {
       units: {
         base: "",
@@ -143,19 +169,6 @@ const OBS_FORMAT = {
       },
       scale: {
         base: [45, 90, 135, 180, 225, 270, 315, 360],
-      }
-    },
-    sun: {
-      units: {
-        base: "h",
-      },
-      conv: {
-      },
-      precision: {
-        base: 0,
-      },
-      scale: {
-        base: [50, 100, 150, 200, 250, 300, 350, 400],
       }
     },
     solr: {

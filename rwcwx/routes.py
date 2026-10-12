@@ -1,9 +1,11 @@
 from datetime import date, datetime, timedelta
 from functools import lru_cache
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 from dateutil.tz import UTC
 from flask import request
+
+from rwcwx import logger
 
 from rwcwx.astronomy import get_all_times_rwc, getTimes
 from rwcwx.calc.avg_extreme import AvgExtAggregator, MonthSummary, DaySummary, YearSummary, WaterYearRainSummary
@@ -11,6 +13,7 @@ from rwcwx.calc.rolling import ROLLING_DAYS, ROLLING_VARS, min_days_required, ro
 from rwcwx.config import TZ
 from rwcwx.model.avgext import AvgExtQ
 from rwcwx.model.obs import ObsQ
+from rwcwx.model import sun as sun_model
 from rwcwx.models import AvgExt, Base, db, m, Obs
 from rwcwx.util import DateStampConverter, DateUtil
 
@@ -45,6 +48,7 @@ def dashboard_live():
             now=trends[0],
             trends=trends,
             today=_today_stats(now.date(), int(now.timestamp() // 60)),
+            sun=_sun_today(now.date(), int(now.timestamp() // 60)),
             last_rain=last_rain,
             rain_trend=dict(
                 last=last_rain,
@@ -61,6 +65,24 @@ def dashboard_live():
 def _today_stats(day: date, _minute: int) -> dict:
     """Compute today's dashboard summary at most once per minute per worker."""
     return DaySummary(day).stats_json()
+
+
+@lru_cache(maxsize=2)
+def _sun_today(day: date, _minute: int) -> Optional[dict]:
+    """Sunshine block for the live dashboard, at most once per minute per worker. Never breaks the dashboard."""
+    try:
+        return sun_model.dashboard_block(day)
+    except Exception as e:  # e.g. obs_inferred missing on a dev DB
+        logger.warning(f"sun dashboard block failed: {e}")
+        return None
+
+
+def sun_day(d: date = None):
+    """Webcam sunshine for one local day: total, spells (sun / no sun / unknown) and daylight."""
+    d = d or DateUtil.now().date()
+    if isinstance(d, datetime):
+        d = d.date()
+    return _wrap_result(sun_model.day_report(d), date=d)
 
 
 def dashboard_summary():
@@ -160,7 +182,13 @@ def var_rolling(var: str, typ: str):
 @lru_cache(maxsize=64)
 def _rolling_cached(var: str, typ: str, days: int, order: str, limit: int, today: date, _bucket: int) -> list:
     """Each ranking is computed at most once per 5 minutes per worker (the reports refresh every 5 minutes)."""
-    return rolling_ranking(AvgExtQ.daily_values(var, typ), var, typ, days, order, limit, today)
+    return rolling_ranking(_daily_values(var, typ), var, typ, days, order, limit, today)
+
+
+def _daily_values(var: str, typ: str):
+    if (var, typ) == (sun_model.PCT_VAR, sun_model.PCT_TYPE):
+        return sun_model.pct_daily_values(AvgExtQ.daily_values("sun", "total"))
+    return AvgExtQ.daily_values(var, typ)
 
 
 def obs_latest():
@@ -228,6 +256,9 @@ def _dictify_obs_result(res):
 
 
 def _var_avg_exts_from_request(var: str, typ: str) -> List[AvgExt]:
+    if var == sun_model.PCT_VAR:
+        # Derived from the daily sunshine totals; only one daily statistic exists.
+        return sun_model.pct_days(_var_avg_exts_from_request("sun", "total")) if typ == sun_model.PCT_TYPE else []
     if "year" in request.args:
         year = int(request.args.get("year", DateUtil.now().year))
         avg_ext = AvgExtQ.for_var_and_year(var, typ, year)
