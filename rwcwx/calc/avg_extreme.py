@@ -263,6 +263,11 @@ class MonthSummary:
         stats = {}
         for (var, typ), aes in by_type.items():
             stats[f"{var}_{typ}"] = ObsVar.multiday_summary(aes).as_dict
+        if ("sun", "total") in by_type:
+            # Sunshine as % of possible: mean of the daily %s, as in the reports (#24).
+            from rwcwx.model import sun as sun_model
+            pct = sun_model.pct_days(by_type[("sun", "total")])
+            stats[f"{sun_model.PCT_VAR}_{sun_model.PCT_TYPE}"] = ObsVar.multiday_summary(pct).as_dict
         return stats
 
 

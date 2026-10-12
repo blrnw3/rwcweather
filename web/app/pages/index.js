@@ -15,7 +15,7 @@ import { VscCircleFilled, VscDash } from "react-icons/vsc";
 import { WiBarometer, WiDaySunny, WiHumidity, WiRain, WiThermometer } from "react-icons/wi";
 import useSWR from "swr";
 import { LatestChart, SummaryChart } from '../components/chart';
-import { fetcher, fmatObsOptIcon, fmatTimeOpt } from '../components/conf';
+import { fetcher, fmatObsOptIcon, fmatTimeOpt, SUN_VIEW_NAMES, SUN_VIEWS } from '../components/conf';
 import { Page, UnitCtx } from "../components/Page";
 import { SunRibbon, useSunDay } from '../components/sun';
 import RadioCard from '../components/RadioCard';
@@ -406,6 +406,7 @@ function SunshineHomeCard(props) {
   const hours = sun?.today_h != null ? formatObs(unit, sun.today_h, "sun") : "–";
   const possible = sun ? formatObs(unit, sun.possible_so_far_h, "sun") : "–";
   const monthTotal = props.summary?.["month"]?.["sun_total"]?.["total"];
+  const monthPct = props.summary?.["month"]?.["sunpct_avg"]?.["avg"];
   let badge = null;
   if (sun?.now) {
     const sunny = sun.now.state === "sun";
@@ -427,7 +428,9 @@ function SunshineHomeCard(props) {
     <Text borderTop="1px solid #ccc">
       Daylight: <Text as="span" fontWeight="bold">{sun ? formatObs(unit, sun.daylight_h, "sun") : "–"}</Text>
     </Text>
-    <Text>Monthly: <Text as="span" fontWeight="bold">{monthTotal != null ? formatObs(unit, monthTotal, "sun") : "–"}</Text></Text>
+    <Text>Monthly: <Text as="span" fontWeight="bold">{monthTotal != null ? formatObs(unit, monthTotal, "sun") : "–"}</Text>
+      {monthPct != null && <Text as="span" fontSize="sm" color="gray.600" className="sun-month-pct"> ({Math.round(monthPct)}% of possible)</Text>}
+    </Text>
   </HomeCard>
 }
 
@@ -513,17 +516,8 @@ function AstronomyHomeCard(props) {
     <Text borderTop="1px solid #ccc">
       Moon rise: <Text as="span" fontWeight="bold">{timeOf(astro?.rise)}</Text>
     </Text>
-    <Text marginBottom="1" borderBottom="1px solid #ccc">
-      Moon set: <Text as="span" fontWeight="bold">{timeOf(astro?.set)}</Text>
-    </Text>
     <Text>
-      Sun rise: <Text as="span" fontWeight="bold">{timeOf(astro?.sunrise)}</Text>
-    </Text>
-    <Text borderBottom="1px solid #ccc">
-      Sun set: <Text as="span" fontWeight="bold">{timeOf(astro?.sunset)}</Text>
-    </Text>
-    <Text >
-      Daylight: <Text as="span" fontWeight="bold">{astro?.daylight_fmt}</Text>
+      Moon set: <Text as="span" fontWeight="bold">{timeOf(astro?.set)}</Text>
     </Text>
   </HomeCard>
 }
@@ -651,12 +645,16 @@ function ChartCardLatest(props) {
 }
 
 function ChartCardDaily(props) {
-  const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "dewpt"];
+  const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "dewpt", "sun"];
   // const periodOptions = ["30", "60"];
   const aggOpts = ["avg", "max", "min"]
 
   const [obs, setObs] = useState("temp");
   const [aggType, setAggType] = useState("avg");
+  const [sunView, setSunView] = useState("sun");  // sunshine as hours or % of possible (#24)
+  const isSun = obs === "sun";
+  const chartObs = isSun ? sunView : obs;
+  const chartAgg = isSun ? (sunView === "sunpct" ? "avg" : "total") : aggType;
   // const [period, setPeriod] = useState("7")
   const period = "30";
 
@@ -665,12 +663,14 @@ function ChartCardDaily(props) {
     <Flex wrap="wrap" justifyContent="space-between" alignItems="center">
       <RadioButtonGroup name="obs" options={obsOptions} optFormat={fmatObsOptIcon} default="temp" fn={setObs} ico={true} />
       <Box m={1}></Box>
-      <RadioButtonGroup name="aggType" options={aggOpts} optFormat={(c) => c} default="avg" fn={setAggType} />
+      {isSun
+        ? <RadioButtonGroup name="sunView" default={sunView} options={SUN_VIEWS} optFormat={(v) => SUN_VIEW_NAMES[v]} fn={setSunView} />
+        : <RadioButtonGroup name="aggType" default={aggType} options={aggOpts} optFormat={(c) => c} fn={setAggType} />}
       <Box m={1}></Box>
       {/* <RadioButtonGroup name="period" options={periodOptions} optFormat={fmatDaysOpt} default={"30"} fn={setPeriod} /> */}
       <Text><Link href="/charts/summary" title="More charts">More</Link></Text>
     </Flex>
-    <SummaryChart m={1} obs={obs} aggType={aggType} height="55%" chartType="column" period={period} spacing={[5, 5, 12, 3]} />
+    <SummaryChart m={1} obs={chartObs} aggType={chartAgg} height="55%" chartType="column" period={period} spacing={[5, 5, 12, 3]} />
   </Box>
 }
 
