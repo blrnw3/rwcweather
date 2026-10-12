@@ -63,3 +63,19 @@ class SunModelTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_sun_times_passes_naive_datetime(monkeypatch):
+    """astronomy uses time.mktime; an aware summer datetime (tm_isdst=1) overflows it on prod (TZ=UTC, older glibc)."""
+    from datetime import date, datetime
+    from rwcwx.model import sun
+    seen = {}
+
+    def fake(dt):
+        seen["dt"] = dt
+        return dict(sunrise=datetime(2026, 10, 12, 14, 10), sunset=datetime(2026, 10, 13, 1, 40), daylight_secs=41400)
+
+    monkeypatch.setattr(sun, "get_all_times_rwc", fake)
+    t = sun.sun_times(date(2026, 10, 12))
+    assert seen["dt"].tzinfo is None and seen["dt"].timetuple().tm_isdst == -1
+    assert t["daylight_h"] == 11.5
