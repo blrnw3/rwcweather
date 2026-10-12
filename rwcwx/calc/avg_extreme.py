@@ -22,6 +22,7 @@ class Unit(Enum):
     ppm = "ppm"
     mph = "mph"
     degs = "degrees"
+    hours = "h"
 
 
 @dataclass
@@ -191,12 +192,19 @@ class InTemp(ObsVar):
     db_field = "intemp"
 
 
+class Sun(ObsVar):
+    """Webcam sunshine hours. Only daily totals exist (avg_extreme var='sun'), there are no obs minutes."""
+    name = "sunshine"
+    unit = Unit.hours
+    db_field = "sun"
+
+
 class ObsVarGroup:
     ALL: Iterable[ObsVarT] = (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt)
 
 
 OBS_VAR_MAP = {o.db_field: o for o in (
-    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt)
+    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun)
 )}
 
 
