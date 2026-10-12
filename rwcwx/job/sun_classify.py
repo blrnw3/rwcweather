@@ -53,7 +53,8 @@ def sun_times_utc(day: date):
     """Sunrise/sunset (naive UTC) for a local day, same call the site makes (rwcwx.astronomy.get_all_times_rwc)."""
     from rwcwx.astronomy import getTimes
     st = getTimes(datetime(day.year, day.month, day.day, 12), LAT, LNG)
-    return st["sunrise"], st["sunset"]
+    # astronomy returns naive datetimes in the process zone (fromtimestamp); make them naive UTC whatever TZ is.
+    return tuple(datetime.utcfromtimestamp(st[k].timestamp()) for k in ("sunrise", "sunset"))
 
 
 def local_day_bounds_utc(day: date):

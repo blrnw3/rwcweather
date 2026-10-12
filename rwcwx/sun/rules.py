@@ -65,7 +65,7 @@ def daylight_grid(sunrise: datetime, sunset: datetime) -> List[Minute]:
     return out
 
 
-def _nearest(frames: List[Frame], t: datetime) -> Optional[Frame]:
+def _nearest(frames: List[Frame], t: datetime, tolerance_s: float = TOLERANCE_S) -> Optional[Frame]:
     # frames sorted by t; small lists (<= ~800), bisect would be overkill but cheap anyway
     import bisect
     keys = [f.t for f in frames]
@@ -74,7 +74,7 @@ def _nearest(frames: List[Frame], t: datetime) -> Optional[Frame]:
     for j in (i - 1, i):
         if 0 <= j < len(frames):
             d = abs((frames[j].t - t).total_seconds())
-            if d <= TOLERANCE_S and (best is None or d < abs((best.t - t).total_seconds())):
+            if d <= tolerance_s and (best is None or d < abs((best.t - t).total_seconds())):
                 best = frames[j]
     return best
 
@@ -88,11 +88,13 @@ def _median5(vals: List[int]) -> List[int]:
     return out
 
 
-def classify_day(frames: List[Frame], sunrise: datetime, sunset: datetime) -> List[Minute]:
+def classify_day(frames: List[Frame], sunrise: datetime, sunset: datetime,
+                 tolerance_s: float = TOLERANCE_S) -> List[Minute]:
+    """tolerance_s: how far a minute may be from its nearest frame (5 min live; 15 min for the 30-min archive)."""
     frames = sorted(frames, key=lambda f: f.t)
     grid = daylight_grid(sunrise, sunset)
     for m in grid:
-        f = _nearest(frames, m.t)
+        f = _nearest(frames, m.t, tolerance_s)
         if f is None:
             m.flags.add("missing")
             continue

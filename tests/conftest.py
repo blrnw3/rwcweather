@@ -34,6 +34,9 @@ def _prod_like_mktime(t):
 
 @pytest.fixture(autouse=True)
 def prod_like_mktime(monkeypatch):
+    # Some job modules force TZ=UTC at import (sun_classify, update_avg_extr); re-apply the test zone per test.
+    os.environ["TZ"] = TEST_TZ
+    time.tzset()
     monkeypatch.setattr(time, "mktime", _prod_like_mktime)
     yield
 
