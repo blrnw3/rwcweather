@@ -1,6 +1,6 @@
 import { Flex, Heading, useRadioGroup } from "@chakra-ui/react";
 import { SummaryChart } from "../../components/chart";
-import { fmatAggTypeOpt, fmatDaysOpt, fmatObsOpt, fmatOptCapitalize, OBS } from '../../components/conf';
+import { fmatAggTypeOpt, fmatDaysOpt, fmatObsOpt, fmatOptCapitalize, isTotalObs, OBS } from '../../components/conf';
 import { Page } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
 import RadioCard from '../../components/RadioCard';
@@ -25,9 +25,9 @@ function RadioButtonGroup(props) {
   </Flex>
 }
 
-const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt"];
+const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "sun"];
 const periodOpts = ["30", "90", "180", "365"];
-const aggOptionsFor = (obs) => obs === "rain" ? ["total"] : ["max", "min", "avg"];
+const aggOptionsFor = (obs) => isTotalObs(obs) ? ["total"] : ["max", "min", "avg"];
 
 // Selections kept in the URL, e.g. /charts/summary?var=rain&days=365&chart=line
 const SUMMARY_URL_STATE = {
@@ -42,7 +42,7 @@ export default function Charts() {
   const aggOpts = aggOptionsFor(obs);
 
   // Rain only has daily totals; other variables keep their statistic.
-  const handleObsChange = (x) => update({ obs: x, aggType: x === "rain" ? "total" : aggType === "total" ? "max" : aggType });
+  const handleObsChange = (x) => update({ obs: x, aggType: isTotalObs(x) ? "total" : aggType === "total" ? "max" : aggType });
   const setAggType = (value) => update({ aggType: value });
   const setPeriod = (value) => update({ period: value });
   const setChartType = (value) => update({ chartType: value });

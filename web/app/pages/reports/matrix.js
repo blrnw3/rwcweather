@@ -1,7 +1,7 @@
 import { Box, Flex, Grid, Heading, Spinner, Text, useRadioGroup } from "@chakra-ui/react";
 import { Fragment, useContext } from 'react';
 import useSWR from 'swr';
-import { fetcher, fmatAggTypeOpt, fmatObsOpt, fmatYrOpt, OBS } from '../../components/conf';
+import { fetcher, fmatAggTypeOpt, fmatObsOpt, fmatYrOpt, isTotalObs, OBS } from '../../components/conf';
 import { daysInMonth } from "../../components/dateUtil";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
@@ -222,8 +222,8 @@ function RainTotals(props) {
         serverDate={summary?.["server"]?.["date"]} unit={unit} />
 }
 
-const OBS_OPTIONS = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust"];
-const aggOptionsFor = (obs) => obs === "rain" ? ["total"] : ["max", "min", "avg"];
+const OBS_OPTIONS = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust", "sun"];
+const aggOptionsFor = (obs) => isTotalObs(obs) ? ["total"] : ["max", "min", "avg"];
 
 // Selections kept in the URL, e.g. /reports/matrix?var=rain&year=2023
 const MATRIX_URL_STATE = {
@@ -238,7 +238,7 @@ export default function Obs() {
     const obsOptions = OBS_OPTIONS;
 
     // Rain only has daily totals; other variables keep their statistic.
-    const handleObsChange = (x) => update({ obs: x, aggType: x === "rain" ? "total" : aggType === "total" ? "max" : aggType });
+    const handleObsChange = (x) => update({ obs: x, aggType: isTotalObs(x) ? "total" : aggType === "total" ? "max" : aggType });
     const setAggType = (value) => update({ aggType: value });
     const setYear = (value) => update({ year: value });
 
