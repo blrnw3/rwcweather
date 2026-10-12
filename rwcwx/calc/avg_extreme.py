@@ -185,6 +185,18 @@ class Wdir(ObsVar):
     db_field = "wdir"
 
 
+class Sun(ObsVar):
+    name = "sunshine_duration"
+    unit = Unit.hpa
+    db_field = "sun"
+
+    @classmethod
+    def summary_stats(cls, obs: List[Obs]) -> SummaryStats:
+        stats = super().summary_stats(obs)
+        stats.total = stats.max_val
+        return stats
+
+
 class InTemp(ObsVar):
     name = "pressure"
     unit = Unit.degc
@@ -192,11 +204,11 @@ class InTemp(ObsVar):
 
 
 class ObsVarGroup:
-    ALL: Iterable[ObsVarT] = (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt)
+    ALL: Iterable[ObsVarT] = (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun)
 
 
 OBS_VAR_MAP = {o.db_field: o for o in (
-    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt)
+    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun)
 )}
 
 

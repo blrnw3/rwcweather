@@ -39,7 +39,7 @@ class Obs(Base):
     # solr = Column()
     pm2 = Column()
     # wet = Column()
-    # sun = Column()
+    sun = Column()
     inhumi = Column()
     intemp = Column()
     t_obs = Column()
