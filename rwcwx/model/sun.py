@@ -1,6 +1,8 @@
 """Read side of the webcam sunshine data: obs_inferred (kind='sunny') minutes and the daily avg_extreme total."""
 from datetime import date, datetime, timedelta
-from typing import List, Optional
+from dataclasses import dataclass
+from functools import lru_cache
+from typing import Iterable, List, Optional, Tuple
 
 from dateutil.tz import UTC
 from sqlalchemy import text
@@ -33,6 +35,73 @@ def sun_times(d: date) -> dict:
     # astronomy returns naive datetimes in the process's local zone; .timestamp() interprets them the same way
     return dict(sunrise=int(sr.timestamp() * 1000), sunset=int(ss.timestamp() * 1000),
                 daylight_h=round(times["daylight_secs"] / 3600, 2))
+
+
+@lru_cache(maxsize=8192)
+def daylight_h(d: date) -> float:
+    """Possible sunshine for a local day: sunrise to sunset (sun centre at -0.833 deg), in hours."""
+    return sun_times(d)["daylight_h"]
+
+
+# Derived daily statistic: sunshine as % of possible (daylight). API var "sunpct", type "avg".
+PCT_VAR, PCT_TYPE = "sunpct", "avg"
+
+
+@dataclass
+class DerivedDay:
+    """Duck-types the parts of AvgExt the aggregators use (d, val, at, dict_, simple_dict_)."""
+    d: date
+    val: float
+    hours: float
+    cnt: Optional[int] = None
+    comment: Optional[str] = None
+    at = None
+
+    @property
+    def dict_(self) -> dict:
+        return dict(d=(self.d.year, self.d.month, self.d.day), val=self.val, hours=self.hours, cnt=self.cnt,
+                    comment=self.comment, var=PCT_VAR, type=PCT_TYPE)
+
+    @property
+    def simple_dict_(self) -> dict:
+        return dict(d=(self.d.year, self.d.month, self.d.day), val=self.val)
+
+
+def possible_h(d: date, now_utc: Optional[datetime] = None) -> float:
+    """Possible sunshine: the whole daylight for past days; for today only the daylight elapsed so far."""
+    now_utc = now_utc or datetime.utcnow()
+    t = sun_times(d)
+    elapsed_ms = min(max(_ms(now_utc) - t["sunrise"], 0), t["sunset"] - t["sunrise"])
+    return elapsed_ms / 3600000 if elapsed_ms < t["sunset"] - t["sunrise"] else t["daylight_h"]
+
+
+def pct_of_possible(hours: float, d: date, now_utc: Optional[datetime] = None) -> Optional[float]:
+    if hours is None:
+        return None
+    possible = possible_h(d, now_utc) if (now_utc or datetime.utcnow()).date() <= d + timedelta(days=1) \
+        else daylight_h(d)
+    if possible <= 0:
+        return None
+    return round(min(100.0, 100.0 * hours / possible), 1)
+
+
+def pct_days(sun_avg_exts) -> List[DerivedDay]:
+    """sun/total AvgExt rows -> % of possible per day (same order)."""
+    out = []
+    for ae in sun_avg_exts:
+        pct = pct_of_possible(ae.val, ae.d)
+        if pct is not None:
+            out.append(DerivedDay(d=ae.d, val=pct, hours=ae.val, cnt=ae.cnt, comment=ae.comment))
+    return out
+
+
+def pct_daily_values(values: Iterable[Tuple[date, float]]) -> List[Tuple[date, float]]:
+    out = []
+    for d, v in values:
+        pct = pct_of_possible(v, d)
+        if pct is not None:
+            out.append((d, pct))
+    return out
 
 
 def state_of(value, flags: Optional[str]) -> str:

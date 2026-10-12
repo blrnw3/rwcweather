@@ -29,10 +29,11 @@ ROLLING_VARS: Dict[str, Dict[str, str]] = {
     "rain": {"total": "sum"},
     "temp": {"avg": "mean", "max": "mean", "min": "mean"},
     "sun": {"total": "sum"},
+    "sunpct": {"avg": "mean"},
 }
 
 
-PARTIAL_DAY_EXCLUDED = ("sun",)
+PARTIAL_DAY_EXCLUDED = ("sun", "sunpct")
 
 
 def min_days_required(n: int) -> int:
