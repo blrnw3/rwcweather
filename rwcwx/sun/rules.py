@@ -10,6 +10,10 @@ Pipeline (PLAN 3.1/3.2), identical to the research evaluation (eval/sunday.py, r
   4. low sun (el < 8 deg): carry the nearest confident main-model state (el >= 8, p < .25 or > .75) on the same side
      of solar noon (morning: next one, evening: previous one), vetoed to 0 if sky-clarity prob < 0.3. Flag 'lowsun'.
   5. median-5 over the classified minutes.
+  6. short gaps: a run of unclassified minutes (missing/stale/ir/glitch) of at most MAX_GAP_MIN, with classified
+     minutes on both sides, is filled: with that state if both sides agree, else split at the midpoint (earlier
+     half takes the left state). Filled minutes keep their gate flag and get 'interp'. Runs touching sunrise or
+     sunset (one side only) and longer runs stay unknown.
 """
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -24,6 +28,10 @@ TOLERANCE_S = 300
 IR_SMEAN = 0.03
 IR_MIN_EL = 3.0
 GLITCH_PINK = 0.05
+# 20 min: longer than the glitch / stale bursts seen in practice (e.g. 13 min on 2026-10-12, 08:00-08:13 PT), but
+# shorter than one lost 30-min archive snapshot, so backfill never invents a whole snapshot period, and well under
+# the typical length of real sunny/cloudy spells here (median spell ~45 min in the 2026-10 per-minute data).
+MAX_GAP_MIN = 20
 
 
 @dataclass
@@ -88,8 +96,32 @@ def _median5(vals: List[int]) -> List[int]:
     return out
 
 
+def fill_short_gaps(grid: List[Minute], max_gap_min: int = MAX_GAP_MIN) -> int:
+    """Step 6 in place; returns the number of minutes filled."""
+    filled = 0
+    i, n = 0, len(grid)
+    while i < n:
+        if grid[i].value is not None:
+            i += 1
+            continue
+        j = i
+        while j < n and grid[j].value is None:
+            j += 1
+        # gap is grid[i:j]; needs a classified minute on both sides and contiguous minutes
+        if 0 < i and j < n and (j - i) <= max_gap_min \
+                and grid[j].t - grid[i - 1].t == timedelta(minutes=j - i + 1):
+            left, right = grid[i - 1].value, grid[j].value
+            half = (j - i + 1) // 2
+            for k in range(i, j):
+                grid[k].value = left if (left == right or k - i < half) else right
+                grid[k].flags.add("interp")
+                filled += 1
+        i = j
+    return filled
+
+
 def classify_day(frames: List[Frame], sunrise: datetime, sunset: datetime,
-                 tolerance_s: float = TOLERANCE_S) -> List[Minute]:
+                 tolerance_s: float = TOLERANCE_S, max_gap_min: int = MAX_GAP_MIN) -> List[Minute]:
     """tolerance_s: how far a minute may be from its nearest frame (5 min live; 15 min for the 30-min archive)."""
     frames = sorted(frames, key=lambda f: f.t)
     grid = daylight_grid(sunrise, sunset)
@@ -138,6 +170,8 @@ def classify_day(frames: List[Frame], sunrise: datetime, sunset: datetime,
     idx = sorted(raw)
     for i, v in zip(idx, _median5([raw[i] for i in idx])):
         grid[i].value = v
+    if max_gap_min:
+        fill_short_gaps(grid, max_gap_min)
     return grid
 
 
