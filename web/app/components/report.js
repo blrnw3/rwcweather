@@ -9,7 +9,7 @@ export const REPORT_YEAR_START = 2021;
 
 // Variables with minute observations (daily report graphs).
 export const REPORT_OBS_OPTIONS = [
-    "temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust",
+    "temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust", "sun",
 ];
 
 // Variables with daily values (rankings, all-time): adds webcam sunshine, which only has daily totals.

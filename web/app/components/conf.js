@@ -1,7 +1,7 @@
 import { FiWind } from "react-icons/fi";
 import { GiDew, GiLeafSwirl } from "react-icons/gi";
 import { RiHazeLine } from "react-icons/ri";
-import { WiBarometer, WiDaySunny, WiHumidity, WiRain, WiThermometer, WiWindDeg } from "react-icons/wi";
+import { WiBarometer, WiDaySunny, WiHumidity, WiRain, WiSolarEclipse, WiThermometer, WiWindDeg } from "react-icons/wi";
 
 export const fetcher = url => fetch(process.env.NEXT_PUBLIC_API_HOST + url).then(res => res.json());
 
@@ -66,6 +66,12 @@ export const OBS = new Map([
         summary: "total",
         fmat: "sun",
         icon: <WiDaySunny />,
+    }],
+    ["solr", {
+        name: "Solar Radiation",
+        summary: "avg",
+        fmat: "solr",
+        icon: <WiSolarEclipse />,
     }],
     // Derived from "sun": each day's sunshine as % of possible (sunrise to sunset). Shown via the
     // "Show sunshine as" toggle rather than as its own variable button.

@@ -171,6 +171,19 @@ const OBS_FORMAT = {
         base: [45, 90, 135, 180, 225, 270, 315, 360],
       }
     },
+    solr: {
+      units: {
+        base: "kWh/m²/day",
+      },
+      conv: {
+      },
+      precision: {
+        base: 2,
+      },
+      scale: {
+        base: [1, 2, 3, 4, 5, 6, 7, 8],
+      }
+    },
   }
 
 export function prettySecs(ms) {
