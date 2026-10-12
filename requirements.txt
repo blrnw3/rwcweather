@@ -6,6 +6,8 @@ simplejson  # Fixes Decimal (de)serialization
 python-dateutil
 requests
 python-aqi
+numpy==1.24.4  # webcam sunshine classifier; last numpy with py3.8 wheels
+Pillow==10.4.0  # last Pillow with py3.8 wheels
 
 click
 wheel
