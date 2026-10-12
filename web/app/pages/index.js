@@ -12,11 +12,12 @@ import { ImArrowDown, ImArrowUp } from "react-icons/im";
 import { IoTelescopeOutline } from "react-icons/io5";
 import { RiHazeLine } from "react-icons/ri";
 import { VscCircleFilled, VscDash } from "react-icons/vsc";
-import { WiBarometer, WiHumidity, WiRain, WiThermometer } from "react-icons/wi";
+import { WiBarometer, WiDaySunny, WiHumidity, WiRain, WiThermometer } from "react-icons/wi";
 import useSWR from "swr";
 import { LatestChart, SummaryChart } from '../components/chart';
 import { fetcher, fmatObsOptIcon, fmatTimeOpt } from '../components/conf';
 import { Page, UnitCtx } from "../components/Page";
+import { SunRibbon, useSunDay } from '../components/sun';
 import RadioCard from '../components/RadioCard';
 import { aqiStatus, formatObs, moonPhase, prettySecs, timeOf } from '../format';
 import {
@@ -395,6 +396,41 @@ function WaterYearClimate({ total, date }) {
   </Text>
 }
 
+// Webcam sunshine: today's hours so far, % of possible daylight so far, a "Sunny now" badge (only from a fresh,
+// classified minute) and today's minute ribbon.
+function SunshineHomeCard(props) {
+  const dash = props.dash;
+  const sun = dash?.sun;
+  const { day, now } = useSunDay("", 120000);
+  const icon = <Text as="span" color="orange.400" className="home_ico"><WiDaySunny /></Text>
+  const hours = sun?.today_h != null ? formatObs(unit, sun.today_h, "sun") : "–";
+  const possible = sun ? formatObs(unit, sun.possible_so_far_h, "sun") : "–";
+  const monthTotal = props.summary?.["month"]?.["sun_total"]?.["total"];
+  let badge = null;
+  if (sun?.now) {
+    const sunny = sun.now.state === "sun";
+    badge = <Text as="span" ml="2" px="2" py="0.5" borderRadius="8" fontSize="sm" fontWeight="bold"
+      bg={sunny ? "yellow.300" : "gray.300"} color="gray.800" className="sun-now-badge">
+      {sunny ? "Sunny now" : "Not sunny"}
+    </Text>;
+  }
+  return <HomeCard changed={null}>
+    <Text marginBottom="0.5em">
+      <Tooltip label="Sunshine (from the webcam)">{icon}</Tooltip>
+      <Text as="span" fontSize={{ base: "2xl", md: "3xl" }} paddingRight="2" paddingLeft="1">{hours}</Text>
+      {badge}
+    </Text>
+    <Text borderBottom="1px solid #ccc">
+      Today so far: <Text as="span" fontWeight="bold">{sun?.pct_of_possible != null ? sun.pct_of_possible + "%" : "–"}</Text> of {possible} possible
+    </Text>
+    <Box my="2"><SunRibbon day={day} nowMs={now} height="16px" /></Box>
+    <Text borderTop="1px solid #ccc">
+      Daylight: <Text as="span" fontWeight="bold">{sun ? formatObs(unit, sun.daylight_h, "sun") : "–"}</Text>
+    </Text>
+    <Text>Monthly: <Text as="span" fontWeight="bold">{monthTotal != null ? formatObs(unit, monthTotal, "sun") : "–"}</Text></Text>
+  </HomeCard>
+}
+
 function PressureHomeCard(props) {
   const dash = props.dash;
   const icon = <Text as="span" color="gray" className="home_ico"><WiBarometer /></Text>
@@ -695,6 +731,7 @@ function HomePage(props) {
       <PressureHomeCard dash={data} summary={summary} />
       <DewPtHomeCard dash={data} summary={summary} />
       <AirQualityHomeCard dash={data} summary={summary} />
+      <SunshineHomeCard dash={data} summary={summary} />
       <AstronomyHomeCard dash={summary} summary={summary} />
     </Flex>
     <Flex justify="center" wrap="wrap">

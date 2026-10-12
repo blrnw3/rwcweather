@@ -14,7 +14,7 @@ import {
 import NextLink from "next/link";
 import { useContext } from "react";
 import useSWR from "swr";
-import { fetcher, fmatObsOpt, OBS } from "../../components/conf";
+import { fetcher, fmatObsOpt, isTotalObs, OBS } from "../../components/conf";
 import { ClimateNormalsLink } from "../../components/climate";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
@@ -24,7 +24,7 @@ import {
     DAILY_AGGREGATION_NAMES,
     dailyAggregationOptions,
     RadioButtonGroup,
-    REPORT_OBS_OPTIONS,
+    DAILY_VALUE_OBS_OPTIONS,
     REPORT_YEAR_START,
     SUMMARY_NAMES,
     summaryKey,
@@ -46,8 +46,8 @@ const PERIOD_NAMES = {
 const SUMMARY_PERIODS = ["monthly", "annual", "wateryear"];
 
 // Multi-day periods: N consecutive days, ranked server-side from the daily
-// table (see rwcwx/calc/rolling.py). Only rain totals and temperature means.
-const ROLLING_OBS = ["rain", "temp"];
+// table (see rwcwx/calc/rolling.py). Rain and sunshine totals, temperature means.
+const ROLLING_OBS = ["rain", "temp", "sun"];
 const ROLLING_DAYS = ["3", "7", "14", "30"];
 const MIN_COVERAGE = { 3: 3, 7: 7, 14: 13, 30: 27 };
 
@@ -206,7 +206,7 @@ function RollingRankingTable({ obs, dailyAggregation, days, order, limit }) {
                 <Tr>
                     <Th isNumeric>Rank</Th>
                     <Th>{days}-day period</Th>
-                    <Th isNumeric>{obsObj.name} ({obs === "rain" ? "total" : "mean"})</Th>
+                    <Th isNumeric>{obsObj.name} ({isTotalObs(obs) ? "total" : "mean"})</Th>
                 </Tr>
             </Thead>
             <Tbody>
@@ -215,7 +215,7 @@ function RollingRankingTable({ obs, dailyAggregation, days, order, limit }) {
                         displayedRank = index + 1;
                         previousValue = record.val;
                     }
-                    const { bg, col } = styleForReportValue(record.val, obsObj.fmat, unit, obs === "rain" ? "total" : null);
+                    const { bg, col } = styleForReportValue(record.val, obsObj.fmat, unit, isTotalObs(obs) ? "total" : null);
                     const span = formatSpan(record.start, record.end);
                     return <Tr key={record.end.join("-")} className="rolling-row">
                         <Td isNumeric fontWeight="bold">{displayedRank}</Td>
@@ -313,14 +313,14 @@ const monthFromParam = (value) => {
 // or /reports/ranking?period=monthly&month=jul&order=lowest. Keys resolve in
 // order, so the period can depend on the variable (water years: rain only).
 const RANKING_URL_STATE = {
-    obs: { param: "var", def: () => "temp", valid: inList(REPORT_OBS_OPTIONS) },
+    obs: { param: "var", def: () => "temp", valid: inList(DAILY_VALUE_OBS_OPTIONS) },
     period: { def: () => "daily", valid: (v, s) => periodOptions(s.obs).includes(v) },
     dailyAggregation: {
-        param: "daily", def: (s) => s.obs === "rain" ? "total" : "max",
+        param: "daily", def: (s) => isTotalObs(s.obs) ? "total" : "max",
         valid: (v, s) => dailyAggregationOptions(s.obs).includes(v),
     },
     summary: {
-        def: (s) => s.obs === "rain" ? "total" : "max",
+        def: (s) => isTotalObs(s.obs) ? "total" : "max",
         valid: (v, s) => summaryOptions(s.obs).includes(v),
         use: (s) => SUMMARY_PERIODS.includes(s.period),
     },
@@ -345,11 +345,11 @@ export default function RankingReport() {
 
     const handleObsChange = (nextObs) => update({
         obs: nextObs,
-        dailyAggregation: nextObs === "rain" ? "total" : "max",
+        dailyAggregation: isTotalObs(nextObs) ? "total" : "max",
         threshold: "0",
         // Rain is mostly ranked by totals (wettest month / year / water year),
         // so switching to rain selects Total; other summaries stay selectable.
-        summary: nextObs === "rain" || summary === "avg" || summary === "total" ? OBS.get(nextObs).summary : summary,
+        summary: isTotalObs(nextObs) || summary === "avg" || summary === "total" ? OBS.get(nextObs).summary : summary,
         // Water years are rain-only; other variables fall back to calendar years.
         // Multi-day periods are rain/temperature only; others fall back to daily.
         period: period === "wateryear" && !hasWaterYears(nextObs) ? "annual"
@@ -374,7 +374,7 @@ export default function RankingReport() {
     const rankingTitle = period === "daily"
         ? ORDER_NAMES[order] + " " + limit + " " + DAILY_AGGREGATION_NAMES[dailyAggregation]
         : period === "rolling"
-        ? ORDER_NAMES[order] + " " + limit + " " + days + "-day " + (obs === "rain" ? "totals" : "means")
+        ? ORDER_NAMES[order] + " " + limit + " " + days + "-day " + (isTotalObs(obs) ? "totals" : "means")
             + " of " + DAILY_AGGREGATION_NAMES[dailyAggregation]
         : ORDER_NAMES[order] + " " + limit + " " + PERIOD_NAMES[period] + " " + SUMMARY_NAMES[summary]
             + " of " + DAILY_AGGREGATION_NAMES[dailyAggregation];
@@ -404,7 +404,7 @@ export default function RankingReport() {
             <RadioButtonGroup name="days" value={days} options={ROLLING_DAYS} optFormat={(value) => value + " days"} fn={setDays} />
         </>}
         <Text mt="1" fontWeight="bold">Variable:</Text>
-        <RadioButtonGroup name="obs" value={obs} options={REPORT_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
+        <RadioButtonGroup name="obs" value={obs} options={DAILY_VALUE_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
         <Text mt="1" fontWeight="bold">Daily statistic:</Text>
         <RadioButtonGroup name="daily-aggregation" value={dailyAggregation} options={dailyOptions} optFormat={(value) => DAILY_AGGREGATION_NAMES[value]} fn={setDailyAggregation} />
         {isSummaryPeriod && <>

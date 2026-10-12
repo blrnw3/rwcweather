@@ -158,7 +158,7 @@ export function SummaryChart(props) {
     let chartType = props.chartType;
     let aggTypePretty = fmatAggTypeOpt(aggType);
 
-    if (obs == "rain" && aggType == "avg") {
+    if (OBS.get(obs).summary == "total" && aggType != "total") {
         aggType = "total";
         aggTypePretty = "Total";
     }

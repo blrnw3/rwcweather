@@ -1,7 +1,7 @@
 import { FiWind } from "react-icons/fi";
 import { GiDew, GiLeafSwirl } from "react-icons/gi";
 import { RiHazeLine } from "react-icons/ri";
-import { WiBarometer, WiHumidity, WiRain, WiThermometer, WiWindDeg } from "react-icons/wi";
+import { WiBarometer, WiDaySunny, WiHumidity, WiRain, WiThermometer, WiWindDeg } from "react-icons/wi";
 
 export const fetcher = url => fetch(process.env.NEXT_PUBLIC_API_HOST + url).then(res => res.json());
 
@@ -60,7 +60,19 @@ export const OBS = new Map([
         fmat: "wdir",
         icon: <WiWindDeg />,
     }],
+    // Webcam-derived; daily totals only (no minute observations)
+    ["sun", {
+        name: "Sunshine",
+        summary: "total",
+        fmat: "sun",
+        icon: <WiDaySunny />,
+    }],
 ]);
+
+// Variables whose only daily statistic is a total (rain, sunshine).
+export function isTotalObs(obs) {
+    return OBS.get(obs)?.summary === "total";
+}
 
 const aggNames = {
     max: "Maximum",

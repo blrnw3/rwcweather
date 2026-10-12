@@ -10,7 +10,7 @@ import {
     DAILY_AGGREGATION_NAMES,
     dailyAggregationOptions,
     RadioButtonGroup,
-    REPORT_OBS_OPTIONS,
+    DAILY_VALUE_OBS_OPTIONS,
     REPORT_YEAR_START,
     SUMMARY_NAMES,
     summaryKey,
@@ -330,7 +330,7 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
 
 // Selections kept in the URL, e.g. /reports/alltime?var=rain&summary=count&threshold=0.1
 const ALLTIME_URL_STATE = {
-    obs: { param: "var", def: () => "temp", valid: inList(REPORT_OBS_OPTIONS) },
+    obs: { param: "var", def: () => "temp", valid: inList(DAILY_VALUE_OBS_OPTIONS) },
     dailyAggregation: {
         param: "daily", def: (s) => OBS.get(s.obs).summary, valid: (v, s) => dailyAggregationOptions(s.obs).includes(v),
     },
@@ -365,7 +365,7 @@ export default function AllTimeReport() {
         <ClimateNormalsLink />
 
         <Text fontWeight="bold">Variable:</Text>
-        <RadioButtonGroup name="obs" value={obs} options={REPORT_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
+        <RadioButtonGroup name="obs" value={obs} options={DAILY_VALUE_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
         <Text mt="1" fontWeight="bold">Daily statistic:</Text>
         <RadioButtonGroup
             name="daily-aggregation"

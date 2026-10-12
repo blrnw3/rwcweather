@@ -109,6 +109,19 @@ const OBS_FORMAT = {
         us: [29.5, 29.6, 29.7, 29.8, 29.9, 30, 30.1, 30.2, 30.3]
       }
     },
+    sun: {
+      units: {
+        base: "h",
+      },
+      conv: {
+      },
+      precision: {
+        base: 1,
+      },
+      scale: {
+        base: [0.5, 2, 4, 6, 8, 10, 11, 12],
+      }
+    },
     aqi: {
       units: {
         base: "",
