@@ -79,3 +79,47 @@ def test_sun_times_passes_naive_datetime(monkeypatch):
     t = sun.sun_times(date(2026, 10, 12))
     assert seen["dt"].tzinfo is None and seen["dt"].timetuple().tm_isdst == -1
     assert t["daylight_h"] == 11.5
+
+
+class SunPctTest(unittest.TestCase):
+    """Derived % of possible: no DB needed (daylight comes from astronomy)."""
+
+    def test_pct_of_possible(self):
+        from rwcwx.model.sun import daylight_h, pct_of_possible
+        d = date(2026, 10, 9)
+        self.assertAlmostEqual(daylight_h(d), 11.5, delta=0.1)
+        self.assertAlmostEqual(pct_of_possible(7.5, d), 65.0, delta=1.0)
+        self.assertEqual(pct_of_possible(13.0, d), 100.0)   # capped
+        self.assertIsNone(pct_of_possible(None, d))
+
+    def test_today_uses_daylight_so_far(self):
+        from rwcwx.model.sun import pct_of_possible, sun_times
+        d = date(2026, 10, 12)
+        sunrise = datetime.utcfromtimestamp(sun_times(d)["sunrise"] / 1000)
+        now = sunrise + timedelta(hours=4)
+        self.assertAlmostEqual(pct_of_possible(3.0, d, now), 75.0, delta=0.2)
+        self.assertIsNone(pct_of_possible(0.0, d, sunrise - timedelta(hours=1)))   # before sunrise
+
+    def test_pct_rolling_is_mean_and_skips_today(self):
+        from rwcwx.model.sun import pct_daily_values
+        start = date(2026, 6, 18)
+        hours = [14.0, 7.0, 14.0, 0.0, 14.0]
+        daily = pct_daily_values([(start + timedelta(days=i), h) for i, h in enumerate(hours)])
+        res = rolling_ranking(daily, "sunpct", "avg", 3, order="highest", limit=1, today=date(2026, 6, 22))
+        self.assertEqual(res[0]["end"], (2026, 6, 20))
+        self.assertTrue(60 < res[0]["val"] < 90)
+
+
+@unittest.skipUnless(DB_OK, "dev DB not reachable")
+class SunPctApiTest(unittest.TestCase):
+    def test_endpoints(self):
+        c = app.test_client()
+        daily = c.get("/api/var/daily/sunpct/avg/?year=2026").get_json()["result"]
+        hours = {tuple(r["d"]): r["val"] for r in c.get("/api/var/daily/sun/total/?year=2026").get_json()["result"]}
+        self.assertEqual(len(daily), len(hours))
+        for r in daily:
+            self.assertTrue(0 <= r["val"] <= 100)
+        monthly = c.get("/api/var/monthly/sunpct/avg/?year=2026").get_json()["result"]
+        self.assertTrue(all(0 <= m["summary"]["avg"] <= 100 for m in monthly))
+        self.assertEqual(c.get("/api/var/rolling/sunpct/avg/?days=3").status_code, 200)
+        self.assertEqual(c.get("/api/var/daily/sunpct/max/?year=2026").get_json()["result"], [])

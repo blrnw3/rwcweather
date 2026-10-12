@@ -199,12 +199,19 @@ class Sun(ObsVar):
     db_field = "sun"
 
 
+class SunPct(ObsVar):
+    """Derived from Sun: daily sunshine as % of possible (sunrise to sunset). Aggregates as the mean of days."""
+    name = "sunshine (% of possible)"
+    unit = Unit.pct
+    db_field = "sunpct"
+
+
 class ObsVarGroup:
     ALL: Iterable[ObsVarT] = (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt)
 
 
 OBS_VAR_MAP = {o.db_field: o for o in (
-    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun)
+    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun, SunPct)
 )}
 
 

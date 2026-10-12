@@ -1,6 +1,7 @@
 import { Flex, Heading, useRadioGroup } from "@chakra-ui/react";
 import { SummaryChart } from "../../components/chart";
-import { fmatAggTypeOpt, fmatDaysOpt, fmatObsOpt, fmatOptCapitalize, isTotalObs, OBS } from '../../components/conf';
+import { baseObs, fmatAggTypeOpt, fmatDaysOpt, fmatObsOpt, fmatOptCapitalize, isTotalObs, OBS } from '../../components/conf';
+import { SunViewToggle } from '../../components/report';
 import { Page } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
 import RadioCard from '../../components/RadioCard';
@@ -27,11 +28,11 @@ function RadioButtonGroup(props) {
 
 const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "sun"];
 const periodOpts = ["30", "90", "180", "365"];
-const aggOptionsFor = (obs) => isTotalObs(obs) ? ["total"] : ["max", "min", "avg"];
+const aggOptionsFor = (obs) => isTotalObs(obs) ? ["total"] : (OBS.get(obs).dailyStats || ["max", "min", "avg"]);
 
 // Selections kept in the URL, e.g. /charts/summary?var=rain&days=365&chart=line
 const SUMMARY_URL_STATE = {
-  obs: { param: "var", def: () => "temp", valid: inList(obsOptions) },
+  obs: { param: "var", def: () => "temp", valid: inList([...obsOptions, "sunpct"]) },
   aggType: { param: "daily", def: (s) => aggOptionsFor(s.obs)[0], valid: (v, s) => aggOptionsFor(s.obs).includes(v) },
   period: { param: "days", def: () => "30", valid: inList(periodOpts) },
   chartType: { param: "chart", def: () => "column", valid: inList(["column", "line"]) },
@@ -42,7 +43,7 @@ export default function Charts() {
   const aggOpts = aggOptionsFor(obs);
 
   // Rain only has daily totals; other variables keep their statistic.
-  const handleObsChange = (x) => update({ obs: x, aggType: isTotalObs(x) ? "total" : aggType === "total" ? "max" : aggType });
+  const handleObsChange = (x) => update({ obs: x, aggType: aggOptionsFor(x).includes(aggType) ? aggType : aggOptionsFor(x)[0] });
   const setAggType = (value) => update({ aggType: value });
   const setPeriod = (value) => update({ period: value });
   const setChartType = (value) => update({ chartType: value });
@@ -57,7 +58,8 @@ export default function Charts() {
         Daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} in the past {period} days
       </Heading>
 
-      <RadioButtonGroup name="obs" value={obs} options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
+      <RadioButtonGroup name="obs" value={baseObs(obs)} options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
+      <SunViewToggle obs={obs} fn={handleObsChange} Group={RadioButtonGroup} />
       <RadioButtonGroup name="agg" value={aggType} options={aggOpts} optFormat={fmatAggTypeOpt} fn={setAggType} />
 
       <SummaryChart obs={obs} aggType={aggType} chartType={chartType} period={period}  my={4} mx={{base: 0, md: 4, xl: 6}}

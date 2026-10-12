@@ -122,6 +122,19 @@ const OBS_FORMAT = {
         base: [0.5, 2, 4, 6, 8, 10, 11, 12],
       }
     },
+    sunpct: {
+      units: {
+        base: "%",
+      },
+      conv: {
+      },
+      precision: {
+        base: 0,
+      },
+      scale: {
+        base: [10, 25, 40, 55, 70, 80, 90, 97],
+      }
+    },
     aqi: {
       units: {
         base: "",

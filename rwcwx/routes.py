@@ -182,7 +182,13 @@ def var_rolling(var: str, typ: str):
 @lru_cache(maxsize=64)
 def _rolling_cached(var: str, typ: str, days: int, order: str, limit: int, today: date, _bucket: int) -> list:
     """Each ranking is computed at most once per 5 minutes per worker (the reports refresh every 5 minutes)."""
-    return rolling_ranking(AvgExtQ.daily_values(var, typ), var, typ, days, order, limit, today)
+    return rolling_ranking(_daily_values(var, typ), var, typ, days, order, limit, today)
+
+
+def _daily_values(var: str, typ: str):
+    if (var, typ) == (sun_model.PCT_VAR, sun_model.PCT_TYPE):
+        return sun_model.pct_daily_values(AvgExtQ.daily_values("sun", "total"))
+    return AvgExtQ.daily_values(var, typ)
 
 
 def obs_latest():
@@ -250,6 +256,9 @@ def _dictify_obs_result(res):
 
 
 def _var_avg_exts_from_request(var: str, typ: str) -> List[AvgExt]:
+    if var == sun_model.PCT_VAR:
+        # Derived from the daily sunshine totals; only one daily statistic exists.
+        return sun_model.pct_days(_var_avg_exts_from_request("sun", "total")) if typ == sun_model.PCT_TYPE else []
     if "year" in request.args:
         year = int(request.args.get("year", DateUtil.now().year))
         avg_ext = AvgExtQ.for_var_and_year(var, typ, year)

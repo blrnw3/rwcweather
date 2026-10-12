@@ -67,7 +67,42 @@ export const OBS = new Map([
         fmat: "sun",
         icon: <WiDaySunny />,
     }],
+    // Derived from "sun": each day's sunshine as % of possible (sunrise to sunset). Shown via the
+    // "Show sunshine as" toggle rather than as its own variable button.
+    ["sunpct", {
+        name: "Sunshine (% of possible)",
+        summary: "avg",
+        fmat: "sunpct",
+        icon: <WiDaySunny />,
+        dailyStats: ["avg"],
+    }],
 ]);
+
+// Alternative views of one variable (the button stays the base variable).
+export const SUN_VIEWS = ["sun", "sunpct"];
+export const SUN_VIEW_NAMES = { sun: "Hours", sunpct: "% of possible" };
+
+export function baseObs(obs) {
+    return SUN_VIEWS.includes(obs) ? "sun" : obs;
+}
+
+// Daily statistics available for a variable.
+export function dailyStatsFor(obs) {
+    const o = OBS.get(obs);
+    if (o?.dailyStats) {
+        return o.dailyStats;
+    }
+    return o?.summary === "total" ? ["total"] : ["min", "max", "avg"];
+}
+
+// Default daily statistic when switching to a variable: total, else the daily high, else the only one.
+export function defaultDailyStat(obs, current) {
+    const opts = dailyStatsFor(obs);
+    if (current && opts.includes(current)) {
+        return current;
+    }
+    return opts.includes("total") ? "total" : opts.includes("max") ? "max" : opts[0];
+}
 
 // Variables whose only daily statistic is a total (rain, sunshine).
 export function isTotalObs(obs) {
