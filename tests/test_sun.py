@@ -127,3 +127,13 @@ def test_camera_shift_monitor():
     assert not camera_shift(im)["moved"]
     moved = Image.fromarray(np.roll(np.asarray(im), 8, axis=1))     # ~32 px at full width
     assert camera_shift(moved)["moved"]
+
+
+def test_rows_only_up_to_now():
+    from rwcwx.job.sun_classify import rows_for
+    g = classify_day(_frames(), SR, SS)
+    now = SR + timedelta(hours=2, seconds=30)
+    rows = rows_for(g, "v", now)
+    assert rows and max(r["t"] for r in rows) + timedelta(minutes=1) <= now
+    assert len(rows) == sum(1 for m in g if m.t + timedelta(minutes=1) <= now)
+    assert len(rows_for(g, "v", SS + timedelta(hours=1))) == len(g)     # past day: every minute

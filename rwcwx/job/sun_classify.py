@@ -156,11 +156,13 @@ def process_day(day: date, clf: Classifier, frames_dir: str, cache_dir: str, max
     return grid, frames, fc
 
 
-def rows_for(grid: List[Minute], version: str) -> List[dict]:
-    now = datetime.utcnow().replace(microsecond=0)
+def rows_for(grid: List[Minute], version: str, now: Optional[datetime] = None) -> List[dict]:
+    """One row per completed daylight minute (minute end <= now). Future minutes are never written, so the table
+    never holds placeholder 'missing' rows for time that has not happened yet."""
+    now = now or datetime.utcnow().replace(microsecond=0)
     return [dict(t=m.t, kind=KIND, value=m.value, prob=None if m.p is None else round(m.p, 3), minutes=1,
                  source="live", flags=",".join(sorted(m.flags)) or None, model_version=version, t_mod=now)
-            for m in grid]
+            for m in grid if m.t + timedelta(minutes=1) <= now]
 
 
 UPSERT = """
@@ -261,7 +263,7 @@ def main(days, frames_dir, cache_dir, max_new, dry_run, csv_path, health_path):
     health = dict(t_run=now.isoformat() + "Z", model_version=clf.version, days={})
     for d in todo:
         grid, frames, fc = process_day(d, clf, frames_dir, cache_dir, max_new)
-        rows += rows_for(grid, clf.version)
+        rows += rows_for(grid, clf.version, now)
         tot = daily_total(grid, now)
         if tot:
             totals.append(dict(d=d, val=tot["val"], cnt=tot["cnt"], comment=tot["comment"], t_mod=now))
