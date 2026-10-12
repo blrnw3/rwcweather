@@ -26,7 +26,9 @@ def local_day_bounds_utc(d: date):
 
 def sun_times(d: date) -> dict:
     """Sunrise/sunset as epoch ms, same convention as the classifier (sun centre at -0.833 deg)."""
-    times = get_all_times_rwc(datetime(d.year, d.month, d.day, 12, tzinfo=TZ))
+    # Naive noon, like get_all_times_rwc's own default: astronomy uses time.mktime, and an aware
+    # datetime carries tm_isdst=1 in summer, which glibc rejects when the process zone is UTC (prod).
+    times = get_all_times_rwc(datetime(d.year, d.month, d.day, 12))
     sr, ss = times["sunrise"], times["sunset"]
     # astronomy returns naive datetimes in the process's local zone; .timestamp() interprets them the same way
     return dict(sunrise=int(sr.timestamp() * 1000), sunset=int(ss.timestamp() * 1000),
