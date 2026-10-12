@@ -93,3 +93,37 @@ def test_missing_and_stale_gates():
 def test_ir_gate():
     g = classify_day(_frames(smean=0.01), SR, SS)
     assert all("ir" in m.flags for m in g if m.el > 3)
+
+
+def test_rollup_coverage_rule():
+    from rwcwx.sun.rollup import daily_total
+    full = daily_total(classify_day(_frames(), SR, SS))
+    assert full["val"] == round((SS - SR).total_seconds() / 3600, 2) and "scaled" not in full["comment"]
+    # 1 h missing out of ~11.5 h -> ~91% coverage: stored as computed
+    fr = [f for f in _frames() if not (SR + timedelta(hours=3) <= f.t < SR + timedelta(hours=4))]
+    assert "scaled" not in daily_total(classify_day(fr, SR, SS))["comment"]
+    # 3 h missing -> ~74%: scaled back up to the full day
+    fr = [f for f in _frames() if not (SR + timedelta(hours=3) <= f.t < SR + timedelta(hours=6))]
+    t = daily_total(classify_day(fr, SR, SS))
+    assert "scaled" in t["comment"] and abs(t["val"] - full["val"]) < 0.05
+    # 7 h missing -> < 50%: nothing stored
+    fr = [f for f in _frames() if not (SR + timedelta(hours=2) <= f.t < SR + timedelta(hours=9))]
+    assert daily_total(classify_day(fr, SR, SS)) is None
+
+
+def test_glitch_gate():
+    fr = _frames()
+    for f in fr[100:110]:
+        f.glitch = True
+    g = classify_day(fr, SR, SS)
+    assert sum("glitch" in m.flags for m in g) == 10
+
+
+def test_camera_shift_monitor():
+    import numpy as np
+    from PIL import Image
+    from rwcwx.sun.shift import camera_shift
+    im = Image.open(os.path.join(FIX, "20261011_2100.jpg"))
+    assert not camera_shift(im)["moved"]
+    moved = Image.fromarray(np.roll(np.asarray(im), 8, axis=1))     # ~32 px at full width
+    assert camera_shift(moved)["moved"]
