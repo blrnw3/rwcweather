@@ -148,6 +148,23 @@ export default function ClimateReport() {
 
     return <Page name="reports" sub="climate" title="Reports | climate">
         <Heading as="h1" size="1">Climate of Redwood City (Emerald Lake Hills)</Heading>
+
+        <Text mt="4" variant="para">
+            RWCweather HQ sits approximately 125 m (420 ft) above sea level on a hillside near the top of the
+            Emerald Hills canyon, between Redwood City and Woodside. The climate is the typical Mediterranean one of near-coast California: wet winters
+            and nearly rainless summers, with plentiful sunshine throughout. Annual rainfall averages about 24 inches (600 mm), concentrated
+            from November through March. Thunderstorms are rare, occuring less than once per year, and almost always mild.
+            Snow at this elevation is almost unheard of, but occurs about once a year in the nearby Santa Cruz mountains, with slight accumulations.
+        </Text>
+        <Text variant="para">
+            Mean highs range from about 15 °C (60 °F) in December and January to 28 °C (82 °F)
+            in July through September, with September typically the warmest month. Mean lows range from about 7 °C
+            (45 °F) in winter to 14 °C (57 °F) in August. The hillside location produces a thermal belt effect:
+            nights run about 1.5 °C (3 F) warmer than the bayside floor on average, as cold
+            air drains into the valleys and bay flats below. During strong inversions we can be more than 5C / 10F warmer.
+            The site receives some shelter from westerly winds, and summer fog is far less common than at the coast, but we do get frequent low clouds on spring and summer mornings.
+        </Text>
+
         <Heading as="h2" size="2">Long-term climate averages{CLIMATE_META.period && ", " + CLIMATE_META.period}</Heading>
 
         <Text mt="2">
