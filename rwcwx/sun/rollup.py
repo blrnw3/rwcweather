@@ -14,7 +14,7 @@ FULL_COV = 0.9
 MIN_COV = 0.5
 
 
-def daily_total(grid: List[Minute], now_utc: Optional[datetime] = None) -> Optional[dict]:
+def daily_total(grid: List[Minute], now_utc: Optional[datetime] = None, label: str = "webcam") -> Optional[dict]:
     if now_utc is not None:
         grid = [m for m in grid if m.t < now_utc]
     daylight = sum(m.w for m in grid)
@@ -25,7 +25,7 @@ def daily_total(grid: List[Minute], now_utc: Optional[datetime] = None) -> Optio
     cov = classified / daylight
     if cov < MIN_COV:
         return None
-    comment = f"webcam; coverage {cov:.1%}"
+    comment = f"{label}; coverage {cov:.1%}"
     if cov < FULL_COV:
         sun_h /= cov
         comment += "; scaled"
