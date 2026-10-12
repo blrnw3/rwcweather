@@ -69,6 +69,15 @@ The frontend server is intentionally small, so builds happen locally. When `pack
 
 Do not deploy a `.next` build produced by a different Next.js version than the production runtime.
 
+## Time zones in dev and tests
+
+Prod runs the API and jobs with the process zone set to UTC. Do the same locally:
+
+- `scripts/dev_api.sh` starts the dev Flask API on :5001 with `TZ=UTC`.
+- `tests/conftest.py` runs pytest in `RWC_TEST_TZ` (default `UTC`). Under UTC it also makes `time.mktime`
+  reject `tm_isdst=1`, as prod's glibc does.
+- `scripts/test_backend.sh` runs the suite under both UTC and America/Los_Angeles.
+
 ## Backend deployment
 
 Deploy backend changes from the repository root:
@@ -92,7 +101,10 @@ If `requirements.txt` changed, review it and explicitly allow installation:
 The backend deploy script:
 
 1. Syntax-checks every local Python file.
-2. Confirms SSH access, the production virtualenv, and whether dependencies changed.
+2. Runs the DB-free backend tests twice, under `TZ=UTC` (prod's process zone) and `TZ=America/Los_Angeles`
+   (`scripts/test_backend.sh`). Point `RWCWX_TEST_PYTHON` at a Python with pytest and the backend deps
+   (e.g. your dev venv); `--skip-tests` bypasses this step.
+3. Confirms SSH access, the production virtualenv, and whether dependencies changed.
 3. Synchronizes the backend package, entrypoint, requirements, and uWSGI configuration without deleting remote files.
 4. Compiles and imports the uploaded application using the production runtime and environment.
 5. Gracefully reloads the `rwcwx` uWSGI master with `SIGHUP`; the service account owns that process, so deployment does not depend on interactive sudo access.

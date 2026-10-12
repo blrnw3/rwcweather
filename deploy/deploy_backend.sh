@@ -6,15 +6,18 @@ set -euo pipefail
 
 DRY_RUN=false
 INSTALL_DEPS=false
+SKIP_TESTS=false
 
 usage() {
-    echo "Usage: $0 [--dry-run] [--install-deps]" >&2
+    echo "Usage: $0 [--dry-run] [--install-deps] [--skip-tests]" >&2
+    echo "  Runs the DB-free backend tests under TZ=UTC and America/Los_Angeles first (RWCWX_TEST_PYTHON picks the interpreter)." >&2
 }
 
 while (($#)); do
     case "$1" in
         --dry-run) DRY_RUN=true ;;
         --install-deps) INSTALL_DEPS=true ;;
+        --skip-tests) SKIP_TESTS=true ;;
         -h|--help)
             usage
             exit 0
@@ -64,6 +67,18 @@ for path in files:
     compile(path.read_bytes(), str(path), "exec")
 print(f"Compiled {len(files)} Python files")
 PY
+
+if [[ "$SKIP_TESTS" == true ]]; then
+    echo "Skipping backend tests (--skip-tests)."
+else
+    TEST_PYTHON="${RWCWX_TEST_PYTHON:-python3}"
+    if ! "$TEST_PYTHON" -c "import pytest" >/dev/null 2>&1; then
+        echo "pytest not available for $TEST_PYTHON; set RWCWX_TEST_PYTHON to the dev venv's python or pass --skip-tests." >&2
+        exit 1
+    fi
+    echo "Running backend tests in UTC (prod) and America/Los_Angeles..."
+    RWC_TEST_NO_DB=1 PYTHON="$TEST_PYTHON" "$REPO_ROOT/scripts/test_backend.sh" -q -p no:cacheprovider
+fi
 
 echo "Checking production access and runtime..."
 ssh "${SSH_ARGS[@]}" "$DEPLOY_HOST" \
