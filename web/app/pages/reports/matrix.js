@@ -222,7 +222,7 @@ function RainTotals(props) {
         serverDate={summary?.["server"]?.["date"]} unit={unit} />
 }
 
-const OBS_OPTIONS = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust"];
+const OBS_OPTIONS = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust", "sun"];
 const aggOptionsFor = (obs) => obs === "rain" ? ["total"] : ["max", "min", "avg"];
 
 // Selections kept in the URL, e.g. /reports/matrix?var=rain&year=2023

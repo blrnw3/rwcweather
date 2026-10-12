@@ -23,6 +23,15 @@
 //      so correcting again would double-count.
 //    - wind: deliberately omitted. There is no representative normal for this
 //      sheltered, low-mounted anemometer, so wind shows no comparison.
+//    - sun: webcam-derived sunshine duration is now observed (classifier-based);
+//      the normals are ESTIMATES from satellite radiation (Angstrom-Prescott).
+//    - solr: global horizontal irradiance (GHI) from satellite data; there is
+//      no solar radiation sensor, so this is reference-only.
+//
+//  Sunshine and solar radiation source: NREL NSRDB via PVGIS 5.2 (2005-2015,
+//  ~4 km satellite grid). Sunshine hours and percent-of-possible are estimated
+//  from the radiation using the Angstrom-Prescott relation (FAO-56 defaults,
+//  a=0.25, b=0.50); these are approximate, especially in summer (marine layer).
 //
 //  This is the ONLY place climate normals live.
 //
@@ -45,8 +54,9 @@
 export const CLIMATE_NORMALS = {
     placeholder: false,
     source: "PRISM 1991-2020 800 m normals, cell center 37.4667,-122.2667 "
-        + "(station approx 37.470,-122.265, Emerald Lake Hills)",
-    period: "1991-2020",
+        + "(station approx 37.470,-122.265, Emerald Lake Hills); "
+        + "sunshine and solar radiation from NREL NSRDB via PVGIS 5.2, 2005-2015",
+    period: "1991-2020 (temp, rain); 2005-2015 (sunshine, solar)",
     // Shown on /reports/climate. Keep these short and non-technical; the
     // detailed adjustment reasoning lives in the header comment above.
     notes: [
@@ -54,6 +64,8 @@ export const CLIMATE_NORMALS = {
             + "800 m gridded monthly normals, sampled at the grid cell centred on 37.4667, -122.2667 that "
             + "contains the station (approx. 37.470, -122.265, Emerald Lake Hills, ~125 m above sea level).",
         "Adjustments were made for the sensor's location (hillside thermal belt).",
+        "Sunshine duration and solar radiation normals are satellite-based: NREL NSRDB via PVGIS 5.2 (2005-2015, ~4 km grid). "
+            + "Sunshine hours and percent-of-possible are estimated from the radiation and are approximate, especially in summer.",
     ],
 
     normals: {
@@ -79,5 +91,23 @@ export const CLIMATE_NORMALS = {
             },
         },
         // wind: intentionally omitted (no representative normal) - no comparison shown.
+        sun: {
+            // Sunshine duration: webcam-derived observations exist; normals are estimates from satellite radiation
+            total: {
+                // Monthly sunshine hours (h/month)
+                unit: "h",
+                monthly: [170, 166, 243, 305, 349, 381, 403, 377, 297, 266, 198, 145],
+                annual: 3300,
+            },
+        },
+        solr: {
+            // Global horizontal irradiance: no sensor, reference-only (no observed comparisons)
+            avg: {
+                // Daily average GHI (kWh/m²/day)
+                unit: "kWh/m²/day",
+                monthly: [2.49, 3.19, 4.64, 6.29, 7.21, 7.94, 7.95, 7.21, 5.60, 4.21, 2.88, 2.11],
+                annual: 5.15,
+            },
+        },
     },
 };

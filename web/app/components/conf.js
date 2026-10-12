@@ -1,7 +1,7 @@
 import { FiWind } from "react-icons/fi";
 import { GiDew, GiLeafSwirl } from "react-icons/gi";
 import { RiHazeLine } from "react-icons/ri";
-import { WiBarometer, WiHumidity, WiRain, WiThermometer, WiWindDeg } from "react-icons/wi";
+import { WiBarometer, WiDaySunny, WiHumidity, WiRain, WiSolarEclipse, WiThermometer, WiWindDeg } from "react-icons/wi";
 
 export const fetcher = url => fetch(process.env.NEXT_PUBLIC_API_HOST + url).then(res => res.json());
 
@@ -59,6 +59,18 @@ export const OBS = new Map([
         summary: "avg",
         fmat: "wdir",
         icon: <WiWindDeg />,
+    }],
+    ["sun", {
+        name: "Sunshine Duration",
+        summary: "total",
+        fmat: "sun",
+        icon: <WiDaySunny />,
+    }],
+    ["solr", {
+        name: "Solar Radiation",
+        summary: "avg",
+        fmat: "solr",
+        icon: <WiSolarEclipse />,
     }],
 ]);
 

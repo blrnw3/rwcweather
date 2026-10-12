@@ -145,6 +145,32 @@ const OBS_FORMAT = {
         base: [45, 90, 135, 180, 225, 270, 315, 360],
       }
     },
+    sun: {
+      units: {
+        base: "h",
+      },
+      conv: {
+      },
+      precision: {
+        base: 0,
+      },
+      scale: {
+        base: [50, 100, 150, 200, 250, 300, 350, 400],
+      }
+    },
+    solr: {
+      units: {
+        base: "kWh/m²/day",
+      },
+      conv: {
+      },
+      precision: {
+        base: 2,
+      },
+      scale: {
+        base: [1, 2, 3, 4, 5, 6, 7, 8],
+      }
+    },
   }
 
 export function prettySecs(ms) {

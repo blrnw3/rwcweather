@@ -8,7 +8,7 @@ import RadioCard from "./RadioCard";
 export const REPORT_YEAR_START = 2021;
 
 export const REPORT_OBS_OPTIONS = [
-    "temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust",
+    "temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust", "sun",
 ];
 
 export const COUNT_THRESHOLDS = {
@@ -21,6 +21,7 @@ export const COUNT_THRESHOLDS = {
     wdir: ["0", "45", "90", "135", "180", "225", "270", "315"],
     dewpt: ["0", "5", "10", "15", "20", "25"],
     gust: ["0", "10", "20", "30", "40"],
+    sun: ["0", "100", "200", "300", "400"],
 };
 
 export const SUMMARY_NAMES = {
@@ -39,7 +40,7 @@ export const DAILY_AGGREGATION_NAMES = {
 };
 
 export function dailyAggregationOptions(obs) {
-    return obs === "rain" ? ["total"] : ["min", "max", "avg"];
+    return (obs === "rain" || obs === "sun") ? ["total"] : ["min", "max", "avg"];
 }
 
 export function summaryOptions(obs) {

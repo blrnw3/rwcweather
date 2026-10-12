@@ -35,6 +35,7 @@ const SUMMARY_ROWS = [
     ["gust_speed", "gust"],
     ["wind_direction", "wdir"],
     ["rain", "rain"],
+    ["sunshine_duration", "sun"],
     ["aqi", "aqi"],
 ];
 
@@ -89,11 +90,11 @@ function stationTime(timestamp) {
 }
 
 // Daily climate comparison (as on nw3weather's daily report): temperature
-// low / high / mean and mean wind speed against that day's normal. Daily rain
-// totals are not compared, since a single day's rain vs normal is meaningless.
+// low / high / mean, mean wind speed, and sunshine total against that day's normal.
+// Daily rain totals are not compared, since a single day's rain vs normal is meaningless.
 function dayNormal(obs, summary, date) {
-    const stat = summary === "min" ? "min" : summary === "max" ? "max" : "avg";
-    if (!date || obs === "rain" || (obs !== "temp" && stat !== "avg") || !hasClimate(obs, stat)) {
+    const stat = summary === "min" ? "min" : summary === "max" ? "max" : summary === "total" ? "total" : "avg";
+    if (!date || obs === "rain" || (obs !== "temp" && obs !== "sun" && stat !== "avg") || !hasClimate(obs, stat)) {
         return null;
     }
     const [year, month, day] = date.split("-").map(Number);

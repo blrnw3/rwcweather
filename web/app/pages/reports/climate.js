@@ -34,12 +34,16 @@ const COLUMNS = [
     },
     { key: "rain", group: "rain", label: "Rainfall", obs: "rain", stat: "total", fmat: "rain", total: true },
     { key: "wind", group: "wind", label: "Mean speed", obs: "wind", stat: "avg", fmat: "wind" },
+    { key: "sun", group: "sun", label: "Sunshine", obs: "sun", stat: "total", fmat: "sun", total: true },
+    { key: "solr", group: "solr", label: "Solar radiation", obs: "solr", stat: "avg", fmat: "solr" },
 ];
 
 const GROUPS = [
     { key: "temp", label: "Temperature", fmat: "temp" },
     { key: "rain", label: "Rain", fmat: "rain" },
     { key: "wind", label: "Wind", fmat: "wind" },
+    { key: "sun", label: "Sunshine hours", fmat: "sun" },
+    { key: "solr", label: "Solar (kWh/m²/day)", fmat: "solr" },
 ];
 
 function availableColumns() {
