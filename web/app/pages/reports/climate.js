@@ -148,6 +148,22 @@ export default function ClimateReport() {
 
     return <Page name="reports" sub="climate" title="Reports | climate">
         <Heading as="h1" size="1">Climate of Redwood City (Emerald Lake Hills)</Heading>
+
+        <Text mt="4" variant="para">
+            The station sits at approximately 125 m (420 ft) above sea level on a hillside near the top of the
+            Emerald Hills canyon, between Redwood City and Woodside. The climate is Mediterranean: wet winters
+            and nearly rainless summers. Annual rainfall averages about 24.3 inches (617 mm), concentrated
+            from November through March, with June through September each typically receiving less than 0.2 inches.
+        </Text>
+        <Text variant="para">
+            Mean high temperatures range from about 15 °C (59 °F) in December and January to 27-28 °C (81-82 °F)
+            in July through September, with September typically the warmest month. Mean lows range from about 7 °C
+            (45 °F) in winter to 14 °C (57 °F) in August. The hillside location produces a thermal belt effect:
+            nights run about 1.5 °C warmer than the PRISM grid and Redwood City's bayside flats suggest, as cold
+            air drains into the valleys and bay flats below. The site receives some shelter from westerly winds,
+            and summer fog is far less common than at the coast.
+        </Text>
+
         <Heading as="h2" size="2">Long-term climate averages{CLIMATE_META.period && ", " + CLIMATE_META.period}</Heading>
 
         <Text mt="2">
