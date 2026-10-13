@@ -4,7 +4,8 @@ Pipeline (PLAN 3.1/3.2), identical to the research evaluation (eval/sunday.py, r
   1. grid: every UTC minute overlapping [sunrise, sunset]; weight w = overlap fraction (so a cloudless day sums to
      exactly the astronomical daylight length, rwcwx.astronomy convention: sun centre at -0.833 deg).
   2. gates: missing (no frame within +-5 min), stale (frame identical to the previous one), ir (night/IR mode,
-     Smean < 0.03 while el > 3), glitch (encoder smear over the foreground, pink_bot > 0.05).
+     Smean < 0.03 while el > 3), glitch (encoder smear over the foreground: pink_bot > 0.05, or a smear episode,
+     see mark_glitch_episodes).
      Gated minutes are unclassified (value NULL).
   3. main model state = p >= 0.5.
   4. low sun (el < 8 deg): carry the nearest confident main-model state (el >= 8, p < .25 or > .75) on the same side
@@ -13,7 +14,8 @@ Pipeline (PLAN 3.1/3.2), identical to the research evaluation (eval/sunday.py, r
   6. short gaps: a run of unclassified minutes (missing/stale/ir/glitch) of at most MAX_GAP_MIN, with classified
      minutes on both sides, is filled: with that state if both sides agree, else split at the midpoint (earlier
      half takes the left state). Filled minutes keep their gate flag and get 'interp'. Runs touching sunrise or
-     sunset (one side only) and longer runs stay unknown.
+     sunset (one side only) and longer runs stay unknown. Runs that are entirely glitch, with the same state on both
+     sides, may be up to MAX_GLITCH_GAP_MIN: a smear episode lasts until the camera's next keyframe (~13-30 min).
 """
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -28,6 +30,14 @@ TOLERANCE_S = 300
 IR_SMEAN = 0.03
 IR_MIN_EL = 3.0
 GLITCH_PINK = 0.05
+# Smear episodes (camera H.264 error propagation, typically at dawn): pink_bot ramps up from ~0.005 over 10-30
+# consecutive frames, then clears at the next keyframe. Frames well under GLITCH_PINK are already visibly smeared
+# and drag the sky-clarity model below the low-sun veto. A run of consecutive frames with pink >= GLITCH_EDGE that
+# contains one >= GLITCH_SEED is a glitch episode. On 4.9k research frames every frame >= 0.01 was a real smear.
+GLITCH_SEED = 0.01
+GLITCH_EDGE = 0.004
+EPISODE_STEP_S = 150
+MAX_GLITCH_GAP_MIN = 40
 # 20 min: longer than the glitch / stale bursts seen in practice (e.g. 13 min on 2026-10-12, 08:00-08:13 PT), but
 # shorter than one lost 30-min archive snapshot, so backfill never invents a whole snapshot period, and well under
 # the typical length of real sunny/cloudy spells here (median spell ~45 min in the 2026-10 per-minute data).
@@ -42,6 +52,7 @@ class Frame:
     smean: float
     stale: bool = False
     glitch: bool = False
+    pink: Optional[float] = None    # pink_bot; enables smear-episode detection
 
 
 @dataclass
@@ -96,7 +107,28 @@ def _median5(vals: List[int]) -> List[int]:
     return out
 
 
-def fill_short_gaps(grid: List[Minute], max_gap_min: int = MAX_GAP_MIN) -> int:
+def mark_glitch_episodes(frames: List[Frame]) -> int:
+    """Set glitch on every frame of a smear episode (frames sorted by t); returns the number newly marked."""
+    marked, i, n = 0, 0, len(frames)
+    while i < n:
+        if frames[i].pink is None or frames[i].pink < GLITCH_EDGE:
+            i += 1
+            continue
+        j = i + 1
+        while j < n and frames[j].pink is not None and frames[j].pink >= GLITCH_EDGE \
+                and (frames[j].t - frames[j - 1].t).total_seconds() <= EPISODE_STEP_S:
+            j += 1
+        if any(f.pink >= GLITCH_SEED for f in frames[i:j]):
+            for f in frames[i:j]:
+                if not f.glitch:
+                    f.glitch = True
+                    marked += 1
+        i = j
+    return marked
+
+
+def fill_short_gaps(grid: List[Minute], max_gap_min: int = MAX_GAP_MIN,
+                    max_glitch_gap_min: int = MAX_GLITCH_GAP_MIN) -> int:
     """Step 6 in place; returns the number of minutes filled."""
     filled = 0
     i, n = 0, len(grid)
@@ -108,8 +140,10 @@ def fill_short_gaps(grid: List[Minute], max_gap_min: int = MAX_GAP_MIN) -> int:
         while j < n and grid[j].value is None:
             j += 1
         # gap is grid[i:j]; needs a classified minute on both sides and contiguous minutes
-        if 0 < i and j < n and (j - i) <= max_gap_min \
-                and grid[j].t - grid[i - 1].t == timedelta(minutes=j - i + 1):
+        all_glitch = all("glitch" in grid[k].flags for k in range(i, j))
+        if 0 < i and j < n and grid[j].t - grid[i - 1].t == timedelta(minutes=j - i + 1) and (
+                (j - i) <= max_gap_min
+                or (all_glitch and (j - i) <= max_glitch_gap_min and grid[i - 1].value == grid[j].value)):
             left, right = grid[i - 1].value, grid[j].value
             half = (j - i + 1) // 2
             for k in range(i, j):
@@ -124,6 +158,7 @@ def classify_day(frames: List[Frame], sunrise: datetime, sunset: datetime,
                  tolerance_s: float = TOLERANCE_S, max_gap_min: int = MAX_GAP_MIN) -> List[Minute]:
     """tolerance_s: how far a minute may be from its nearest frame (5 min live; 15 min for the 30-min archive)."""
     frames = sorted(frames, key=lambda f: f.t)
+    mark_glitch_episodes(frames)
     grid = daylight_grid(sunrise, sunset)
     for m in grid:
         f = _nearest(frames, m.t, tolerance_s)
@@ -171,7 +206,8 @@ def classify_day(frames: List[Frame], sunrise: datetime, sunset: datetime,
     for i, v in zip(idx, _median5([raw[i] for i in idx])):
         grid[i].value = v
     if max_gap_min:
-        fill_short_gaps(grid, max_gap_min)
+        # Longer glitch fills only for per-minute frames: never invent a whole 30-min archive snapshot (backfill).
+        fill_short_gaps(grid, max_gap_min, MAX_GLITCH_GAP_MIN if tolerance_s <= TOLERANCE_S else max_gap_min)
     return grid
 
 

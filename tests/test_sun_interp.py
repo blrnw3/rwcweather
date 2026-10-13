@@ -38,7 +38,7 @@ def test_different_states_split_at_midpoint():
 
 
 def test_long_gap_and_edges_stay_unknown():
-    g = _grid([1] * 3 + [None] * (MAX_GAP_MIN + 1) + [1] * 3)
+    g = _grid([1] * 3 + [None] * (MAX_GAP_MIN + 1) + [1] * 3, gap_flag="missing")
     assert fill_short_gaps(g) == 0
     g = _grid([None] * 5 + [1] * 10 + [None] * 5, gap_flag="missing")
     assert fill_short_gaps(g) == 0

@@ -149,7 +149,7 @@ def process_day(day: date, clf: Classifier, frames_dir: str, cache_dir: str, max
         if r is None:
             continue
         seq.append(Frame(t=datetime.strptime(key, "%Y%m%d_%H%M"), p=r["p"], ps=r["ps"], smean=r["smean"],
-                         stale=(r["md5"] == prev_md5), glitch=r["pink"] > GLITCH_PINK))
+                         stale=(r["md5"] == prev_md5), glitch=r["pink"] > GLITCH_PINK, pink=r["pink"]))
         prev_md5 = r["md5"]
     grid = classify_day(seq, sunrise, sunset)
     logger.info(f"{day}: {len(frames)} frames ({new} new), sunrise {sunrise:%H:%M:%S} sunset {sunset:%H:%M:%S} UTC, "
