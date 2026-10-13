@@ -5,7 +5,7 @@ The endpoint tests use the database in MYSQL_URL (the dev DB) and are skipped if
 import unittest
 from datetime import date, timedelta
 
-from rwcwx.calc.rolling import min_days_required, rolling_ranking, rolling_windows
+from rwcwx.calc.rolling import min_days_required, rolling_ranking, rolling_ranking_with_current, rolling_windows
 
 
 def series(values, start=date(2024, 1, 1)):
@@ -46,6 +46,22 @@ class RollingTest(unittest.TestCase):
         res = rolling_ranking(series([1, 1, 1, 0, 1, 1, 1]), "rain", "total", 3, limit=1)
         self.assertEqual(res[0]["end"], (2024, 1, 7))
 
+    def test_current_window_rank(self):
+        data = series([0, 1, 5, 2, 0, 0, 3, 3, 3, 0, 1])
+        top, cur = rolling_ranking_with_current(data, "rain", "total", 3, limit=2)
+        self.assertEqual(len(top), 2)
+        # Last window Jan 9-11 = 4 in; listed periods better than it: 9 (Jan 7-9) and 8 (Jan 2-4).
+        self.assertEqual(cur["end"], (2024, 1, 11))
+        self.assertAlmostEqual(cur["val"], 4.0)
+        self.assertEqual(cur["rank"], 3)
+        _, low = rolling_ranking_with_current(data, "rain", "total", 3, order="lowest")
+        self.assertEqual(low["rank"], 1 + sum(1 for w in rolling_ranking(data, "rain", "total", 3, "lowest", 100) if w["val"] < 4.0))
+
+    def test_current_window_skips_today_for_means(self):
+        data = series([5, 6, 7, 8, 9, 10])
+        _, cur = rolling_ranking_with_current(data, "temp", "max", 3, today=date(2024, 1, 6))
+        self.assertEqual(cur["end"], (2024, 1, 5))
+
 
 class RollingEndpointTest(unittest.TestCase):
 
@@ -64,6 +80,7 @@ class RollingEndpointTest(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         body = res.get_json()
         self.assertEqual((body["days"], body["min_days"]), (3, 3))
+        self.assertIn("current", body)
         rows = body["result"]
         self.assertLessEqual(len(rows), 10)
         self.assertEqual([r["val"] for r in rows], sorted((r["val"] for r in rows), reverse=True))

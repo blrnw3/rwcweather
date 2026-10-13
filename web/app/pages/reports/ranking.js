@@ -139,6 +139,99 @@ function annualRecords(results, server, summary, threshold) {
     return records.filter((record) => isComplete(record.date[0]));
 }
 
+// The in-progress period matching the selected granularity (today, this month,
+// this year, this water year), or null. It may not be in the ranked list itself
+// (annual and water-year rankings only list complete years).
+function currentRecord(results, server, period, summary, threshold, waterYears) {
+    const today = server?.date;
+    if (!today) {
+        return null;
+    }
+    if (period === "daily") {
+        const r = (results.daily || []).find((x) => x.d[0] === today[0] && x.d[1] === today[1] && x.d[2] === today[2]);
+        return r ? { date: r.d, value: r.val } : null;
+    }
+    if (period === "monthly") {
+        const records = summary === "count"
+            ? monthlyCountRecords(results.daily || [], Number(threshold))
+            : (results.monthly || []).map((r) => ({ date: r.m, value: r.summary[summaryKey(summary)] }));
+        return records.find((r) => r.date[0] === today[0] && r.date[1] === today[1]) || null;
+    }
+    if (period === "annual") {
+        if (summary === "count") {
+            return annualCountRecords(results.daily || [], Number(threshold)).find((r) => r.date[0] === today[0]) || null;
+        }
+        const r = (results.yearly || []).find((x) => x.m === today[0] || x.m?.[0] === today[0]);
+        return r ? { date: [today[0]], value: r.summary[summaryKey(summary)] } : null;
+    }
+    if (period === "wateryear" && waterYears?.waterYears) {
+        const info = waterYears.waterYears.get(waterYears.currentWaterYear);
+        return info ? { date: [waterYears.currentWaterYear], value: info.value } : null;
+    }
+    return null;
+}
+
+// Last day a period covers: highlights use the period end (capped at today).
+function periodEnd(period, dateParts) {
+    if (period === "wateryear") {
+        return [dateParts[0], 9, 30];
+    }
+    if (period === "annual") {
+        return [dateParts[0], 12, 31];
+    }
+    if (period === "monthly") {
+        return [dateParts[0], dateParts[1], new Date(Date.UTC(dateParts[0], dateParts[1], 0)).getUTCDate()];
+    }
+    return dateParts;
+}
+
+const RECENT_MONTH_DAYS = 30;
+const RECENT_YEAR_DAYS = 365;
+
+// "month" (ended in the last 30 days), "year" (last 365 days) or null.
+export function recency(endParts, todayParts) {
+    if (!endParts || !todayParts) {
+        return null;
+    }
+    const utc = (d) => Date.UTC(d[0], d[1] - 1, d[2]);
+    const ago = Math.max(0, Math.round((utc(todayParts) - utc(endParts)) / 86400000));
+    return ago <= RECENT_MONTH_DAYS ? "month" : ago <= RECENT_YEAR_DAYS ? "year" : null;
+}
+
+const RECENT_STYLE = {
+    month: { bg: "orange.300", fontWeight: "bold" },
+    year: { bg: "orange.100" },
+};
+
+// Rank of value among values, ties sharing the better rank (as in the table).
+function rankOf(value, values, order) {
+    const better = values.filter((v) => order === "highest" ? v > value : v < value).length;
+    return better + 1;
+}
+
+function RecentLegend() {
+    return <Text id="ranking-legend" mt="2" fontSize="sm">
+        <Box as="span" display="inline-block" w="0.9em" h="0.9em" mr="1" verticalAlign="middle" bg={RECENT_STYLE.month.bg} />
+        ended in the last 30 days
+        <Box as="span" display="inline-block" w="0.9em" h="0.9em" ml="3" mr="1" verticalAlign="middle" bg={RECENT_STYLE.year.bg} borderWidth="1px" borderColor="orange.200" />
+        ended in the last year
+    </Text>;
+}
+
+const CURRENT_LABEL = {
+    daily: "Today",
+    monthly: "This month",
+    annual: "This year",
+    wateryear: "This water year",
+};
+
+function CurrentContext({ label, periodLabel, value, rank, of, inTop, soFar = true }) {
+    return <Text id="ranking-current" mt="3" p="2" bg="blue.50" borderLeftWidth="4px" borderColor="blue.400">
+        <b>{label}{soFar ? " so far" : ""}</b> ({periodLabel}): <b>{value}</b>
+        {rank != null ? <>, rank <b>{rank}</b> of {of}{inTop ? " (in the list below)" : ""}</> : null}
+    </Text>;
+}
+
 function waterYearRecords(waterYears) {
     if (!waterYears) {
         return [];
@@ -198,11 +291,25 @@ function RollingRankingTable({ obs, dailyAggregation, days, order, limit }) {
         return <Box mt="5"><Spinner size="md" /> Loading rankings…</Box>;
     }
     const records = response.result || [];
+    const today = response.server?.date;
+    const current = response.current;
+    const currentInTop = current && records.some((r) => r.end.join("-") === current.end.join("-"));
+    const showCurrentRow = current && !currentInTop;
     let previousValue = null;
     let displayedRank = 0;
 
     return <Box mt="5" overflowX="auto">
         {isValidating && <Text color="gray.500" fontSize="sm">Refreshing…</Text>}
+        {current ? <CurrentContext
+            label={"Latest " + days + " days"}
+            periodLabel={formatSpan(current.start, current.end)}
+            value={formatObs(unit, current.val, obsObj.fmat)}
+            rank={current.rank}
+            of={current.of}
+            inTop={currentInTop}
+            soFar={today != null && current.end.join("-") === today.join("-")}
+        /> : <Text mt="3" color="gray.500">The latest {days} days don't have enough data to rank.</Text>}
+        <RecentLegend />
         <Table id="ranking-table" variant="simple" size="md">
             <Thead>
                 <Tr>
@@ -219,9 +326,11 @@ function RollingRankingTable({ obs, dailyAggregation, days, order, limit }) {
                     }
                     const { bg, col } = styleForReportValue(record.val, obsObj.fmat, unit, isTotalObs(obs) ? "total" : null);
                     const span = formatSpan(record.start, record.end);
-                    return <Tr key={record.end.join("-")} className="rolling-row">
-                        <Td isNumeric fontWeight="bold">{displayedRank}</Td>
-                        <Td>
+                    const recent = recency(record.end, today);
+                    const hl = recent ? RECENT_STYLE[recent] : {};
+                    return <Tr key={record.end.join("-")} className={"rolling-row" + (recent ? " recent-" + recent : "")}>
+                        <Td isNumeric fontWeight="bold" bg={hl.bg}>{displayedRank}</Td>
+                        <Td bg={hl.bg} fontWeight={hl.fontWeight}>
                             <DayLink date={record.start}>{span.split(" – ")[0]}</DayLink>
                             {" – "}
                             <DayLink date={record.end}>{span.split(" – ")[1]}</DayLink>
@@ -232,6 +341,15 @@ function RollingRankingTable({ obs, dailyAggregation, days, order, limit }) {
                         <Td isNumeric backgroundColor={bg} color={col}>{formatObs(unit, record.val, obsObj.fmat)}</Td>
                     </Tr>;
                 })}
+                {showCurrentRow && <Tr id="ranking-current-row" borderTopWidth="3px" borderTopStyle="dashed">
+                    <Td isNumeric fontWeight="bold" bg="blue.50">{current.rank}</Td>
+                    <Td bg="blue.50">Latest {days} days: {formatSpan(current.start, current.end)}
+                        {current.days < current.n && <Text as="span" color="gray.500" fontSize="sm">
+                            {" "}({current.days} of {current.n} days with data)
+                        </Text>}
+                    </Td>
+                    <Td isNumeric bg="blue.50">{formatObs(unit, current.val, obsObj.fmat)}</Td>
+                </Tr>}
             </Tbody>
         </Table>
         {records.length === 0 && <Text py="4">No ranking data is available.</Text>}
@@ -246,7 +364,7 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
     const results = response?.result || {};
     const isSummaryPeriod = SUMMARY_PERIODS.includes(period);
     const byMonth = period === "daily" || period === "monthly";
-    const records = rankingRecords(results, response?.server, period, summary, threshold, waterYears)
+    const allRecords = rankingRecords(results, response?.server, period, summary, threshold, waterYears)
         .filter((record) => Number.isFinite(record.value))
         .filter((record) => !byMonth || month === "all" || record.date[1] === Number(month))
         .sort((a, b) => {
@@ -255,8 +373,26 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
                 return valueOrder;
             }
             return b.date.join("-").localeCompare(a.date.join("-"));
-        })
-        .slice(0, Number(limit));
+        });
+    const records = allRecords.slice(0, Number(limit));
+    const today = response?.server?.date;
+
+    // Current period context: computed from the rows already loaded for the ranking (no extra request).
+    const current = currentRecord(results, response?.server, period, summary, threshold, waterYears);
+    const currentKey = current?.date.join("-");
+    const currentInList = current != null && allRecords.some((r) => r.date.join("-") === currentKey);
+    const currentInTop = current != null && records.some((r) => r.date.join("-") === currentKey);
+    const currentMonthExcluded = byMonth && month !== "all" && today && Number(month) !== today[1];
+    const currentRanked = current != null && Number.isFinite(current.value) && !currentMonthExcluded;
+    const otherValues = allRecords.filter((r) => r.date.join("-") !== currentKey).map((r) => r.value);
+    const currentRank = currentRanked ? rankOf(current.value, otherValues, order) : null;
+    const currentOf = otherValues.length + 1;
+    const fmtValue = (value) => summary === "count" && isSummaryPeriod
+        ? value.toString()
+        : formatObs(unit, value, obsObj.fmat);
+    const currentPeriodLabel = current
+        ? (period === "wateryear" ? waterYearLabel(current.date[0]) : formatPeriod(period, current.date))
+        : null;
 
     if (error || waterYears?.error) {
         return <Text mt="4" color="red.600">Unable to load ranking data.</Text>;
@@ -270,6 +406,23 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
 
     return <Box mt="5" overflowX="auto">
         {isValidating && <Text color="gray.500" fontSize="sm">Refreshing…</Text>}
+        {currentRanked ? <CurrentContext
+            label={CURRENT_LABEL[period]}
+            periodLabel={currentPeriodLabel}
+            value={fmtValue(current.value)}
+            rank={currentRank}
+            of={currentOf}
+            inTop={currentInTop}
+        /> : <Text id="ranking-current" mt="3" color="gray.500">
+            {currentMonthExcluded
+                ? CURRENT_LABEL[period] + " isn't in " + monthNames[Number(month) - 1] + "; choose All months or "
+                    + monthNames[today[1] - 1] + " to see how it ranks."
+                : "No data yet for " + CURRENT_LABEL[period].toLowerCase() + "."}
+        </Text>}
+        {!currentInList && currentRanked && period !== "daily" && period !== "monthly" && <Text fontSize="sm" color="gray.500">
+            In-progress years aren't listed; the rank shows where the total so far would sit among complete years.
+        </Text>}
+        <RecentLegend />
         <Table id="ranking-table" variant="simple" size="md">
             <Thead>
                 <Tr>
@@ -292,12 +445,25 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
                         record.value, obsObj.fmat, unit, selectedSummary, period === "annual" || period === "wateryear", isSummaryPeriod
                     );
 
-                    return <Tr key={record.date.join("-")}>
-                        <Td isNumeric fontWeight="bold">{displayedRank}</Td>
-                        <Td>{formatPeriod(period, record.date)}</Td>
+                    const recent = recency(periodEnd(period, record.date), today);
+                    const hl = recent ? RECENT_STYLE[recent] : {};
+                    const isCurrent = record.date.join("-") === currentKey;
+                    return <Tr key={record.date.join("-")} className={recent ? "recent-" + recent : undefined}>
+                        <Td isNumeric fontWeight="bold" bg={hl.bg}>{displayedRank}</Td>
+                        <Td bg={hl.bg} fontWeight={hl.fontWeight}>
+                            {period === "daily" ? <DayLink date={record.date}>{formatPeriod(period, record.date)}</DayLink>
+                                : formatPeriod(period, record.date)}
+                            {isCurrent && <Text as="span" color="gray.600" fontSize="sm"> (so far)</Text>}
+                        </Td>
                         <Td isNumeric backgroundColor={bg} color={col}>{formattedValue}</Td>
                     </Tr>;
                 })}
+                {currentRanked && !currentInTop && <Tr id="ranking-current-row" borderTopWidth="3px" borderTopStyle="dashed">
+                    <Td isNumeric fontWeight="bold" bg="blue.50">{currentRank}</Td>
+                    <Td bg="blue.50">{CURRENT_LABEL[period]}: {currentPeriodLabel}
+                        <Text as="span" color="gray.600" fontSize="sm"> (so far)</Text></Td>
+                    <Td isNumeric bg="blue.50">{fmtValue(current.value)}</Td>
+                </Tr>}
             </Tbody>
         </Table>
         {records.length === 0 && <Text py="4">No ranking data is available.</Text>}
