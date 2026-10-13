@@ -20,7 +20,7 @@ import {
     SunViewToggle,
 } from "../../components/report";
 import { formatObs } from "../../format";
-import { annualNormal, ClimateAnom, ClimateNormalsLink, ClimateNote, hasClimate, monthlyNormal } from "../../components/climate";
+import { annualNormal, ClimateAnom, ClimateNormalsLink, ClimateNote, hasClimate, monthlyNormal, waterYearNormal } from "../../components/climate";
 import {
     completeWaterYearStats, useWaterYears, WaterYearCell, WaterYearHeader, WaterYearNote,
 } from "../../components/waterYear";
@@ -231,6 +231,11 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
     const waterYears = useWaterYears(obs, summary, threshold);
     const waterYearStats = waterYears ? completeWaterYearStats(waterYears.waterYears) : null;
 
+    // Anomalies against the climate normal, same rule as the matrix (mean / total summary with normals).
+    const showClimate = summary === obsObj.summary && hasClimate(obs, dailyAggregation);
+    const anom = (value, normal, stat = dailyAggregation) => showClimate && value != null
+        ? <ClimateAnom value={value} normal={normal} obs={obs} stat={stat} unit={unit} /> : null;
+
     const rows = [
         { key: "min", label: "Min" },
         { key: "max", label: "Max" },
@@ -280,6 +285,7 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
                         px="1"
                     >
                         {formatValue(value, key)}
+                        {anom(value, monthlyNormal(obs, dailyAggregation, month + 1))}
                     </Box>;
                 })}
                 {(() => {
@@ -299,6 +305,7 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
                         px="1"
                     >
                         {formatValue(value, key)}
+                        {anom(value, annualNormal(obs, dailyAggregation))}
                     </Box>;
                 })()}
                 {waterYears && (() => {
@@ -322,6 +329,7 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
                         px="1"
                     >
                         {formatValue(value, key)}
+                        {anom(value, waterYearNormal(obs, "total"), "total")}
                     </Box>;
                 })()}
             </Box>
