@@ -189,6 +189,9 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
         series,
     };
     return <Box id="year-chart">
-        <HighchartsReact highcharts={Highcharts} options={options} />
+        {/* Remount when the chart's shape changes (series type / count): updating a column chart in place
+            into a line chart can throw "reading 'stacks'" inside Highcharts. */}
+        <HighchartsReact key={[obs, stat, year, waterYear, cumulative, normalOk].join("|")} highcharts={Highcharts}
+            options={options} immutable={true} />
     </Box>;
 }
