@@ -117,6 +117,8 @@ class WetDay:
     observed_min: float
     unknown_tips: int
     rain: float
+    day_start: Optional[datetime] = None   # naive UTC bounds of the local day
+    day_end: Optional[datetime] = None
 
     def summary(self, now_utc: Optional[datetime] = None) -> dict:
         longest = max((s.wet_min for s in self.spells), default=0) if self.spells else 0
@@ -130,10 +132,14 @@ class WetDay:
             unknown_tips=self.unknown_tips,
             observed_h=round(self.observed_min / 60, 2),
             wet_now=wet_now,
-            spell_list=[dict(start=(s.span or (s.start, s.end))[0].replace(tzinfo=UTC),
-                             end=(s.span or (s.start, s.end))[1].replace(tzinfo=UTC),
+            day_start=_ms(self.day_start), day_end=_ms(self.day_end),
+            spell_list=[dict(start=_ms((s.span or (s.start, s.end))[0]), end=_ms((s.span or (s.start, s.end))[1]),
                              wet_h=round(s.wet_min / 60, 2), tips=s.n_tips, lone=s.lone) for s in self.spells],
         )
+
+
+def _ms(t: Optional[datetime]) -> Optional[int]:
+    return int(t.replace(tzinfo=UTC).timestamp() * 1000) if t else None
 
 
 def day_bounds_utc(d: date) -> Tuple[datetime, datetime]:
@@ -162,7 +168,7 @@ def wet_day(d: date, rows: Sequence[Tuple[datetime, Optional[float]]], window: i
     rain = sum(t.amount for t in tips + unknown if st <= t.t < en)
     return WetDay(d=d, wet_min=sum(s.wet_min for s in kept), spells=kept,
                   observed_min=sum(_overlap_min(day, c) for c in covered),
-                  unknown_tips=sum(1 for t in unknown if st <= t.t < en), rain=rain)
+                  unknown_tips=sum(1 for t in unknown if st <= t.t < en), rain=rain, day_start=st, day_end=en)
 
 
 def wet_flags(times: Iterable[datetime], spells: Sequence[Spell]) -> List[int]:

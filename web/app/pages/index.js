@@ -18,6 +18,7 @@ import { LatestChart, SummaryChart } from '../components/chart';
 import { fetcher, fmatObsOptIcon, fmatTimeOpt, RAIN_VIEW_NAMES, RAIN_VIEWS, SUN_VIEW_NAMES, SUN_VIEWS } from '../components/conf';
 import { Page, UnitCtx } from "../components/Page";
 import { SunRibbon, useSunDay } from '../components/sun';
+import { WetRibbon } from '../components/wet';
 import RadioCard from '../components/RadioCard';
 import { aqiStatus, formatObs, moonPhase, prettySecs, timeOf } from '../format';
 import {
@@ -336,7 +337,7 @@ function RainHomeCard(props) {
       <Text as="span" fontSize={{ base: "2xl", md: "3xl" }} paddingRight="4" paddingLeft="1">{now}</Text>
       <WetHoursInline wet={dash?.wet} rainToday={dash?.["now"]?.["rain"]} isOpen={wetDisc.isOpen} onToggle={wetDisc.onToggle} />
     </Text>
-    <WetHoursDetails wet={dash?.wet} rainToday={dash?.["now"]?.["rain"]} isOpen={wetDisc.isOpen} />
+    <WetHoursDetails wet={dash?.wet} rainToday={dash?.["now"]?.["rain"]} isOpen={wetDisc.isOpen} nowMs={dash?.server?.epoch ? dash.server.epoch * 1000 : null} />
     <Text>Last rain: <Text as="span" fontWeight="bold">{last}</Text> ago</Text>
     <Text borderBottom="1px solid #ccc">Past 10m: <Text as="span" fontWeight="bold">{rn10}</Text></Text>
     <Text>Hourly: <Text as="span" fontWeight="bold">{rnhr}</Text></Text>
@@ -351,7 +352,6 @@ function RainHomeCard(props) {
 
 // Derived wet hours today, inline next to today's rain so the card keeps its height; hidden on dry days.
 // The chevron expands spells, longest spell and rate (WetHoursDetails), like the water-year line.
-const MAX_SPELLS = 5;
 const wetShown = (wet, rainToday) => wet && rainToday > 0 && wet.wet_h > 0;
 
 function WetHoursInline({ wet, rainToday, isOpen, onToggle }) {
@@ -376,20 +376,17 @@ function WetToggle({ isOpen, onToggle }) {
   </Button>;
 }
 
-function WetHoursDetails({ wet, rainToday, isOpen }) {
+function WetHoursDetails({ wet, rainToday, isOpen, nowMs }) {
   if (!wetShown(wet, rainToday)) {
     return null;
   }
   const rate = wet.rate != null ? formatObs(unit, wet.rate, "rain") + "/h" : "–";
+  const pct = wet.day_end ? Math.round(wet.wet_h * 3600000 / (Math.min(nowMs || wet.day_end, wet.day_end) - wet.day_start) * 100) : null;
   return <Collapse in={isOpen} animateOpacity>
     <Box id="wet-hours-details" className="wet-hours-details" fontSize="sm" lineHeight="short" color="gray.700" mb="1">
-      <Text>Spells: <Text as="span" fontWeight="bold">{wet.spells}</Text>
-        {" "}(longest <Text as="span" fontWeight="bold">{formatObs(unit, wet.longest_h, "wet")}</Text>)</Text>
-      <Text>Rate when wet: <Text as="span" fontWeight="bold">{rate}</Text></Text>
-      {(wet.spell_list || []).slice(-MAX_SPELLS).map((sp, i) => <Text key={i} className="wet-spell">
-        {timeOf(sp.start)}–{timeOf(sp.end)}: {formatObs(unit, sp.wet_h, "wet")}{sp.lone ? " (single tip)" : ""}
-      </Text>)}
-      {wet.spell_list?.length > MAX_SPELLS && <Text color="gray.500">+{wet.spell_list.length - MAX_SPELLS} earlier</Text>}
+      <WetRibbon wet={wet} nowMs={nowMs} />
+      <Text>{wet.spells} spell{wet.spells === 1 ? "" : "s"}, longest {formatObs(unit, wet.longest_h, "wet")}
+        {pct != null && <> · {pct}% of day so far</>} · {rate}</Text>
     </Box>
   </Collapse>;
 }
