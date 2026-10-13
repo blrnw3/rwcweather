@@ -38,7 +38,7 @@ const NAV = new Map([
 // viewed (including the sunshine Hours / % of possible view, which is part of var); a page that
 // doesn't support that variable falls back to its own default (see useUrlState validation).
 const VAR_PAGES = new Set(["/reports/day", "/reports/matrix", "/reports/alltime", "/reports/ranking",
-  "/charts/latest", "/charts/summary"]);
+  "/charts/latest", "/charts/summary", "/charts/year"]);
 
 export function carryVarHref(to, query) {
   const v = query?.var;
