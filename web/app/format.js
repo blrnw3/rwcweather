@@ -129,6 +129,25 @@ const OBS_FORMAT = {
         year: [2600, 2750, 2850, 2950, 3050, 3150, 3250, 3350],
       },
     },
+    // Derived wet hours (rain-gauge tips, 30 min window); bands from the 2021-2026 record.
+    wet: {
+      units: {
+        base: "h",
+      },
+      conv: {
+      },
+      precision: {
+        base: 1,
+      },
+      scale: {
+        base: [0.5, 1, 2, 4, 6, 9, 12, 18],
+      },
+      periodScale: {
+        summaries: ["total"],
+        month: [5, 10, 20, 35, 50, 70, 100, 140],
+        year: [150, 200, 250, 300, 350, 400, 450, 500],
+      },
+    },
     sunpct: {
       units: {
         base: "%",

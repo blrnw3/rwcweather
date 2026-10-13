@@ -16,6 +16,7 @@ from rwcwx.model.obs import ObsQ
 from rwcwx.model import sun as sun_model
 from rwcwx.models import AvgExt, Base, db, m, Obs
 from rwcwx.util import DateStampConverter, DateUtil
+from rwcwx.wet import store as wet_store
 
 
 def todo():
@@ -49,6 +50,7 @@ def dashboard_live():
             trends=trends,
             today=_today_stats(now.date(), int(now.timestamp() // 60)),
             sun=_sun_today(now.date(), int(now.timestamp() // 60)),
+            wet=_wet_today(now.date(), int(now.timestamp() // 60)),
             last_rain=last_rain,
             rain_trend=dict(
                 last=last_rain,
@@ -74,6 +76,17 @@ def _sun_today(day: date, _minute: int) -> Optional[dict]:
         return sun_model.dashboard_block(day)
     except Exception as e:  # e.g. obs_inferred missing on a dev DB
         logger.warning(f"sun dashboard block failed: {e}")
+        return None
+
+
+@lru_cache(maxsize=2)
+def _wet_today(day: date, _minute: int) -> Optional[dict]:
+    """Today's derived wet hours, spells, longest spell and rate; read-only, at most once per minute per worker."""
+    try:
+        wd, _, _ = wet_store.compute_day(day)
+        return wd.summary(datetime.utcnow())
+    except Exception as e:
+        logger.warning(f"wet dashboard block failed: {e}")
         return None
 
 

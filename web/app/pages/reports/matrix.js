@@ -71,7 +71,7 @@ function RadioButtonGroup(props) {
 
 // Sunshine hours: whole hours above 3 h keep the table compact; 1 dp at or below 3 h.
 function matrixValue(unit, val, fmat) {
-    if (fmat === "sun" && val != null && val > 3) {
+    if ((fmat === "sun" || fmat === "wet") && val != null && val > 3) {
         return Math.round(val).toString();
     }
     return formatObs(unit, val, fmat, false, false);
@@ -247,7 +247,7 @@ const aggOptionsFor = (obs) => isTotalObs(obs) ? ["total"] : (OBS.get(obs).daily
 
 // Selections kept in the URL, e.g. /reports/matrix?var=rain&year=2023
 const MATRIX_URL_STATE = {
-    obs: { param: "var", def: () => "temp", valid: inList([...OBS_OPTIONS, "sunpct"]) },
+    obs: { param: "var", def: () => "temp", valid: inList([...OBS_OPTIONS, "sunpct", "wet"]) },
     aggType: { param: "daily", def: (s) => aggOptionsFor(s.obs)[0], valid: (v, s) => aggOptionsFor(s.obs).includes(v) },
     year: { def: () => yrEnd.toString(), valid: inList(years) },
 };

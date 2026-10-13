@@ -206,12 +206,19 @@ class SunPct(ObsVar):
     db_field = "sunpct"
 
 
+class Wet(ObsVar):
+    """Derived from rain-gauge tips (rwcwx/wet): daily wet hours in avg_extreme var='wet', type='total'."""
+    name = "wet hours"
+    unit = Unit.hours
+    db_field = "wet"
+
+
 class ObsVarGroup:
     ALL: Iterable[ObsVarT] = (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt)
 
 
 OBS_VAR_MAP = {o.db_field: o for o in (
-    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun, SunPct)
+    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun, SunPct, Wet)
 )}
 
 

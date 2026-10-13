@@ -30,6 +30,7 @@ ROLLING_VARS: Dict[str, Dict[str, str]] = {
     "temp": {"avg": "mean", "max": "mean", "min": "mean"},
     "sun": {"total": "sum"},
     "sunpct": {"avg": "mean"},
+    "wet": {"total": "sum"},
 }
 
 
