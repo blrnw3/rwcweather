@@ -12,8 +12,8 @@ export const REPORT_OBS_OPTIONS = [
     "temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust", "sun",
 ];
 
-// Variables with daily values (rankings, all-time): adds webcam sunshine, which only has daily totals.
-export const DAILY_VALUE_OBS_OPTIONS = [...REPORT_OBS_OPTIONS, "sun"];
+// Variables with daily values (rankings, all-time). "sun" is already in REPORT_OBS_OPTIONS (added in #28).
+export const DAILY_VALUE_OBS_OPTIONS = REPORT_OBS_OPTIONS;
 
 // Every value the "var" URL parameter may take: the buttons plus alternative views (sunshine as %).
 export const DAILY_VALUE_OBS_STATES = [...DAILY_VALUE_OBS_OPTIONS, "sunpct"];
