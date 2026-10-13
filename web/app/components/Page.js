@@ -9,6 +9,7 @@ import {
 import { createContext, useEffect, useState } from 'react';
 import { IoSettingsOutline } from 'react-icons/io5';
 import { WiSunrise } from "react-icons/wi";
+import { useRouter } from 'next/router';
 import Layout from './Layout';
 
 
@@ -31,6 +32,27 @@ const NAV = new Map([
     ["about", "/about"],
   ])],
 ]);
+
+// Pages that take a ?var= selection. Following a nav link between them keeps the variable being
+// viewed (including the sunshine Hours / % of possible view, which is part of var); a page that
+// doesn't support that variable falls back to its own default (see useUrlState validation).
+const VAR_PAGES = new Set(["/reports/day", "/reports/matrix", "/reports/alltime", "/reports/ranking",
+  "/charts/latest", "/charts/summary"]);
+
+export function carryVarHref(to, query) {
+  const v = query?.var;
+  if (!VAR_PAGES.has(to) || typeof v !== "string" || !/^[a-z]+$/.test(v)) {
+    return to;
+  }
+  // The daily report has sunshine hours but no "% of possible" view.
+  return to + "?var=" + encodeURIComponent(to === "/reports/day" && v === "sunpct" ? "sun" : v);
+}
+
+function useCarryHref() {
+  const router = useRouter();
+  const fromVarPage = router && VAR_PAGES.has(router.pathname);
+  return (to) => fromVarPage ? carryVarHref(to, router.query) : to;
+}
 
 function NavBarItem(props) {
   let bcol = (props.activePage === props.name) ? "yellow" : "#fd9800";
@@ -103,6 +125,7 @@ function SettingsModal(props) {
 }
 
 function Header(props) {
+  const carry = useCarryHref();
   return <Flex id="header" w="100%" justify="space-between" bg="pliny.500" wrap="wrap" px="4">
     <Box id="brand" fontSize={{base: "2xl", md: "3xl"}} pt="5" pb="2" pl={{base: 2, md: 3}} color="gray.100">
       <ChakraLink href="/" variant="hidden" display="inline-flex" alignItems="center">
@@ -121,7 +144,7 @@ function Header(props) {
             <NavBarItem name={nav} menu activePage={props.name} />
             <MenuList p="0" border="none" borderRadius="0" bg="pliny.500">
               {Array.from(subnavObj).map(([subnav, to]) => {
-                return <NavBarMenuItem key={subnav} name={subnav} to={to} />
+                return <NavBarMenuItem key={subnav} name={subnav} to={carry(to)} />
               })}
             </MenuList>
           </Menu>
@@ -133,6 +156,7 @@ function Header(props) {
 }
 
 function SubHeader(props) {
+  const carry = useCarryHref();
   const subnav = (typeof(NAV.get(props.name)) === "string") ? new Map([]) : NAV.get(props.name);
   return <Flex id="subheader" bg="pliny.50" justify="space-between">
     <Flex>
@@ -140,7 +164,7 @@ function SubHeader(props) {
     </Flex>
     <Flex id="subnav" alignSelf="flex-end" mr="20">
       {Array.from(subnav).map(([subnav, to]) => {
-        return <SubNavBarItem key={subnav} name={subnav} to={to} activePage={props.sub} />
+        return <SubNavBarItem key={subnav} name={subnav} to={carry(to)} activePage={props.sub} />
       })}
     </Flex>
   </Flex>

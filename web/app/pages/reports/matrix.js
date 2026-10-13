@@ -2,7 +2,7 @@ import { Box, Flex, Grid, Heading, Spinner, Text, useRadioGroup } from "@chakra-
 import { Fragment, useContext } from 'react';
 import useSWR from 'swr';
 import { baseObs, fetcher, fmatAggTypeOpt, fmatObsOpt, fmatYrOpt, isTotalObs, OBS } from '../../components/conf';
-import { SunViewToggle } from '../../components/report';
+import { REPORT_OBS_OPTIONS, SunViewToggle } from '../../components/report';
 import { daysInMonth } from "../../components/dateUtil";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
@@ -69,6 +69,13 @@ function RadioButtonGroup(props) {
     </Flex>
 }
 
+function dayReportHref(year, month, day, obs) {
+    const pad = (n) => String(n).padStart(2, "0");
+    const dayObs = baseObs(obs);
+    const v = REPORT_OBS_OPTIONS.includes(dayObs) && dayObs !== "temp" ? "&var=" + dayObs : "";
+    return "/reports/day?date=" + year + "-" + pad(month) + "-" + pad(day) + v;
+}
+
 function DailyMatrix(props) {
     const obs = props.obs;
     const obsObj = OBS.get(obs);
@@ -132,12 +139,16 @@ function DailyMatrix(props) {
                             ({ bg, col } = getStyleForObsValue(data.get(m)[d], obsObj.fmat, unit));
                             hover = { border: "1px solid " + col };
                         }
+                        // Past days link to that day's report, keeping the variable where the daily report has it.
+                        const href = v !== "" ? dayReportHref(props.year, m + 1, d, obs) : null;
                         let bgComps = bg.split(".");
                         bg = "var(--chakra-colors-" + bgComps[0] + "-" + bgComps[1] + ") !important";
-                        return <Box key={m.toString() + "-" + d.toString()} className="cell"
+                        return <Box key={m.toString() + "-" + d.toString()} className={"cell" + (href ? " day-link" : "")}
+                            as={href ? "a" : "div"} href={href || undefined} display="block"
+                            title={href ? "Daily report for " + href.slice(18, 28) : undefined}
                             textAlign="center" backgroundColor={bg} color={col}
                             border="1px solid transparent"
-                            _hover={hover} px={1}
+                            _hover={href ? { ...hover, textDecoration: "underline", cursor: "pointer" } : hover} px={1}
                         >
                             {v}</Box>
                     })}
