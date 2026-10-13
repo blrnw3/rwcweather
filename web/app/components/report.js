@@ -80,7 +80,8 @@ function styleForScaleValue(value, scale) {
     };
 }
 
-export function styleForReportValue(value, obsType, unit, summary, annual = false) {
+// `monthly`: the value aggregates a month (annual=true: a year), so variables with period scales use them.
+export function styleForReportValue(value, obsType, unit, summary, annual = false, monthly = false) {
     if (summary === "count") {
         const scale = annual
             ? [1, 50, 100, 150, 200, 250, 300, 365]
@@ -88,7 +89,8 @@ export function styleForReportValue(value, obsType, unit, summary, annual = fals
         return styleForScaleValue(value, scale);
     }
     const convertedValue = value == null ? null : convFunction(unit, obsType)(value);
-    return styleForScaleValue(convertedValue, scaleForObsType(unit, obsType));
+    const period = annual ? "year" : monthly ? "month" : "day";
+    return styleForScaleValue(convertedValue, scaleForObsType(unit, obsType, period, summary));
 }
 
 export function RadioButtonGroup(props) {

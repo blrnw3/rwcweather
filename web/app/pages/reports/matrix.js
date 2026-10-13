@@ -32,12 +32,12 @@ function useSummary(obs, agg, year) {
     return res;
 }
 
-function getStyleForObsValue(val, obsType, unit) {
+function getStyleForObsValue(val, obsType, unit, period = "day", summary = null) {
     if (val == null) {
         return "gray.300"
     }
     val = convFunction(unit, obsType)(val);
-    const scale = scaleForObsType(unit, obsType);
+    const scale = scaleForObsType(unit, obsType, period, summary);
     let i = 0;
     while (i < scale.length) {
         if (val < scale[i]) {
@@ -191,7 +191,7 @@ function MonthlyMatrix(props) {
                     let hover = {}
                     if (data.has(m)) {
                         v = formatObs(unit, data.get(m)[k], obsObj.fmat, false, false);
-                        ({ bg, col } = getStyleForObsValue(data.get(m)[k], obsObj.fmat, unit));
+                        ({ bg, col } = getStyleForObsValue(data.get(m)[k], obsObj.fmat, unit, "month", k));
                         hover = { border: "1px solid " + col };
                     }
                     return <Box key={m + "-" + k} className="cell"

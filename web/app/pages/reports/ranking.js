@@ -289,7 +289,7 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
                         : formatObs(unit, record.value, obsObj.fmat);
                     const selectedSummary = isSummaryPeriod ? summary : null;
                     const { bg, col } = styleForReportValue(
-                        record.value, obsObj.fmat, unit, selectedSummary, period === "annual" || period === "wateryear"
+                        record.value, obsObj.fmat, unit, selectedSummary, period === "annual" || period === "wateryear", isSummaryPeriod
                     );
 
                     return <Tr key={record.date.join("-")}>

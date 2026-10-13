@@ -123,7 +123,7 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
                         : formatObs(unit, value, obsObj.fmat, false, false);
                     const { bg, col } = isFuture
                         ? { bg: "gray.200", col: "black" }
-                        : styleForReportValue(value, obsObj.fmat, unit, summary);
+                        : styleForReportValue(value, obsObj.fmat, unit, summary, false, true);
 
                     return <Box key={year + "-" + month}
                         className="cell"
@@ -267,7 +267,7 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
                 <Box minW="46px" py="2" fontWeight="bold" textAlign="center">{label}</Box>
                 {months.map((month) => {
                     const value = stats.byMonth[month]?.[key] ?? null;
-                    const { bg, col } = styleForReportValue(value, obsObj.fmat, unit, summary);
+                    const { bg, col } = styleForReportValue(value, obsObj.fmat, unit, summary, false, true);
 
                     return <Box key={month + "-" + key}
                         className="cell"
