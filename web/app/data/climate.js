@@ -28,10 +28,11 @@
 //      sheltered, low-mounted anemometer, so wind shows no comparison.
 //    - sun: webcam-derived sunshine duration is now observed (classifier-based);
 //      the normals are ESTIMATES from satellite radiation (Angstrom-Prescott).
-//    - solr: global horizontal irradiance (GHI) from satellite data; there is
-//      no solar radiation sensor, so this is reference-only.
+//    - sun.possible: astronomical maximum (sunrise to sunset, sun centre at
+//      -0.833 deg) summed per month, from rwcwx.astronomy for the station
+//      location (2025, a non-leap year; varies <0.5 h year to year).
 //
-//  Sunshine and solar radiation source: NREL NSRDB via PVGIS 5.2 (2005-2015,
+//  Sunshine source: NREL NSRDB via PVGIS 5.2 (2005-2015,
 //  ~4 km satellite grid). Sunshine hours and percent-of-possible are estimated
 //  from the radiation using the Angstrom-Prescott relation (FAO-56 defaults,
 //  a=0.25, b=0.50); these are approximate, especially in summer (marine layer).
@@ -58,8 +59,8 @@ export const CLIMATE_NORMALS = {
     placeholder: false,
     source: "PRISM 1991-2020 800 m normals, cell center 37.4667,-122.2667 "
         + "(station approx 37.470,-122.265, Emerald Lake Hills); "
-        + "sunshine and solar radiation from NREL NSRDB via PVGIS 5.2, 2005-2015",
-    period: "1991-2020 (temp, rain); 2005-2015 (sunshine, solar)",
+        + "sunshine estimated from NREL NSRDB via PVGIS 5.2 radiation, 2005-2015",
+    period: "1991-2020 (temp, rain); 2005-2015 (sunshine)",
     // Shown on /reports/climate. Keep these short and non-technical; the
     // detailed adjustment reasoning lives in the header comment above.
     notes: [
@@ -67,8 +68,8 @@ export const CLIMATE_NORMALS = {
             + "800 m gridded monthly normals, sampled at the grid cell centred on 37.4667, -122.2667 that "
             + "contains the station (approx. 37.470, -122.265, Emerald Lake Hills, ~125 m above sea level).",
         "Adjustments were made for the sensor's location (hillside thermal belt).",
-        "Sunshine duration and solar radiation normals are satellite-based: NREL NSRDB via PVGIS 5.2 (2005-2015, ~4 km grid). "
-            + "Sunshine hours and percent-of-possible are estimated from the radiation and are approximate, especially in summer.",
+        "Sunshine normals are estimated from satellite radiation (NREL NSRDB via PVGIS 5.2, 2005-2015, ~4 km grid) and are "
+            + "approximate, especially in summer. Max possible is sunrise to sunset at the station.",
         "The mean-temperature normal is adjusted for how the station averages: its daily mean (all 1-minute "
             + "readings) runs below (high + low) / 2, by about 0.3 °C in winter to 1.3 °C in summer, because "
             + "nights are long and afternoon peaks are brief.",
@@ -109,14 +110,11 @@ export const CLIMATE_NORMALS = {
                 monthly: [170, 166, 243, 305, 349, 381, 403, 377, 297, 266, 198, 145],
                 annual: 3300,
             },
-        },
-        solr: {
-            // Global horizontal irradiance: no sensor, reference-only (no observed comparisons)
-            avg: {
-                // Daily average GHI (kWh/m²/day)
-                unit: "kWh/m²/day",
-                monthly: [2.49, 3.19, 4.64, 6.29, 7.21, 7.94, 7.95, 7.21, 5.60, 4.21, 2.88, 2.11],
-                annual: 5.15,
+            possible: {
+                // Max possible sunshine (h/month): sunrise to sunset, rwcwx.astronomy at the station
+                unit: "h",
+                monthly: [308, 303, 371, 396, 440, 441, 448, 420, 372, 348, 305, 298],
+                annual: 4450,
             },
         },
     },

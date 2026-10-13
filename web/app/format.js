@@ -120,7 +120,14 @@ const OBS_FORMAT = {
       },
       scale: {
         base: [0.5, 2, 4, 6, 8, 10, 11, 12],
-      }
+      },
+      // Monthly / annual totals get their own bands (the daily scale saturates at ~12 h).
+      // From the 2021-2026 webcam record: months ~105-390 h, full years ~2900-3250 h.
+      periodScale: {
+        summaries: ["total"],
+        month: [120, 160, 200, 240, 280, 320, 350, 380],
+        year: [2600, 2750, 2850, 2950, 3050, 3150, 3250, 3350],
+      },
     },
     sunpct: {
       units: {
@@ -133,7 +140,13 @@ const OBS_FORMAT = {
       },
       scale: {
         base: [10, 25, 40, 55, 70, 80, 90, 97],
-      }
+      },
+      // Monthly / annual means of daily %: months ~35-90 %, years ~67-78 %.
+      periodScale: {
+        summaries: ["avg"],
+        month: [35, 45, 55, 62, 70, 77, 84, 90],
+        year: [60, 64, 67, 70, 73, 76, 79, 82],
+      },
     },
     aqi: {
       units: {
@@ -169,19 +182,6 @@ const OBS_FORMAT = {
       },
       scale: {
         base: [45, 90, 135, 180, 225, 270, 315, 360],
-      }
-    },
-    solr: {
-      units: {
-        base: "kWh/m²/day",
-      },
-      conv: {
-      },
-      precision: {
-        base: 2,
-      },
-      scale: {
-        base: [1, 2, 3, 4, 5, 6, 7, 8],
       }
     },
   }
@@ -284,8 +284,14 @@ export function unitForObsType(unitPref, obsType) {
   return (unitPref in formatRules["units"]) ? formatRules["units"][unitPref] : formatRules["units"]["base"];
 }
 
-export function scaleForObsType(unitPref, obsType) {
+// period: "day" (default), "month" or "year". Only variables with a periodScale (sunshine) have
+// separate bands for monthly / annual aggregates of the given summary; others use one scale throughout.
+export function scaleForObsType(unitPref, obsType, period = "day", summary = null) {
   const formatRules = OBS_FORMAT[obsType];
+  const ps = formatRules["periodScale"];
+  if (ps && period !== "day" && ps[period] && ps.summaries.includes(summary)) {
+    return ps[period];
+  }
   return (unitPref in formatRules["scale"]) ? formatRules["scale"][unitPref] : formatRules["scale"]["base"];
 }
 

@@ -11,7 +11,7 @@ import {
 import { DailyTempNormalsChart, MonthlyNormalsChart } from "../../components/climateCharts";
 import { Page, UnitCtx } from "../../components/Page";
 import { styleForReportValue } from "../../components/report";
-import { formatObs, unitForObsType } from "../../format";
+import { convFunction, formatObs, unitForObsType } from "../../format";
 
 // Long-term climate normals, laid out like nw3weather's "Long-term Climate
 // Averages" table: months down the side, variables across, then annual
@@ -22,7 +22,7 @@ import { formatObs, unitForObsType } from "../../format";
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August",
     "September", "October", "November", "December"];
 
-// Candidate columns, in display order. `derive` columns are computed from others.
+// Candidate columns, in display order. `dp` / `sf` override the display precision. `derive` columns are computed from others.
 const COLUMNS = [
     { key: "tmin", group: "temp", label: "Mean low", obs: "temp", stat: "min", fmat: "temp" },
     { key: "tmax", group: "temp", label: "Mean high", obs: "temp", stat: "max", fmat: "temp" },
@@ -32,10 +32,10 @@ const COLUMNS = [
         derive: (get) => (get("temp", "max") != null && get("temp", "min") != null
             ? get("temp", "max") - get("temp", "min") : null),
     },
-    { key: "rain", group: "rain", label: "Rainfall", obs: "rain", stat: "total", fmat: "rain", total: true },
+    { key: "rain", group: "rain", label: "Rainfall", obs: "rain", stat: "total", fmat: "rain", total: true, sf: 2 },
     { key: "wind", group: "wind", label: "Mean speed", obs: "wind", stat: "avg", fmat: "wind" },
-    { key: "sun", group: "sun", label: "Sunshine", obs: "sun", stat: "total", fmat: "sun", total: true },
-    { key: "solr", group: "solr", label: "Solar radiation", obs: "solr", stat: "avg", fmat: "solr" },
+    { key: "sun", group: "sun", label: "Sunshine", obs: "sun", stat: "total", fmat: "sun", total: true, dp: 0 },
+    { key: "sunmax", group: "sun", label: "Max possible", obs: "sun", stat: "possible", fmat: "sun", total: true, uncoloured: true, dp: 0 },
 ];
 
 const GROUPS = [
@@ -43,7 +43,6 @@ const GROUPS = [
     { key: "rain", label: "Rain", fmat: "rain" },
     { key: "wind", label: "Wind", fmat: "wind" },
     { key: "sun", label: "Sunshine hours", fmat: "sun" },
-    { key: "solr", label: "Solar (kWh/m²/day)", fmat: "solr" },
 ];
 
 function availableColumns() {
@@ -59,7 +58,8 @@ function columnValue(column, period) {
             return annualNormal(obs, stat);
         }
         if (period === "waterYear") {
-            return waterYearNormal(obs, stat);
+            // Water year (Oct-Sep) only means something for rain
+            return obs === "rain" ? waterYearNormal(obs, stat) : null;
         }
         return monthlyNormals(obs, stat)?.[period] ?? null;
     };
@@ -69,16 +69,33 @@ function columnValue(column, period) {
     return get(column.obs, column.stat);
 }
 
+// Display precision overrides (after unit conversion): `dp` decimal places, or `sf` significant figures.
+function displayValue(column, unit, value) {
+    const s = formatObs(unit, value, column.fmat, false, false);
+    if (column.sf != null) {
+        const v = convFunction(unit, column.fmat)(value);
+        // toPrecision keeps trailing zeros (1.0, 5.0) but switches to exponents at >= 10^sf (mm totals)
+        if (Math.abs(v) >= 10 ** column.sf) {
+            return String(Number(v.toPrecision(column.sf)));
+        }
+        // ...and never show more decimals than the normal's usual precision (0.02, not 0.020)
+        const p = v.toPrecision(column.sf);
+        const maxDp = (s.split(".")[1] || "").length;
+        return (p.split(".")[1] || "").length > maxDp ? s : p;
+    }
+    return column.dp == null ? s : Number(s).toFixed(column.dp);
+}
+
 function ValueCell({ column, value, unit, annual }) {
     if (value == null) {
         return <Td textAlign="center" color="gray.400">&nbsp;</Td>;
     }
     const { bg, col } = column.uncoloured
         ? { bg: "transparent", col: "inherit" }
-        : styleForReportValue(value, column.fmat, unit, column.total ? "total" : "avg", annual);
+        : styleForReportValue(value, column.fmat, unit, column.total ? "total" : "avg", annual, !annual);
     return <Td className={"cell climate-" + column.key} textAlign="center" backgroundColor={bg} color={col}
         fontWeight={annual ? "bold" : "normal"} px="2" py="2">
-        {formatObs(unit, value, column.fmat, false, false)}
+        {displayValue(column, unit, value)}
     </Td>;
 }
 
