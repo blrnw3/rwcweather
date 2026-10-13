@@ -69,6 +69,14 @@ function RadioButtonGroup(props) {
     </Flex>
 }
 
+// Sunshine hours: whole hours above 3 h keep the table compact; 1 dp at or below 3 h.
+function matrixValue(unit, val, fmat) {
+    if (fmat === "sun" && val != null && val > 3) {
+        return Math.round(val).toString();
+    }
+    return formatObs(unit, val, fmat, false, false);
+}
+
 function dayReportHref(year, month, day, obs) {
     const pad = (n) => String(n).padStart(2, "0");
     const dayObs = baseObs(obs);
@@ -135,7 +143,7 @@ function DailyMatrix(props) {
                             hover = { border: "1px solid #999" };
                         }
                         else {
-                            v = formatObs(unit, data.get(m)[d], obsObj.fmat, false, false);
+                            v = matrixValue(unit, data.get(m)[d], obsObj.fmat);
                             ({ bg, col } = getStyleForObsValue(data.get(m)[d], obsObj.fmat, unit));
                             hover = { border: "1px solid " + col };
                         }
@@ -201,7 +209,7 @@ function MonthlyMatrix(props) {
                     let bg = "gray.200";
                     let hover = {}
                     if (data.has(m)) {
-                        v = formatObs(unit, data.get(m)[k], obsObj.fmat, false, false);
+                        v = matrixValue(unit, data.get(m)[k], obsObj.fmat);
                         ({ bg, col } = getStyleForObsValue(data.get(m)[k], obsObj.fmat, unit, "month", k));
                         hover = { border: "1px solid " + col };
                     }
