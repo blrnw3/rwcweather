@@ -42,6 +42,16 @@ function normalsFor(obs, stat) {
         // Normal daily mean = mid-point of normal low and high (NOAA convention).
         entry = { monthly: MONTHLY_KEYS.map((m) => (byVar.min.monthly[m] + byVar.max.monthly[m]) / 2) };
     }
+    if (!entry && obs === "sunpct" && stat === "avg") {
+        // Sunshine as % of possible: normal sunshine hours / possible (sunrise-sunset) hours.
+        const sun = CLIMATE_NORMALS.normals.sun;
+        if (sun?.total?.monthly && sun?.possible?.monthly) {
+            entry = {
+                monthly: MONTHLY_KEYS.map((m) => 100 * sun.total.monthly[m] / sun.possible.monthly[m]),
+                annual: sun.total.annual && sun.possible.annual ? 100 * sun.total.annual / sun.possible.annual : undefined,
+            };
+        }
+    }
     if (!entry || !Array.isArray(entry.monthly) || entry.monthly.length !== 12) {
         return null;
     }
