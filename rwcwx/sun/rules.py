@@ -10,6 +10,12 @@ Pipeline (PLAN 3.1/3.2), identical to the research evaluation (eval/sunday.py, r
   3. main model state = p >= 0.5.
   4. low sun (el < 8 deg): carry the nearest confident main-model state (el >= 8, p < .25 or > .75) on the same side
      of solar noon (morning: next one, evening: previous one), vetoed to 0 if sky-clarity prob < 0.3. Flag 'lowsun'.
+     Elevations here are the frame's, not the minute's: with 30-min archive snapshots a minute just above 8 deg can
+     map to a frame taken below it, whose low-sun "not sunny" must not become the confident state carried to dawn.
+     Obstructed sun: a frame with el < OBSTRUCT_EL, p < 0.5 and sky-clarity >= CLEAR_PS is a clear sky with the sun
+     behind the trees or eaves (in Feb-Apr the sun rises and sets behind them up to ~15 deg). It is treated as low
+     sun (carried, flag 'lowsun') and is never itself a carry source. Fog, marine layer and overcast frames score
+     sky-clarity < 0.3 and are unaffected.
   5. median-5 over the classified minutes.
   6. short gaps: a run of unclassified minutes (missing/stale/ir/glitch) of at most MAX_GAP_MIN, with classified
      minutes on both sides, is filled: with that state if both sides agree, else split at the midpoint (earlier
@@ -28,6 +34,8 @@ CARRY_CONF = 0.25
 VETO = 0.3
 TOLERANCE_S = 300
 IR_SMEAN = 0.03
+OBSTRUCT_EL = 16.0
+CLEAR_PS = 0.85
 IR_MIN_EL = 3.0
 GLITCH_PINK = 0.05
 # Smear episodes (camera H.264 error propagation, typically at dawn): pink_bot ramps up from ~0.005 over 10-30
@@ -63,6 +71,7 @@ class Minute:
     p: Optional[float] = None
     ps: Optional[float] = None
     res_s: Optional[float] = None
+    fel: Optional[float] = None     # solar elevation at the frame used for this minute
     flags: Set[str] = field(default_factory=set)
     value: Optional[int] = None
 
@@ -160,12 +169,16 @@ def classify_day(frames: List[Frame], sunrise: datetime, sunset: datetime,
     frames = sorted(frames, key=lambda f: f.t)
     mark_glitch_episodes(frames)
     grid = daylight_grid(sunrise, sunset)
+    fel: Dict[datetime, float] = {}
     for m in grid:
         f = _nearest(frames, m.t, tolerance_s)
         if f is None:
             m.flags.add("missing")
             continue
         m.p, m.ps, m.res_s = f.p, f.ps, abs((m.t - f.t).total_seconds())
+        if f.t not in fel:
+            fel[f.t] = solar_pos(f.t)[0]
+        m.fel = fel[f.t]
         if f.stale:
             m.flags.add("stale")
         elif f.glitch:
@@ -176,7 +189,8 @@ def classify_day(frames: List[Frame], sunrise: datetime, sunset: datetime,
         return grid
 
     main: List[Optional[int]] = [int(m.p >= 0.5) if m.ok else None for m in grid]
-    conf = [main[i] if (m.ok and m.el >= LOW_EL and (m.p < CARRY_CONF or m.p > 1 - CARRY_CONF)) else None
+    low = [m.ok and (m.fel < LOW_EL or (m.fel < OBSTRUCT_EL and m.p < 0.5 and m.ps >= CLEAR_PS)) for m in grid]
+    conf = [main[i] if (m.ok and not low[i] and (m.p < CARRY_CONF or m.p > 1 - CARRY_CONF)) else None
             for i, m in enumerate(grid)]
     noon = max(range(len(grid)), key=lambda i: grid[i].el)
     carry: List[Optional[int]] = [None] * len(grid)
@@ -196,7 +210,7 @@ def classify_day(frames: List[Frame], sunrise: datetime, sunset: datetime,
     for i, m in enumerate(grid):
         if not m.ok:
             continue
-        if m.el < LOW_EL:
+        if low[i]:
             m.flags.add("lowsun")
             v = carry[i] or 0
             raw[i] = v if m.ps >= VETO else 0
