@@ -25,7 +25,8 @@ const NAV = new Map([
   ])],
   ["charts", new Map([
     ["latest", "/charts/latest"],
-    ["summary", "/charts/summary"]
+    ["summary", "/charts/summary"],
+    ["year", "/charts/year"]
   ])],
   ["more", new Map([
     ["about", "/about"],
@@ -158,6 +159,7 @@ function Footer(props) {
       <ChakraLink variant="subtle" color="inherit" href="/reports/climate" display="block">Climate</ChakraLink>
       <ChakraLink variant="subtle" color="inherit" href="/charts/latest" display="block">Latest Charts</ChakraLink>
       <ChakraLink variant="subtle" color="inherit" href="/charts/summary" display="block">Summary Charts</ChakraLink>
+      <ChakraLink variant="subtle" color="inherit" href="/charts/year" display="block">Year Charts</ChakraLink>
     </Box>
     <Box m={3}>
       <Text>
