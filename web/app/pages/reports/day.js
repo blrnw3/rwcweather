@@ -263,8 +263,12 @@ function DailySunshine({ datestamp }) {
             <Text as="span" fontWeight="bold">{total != null ? formatObs(unit, total, "sun") : "–"}</Text>
             {" of "}{formatObs(unit, day.daylight_h, "sun")} daylight
             {total != null && day.daylight_h ? " (" + Math.round(100 * total / day.daylight_h) + "%)" : ""}
-            {day.total?.comment?.includes("scaled") ? " · estimated for gaps" : ""}
-            {day.backfill ? " · estimated from 30-min snapshots" : ""}
+            {day.total?.comment?.startsWith("API estimate")
+                ? " · estimated from weather-model sunshine and airport cloud reports (webcam data missing)"
+                : <>
+                    {day.total?.comment?.includes("scaled") ? " · estimated for gaps" : ""}
+                    {day.backfill ? " · estimated from 30-min snapshots" : ""}
+                </>}
         </Text>
         <Box maxW="900px" my="2"><SunRibbon day={day} nowMs={now} height="22px" /></Box>
         <SunLegend />

@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS `obs_inferred` (
   `value` float DEFAULT NULL COMMENT 'inferred value (sunny: 1 = sun, 0 = no sun); NULL = not classified, see flags',
   `prob` decimal(4,3) DEFAULT NULL COMMENT 'model probability/confidence, if any',
   `minutes` smallint unsigned NOT NULL DEFAULT 1 COMMENT 'period length (1 live, e.g. 30 for backfill)',
-  `source` enum('live', 'backfill', 'manual') NOT NULL DEFAULT 'live' COMMENT 'manual rows are never overwritten',
+  `source` varchar(24) NOT NULL DEFAULT 'live' COMMENT 'live, backfill, manual, or api:<name>; manual rows are never overwritten',
   `flags` varchar(64) DEFAULT NULL COMMENT 'comma list: missing, stale, ir, glitch, lowsun, ...',
   `model_version` varchar(32) DEFAULT NULL,
   `t_mod` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'last modified',
