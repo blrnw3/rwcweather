@@ -15,9 +15,10 @@ import { VscCircleFilled, VscDash } from "react-icons/vsc";
 import { WiBarometer, WiDaySunny, WiHumidity, WiRain, WiThermometer } from "react-icons/wi";
 import useSWR from "swr";
 import { LatestChart, SummaryChart } from '../components/chart';
-import { fetcher, fmatObsOptIcon, fmatTimeOpt, SUN_VIEW_NAMES, SUN_VIEWS } from '../components/conf';
+import { fetcher, fmatObsOptIcon, fmatTimeOpt, RAIN_VIEW_NAMES, RAIN_VIEWS, SUN_VIEW_NAMES, SUN_VIEWS } from '../components/conf';
 import { Page, UnitCtx } from "../components/Page";
 import { SunRibbon, useSunDay } from '../components/sun';
+import { WetRibbon } from '../components/wet';
 import RadioCard from '../components/RadioCard';
 import { aqiStatus, formatObs, moonPhase, prettySecs, timeOf } from '../format';
 import {
@@ -328,12 +329,15 @@ function RainHomeCard(props) {
   const date = serverDate(props.summary, dash);
   let last = dash ? prettySecs(new Date(dash["now"]["t"]) - new Date(dash["last_rain"])) : "-";
 
+  const wetDisc = useDisclosure();
   const icon = <Text as="span" color="blue" className="home_ico"><WiRain /></Text>
   return <HomeCard changed={changed}>
     <Text>
       <Tooltip label="Rainfall">{icon}</Tooltip>
       <Text as="span" fontSize={{ base: "2xl", md: "3xl" }} paddingRight="4" paddingLeft="1">{now}</Text>
+      <WetHoursInline wet={dash?.wet} rainToday={dash?.["now"]?.["rain"]} isOpen={wetDisc.isOpen} onToggle={wetDisc.onToggle} />
     </Text>
+    <WetHoursDetails wet={dash?.wet} rainToday={dash?.["now"]?.["rain"]} isOpen={wetDisc.isOpen} nowMs={dash?.server?.epoch ? dash.server.epoch * 1000 : null} />
     <Text>Last rain: <Text as="span" fontWeight="bold">{last}</Text> ago</Text>
     <Text borderBottom="1px solid #ccc">Past 10m: <Text as="span" fontWeight="bold">{rn10}</Text></Text>
     <Text>Hourly: <Text as="span" fontWeight="bold">{rnhr}</Text></Text>
@@ -344,6 +348,47 @@ function RainHomeCard(props) {
     </Text>
     <WaterYearLine value={water_yr} total={wyTotal} date={date} />
   </HomeCard>
+}
+
+// Derived wet hours today, inline next to today's rain so the card keeps its height; hidden on dry days.
+// The chevron expands spells, longest spell and rate (WetHoursDetails), like the water-year line.
+const wetShown = (wet, rainToday) => wet && rainToday > 0 && wet.wet_h > 0;
+
+function WetHoursInline({ wet, rainToday, isOpen, onToggle }) {
+  if (!wetShown(wet, rainToday)) {
+    return null;
+  }
+  return <Text as="span" className="wet-hours" whiteSpace="nowrap">
+    <Tooltip label="Wet time today: from 30 min before the first tip of a spell to 30 min after its last (a lone tip counts 30 min)">
+      <Text as="span" fontWeight="bold">{formatObs(unit, wet.wet_h, "wet")}</Text>
+    </Tooltip> wet
+    {wet.wet_now && <Text as="span" ml="2" px="2" py="0.5" borderRadius="8" fontSize="sm" fontWeight="bold" bg="blue.200" color="gray.800" className="wet-now-badge">Raining</Text>}
+    <WetToggle isOpen={isOpen} onToggle={onToggle} />
+  </Text>;
+}
+
+function WetToggle({ isOpen, onToggle }) {
+  return <Button className="wet-details-toggle" variant="ghost" size="xs" minW="auto" h="auto" px="1" py="0" ml="1"
+    verticalAlign="baseline" fontWeight="normal" color="gray.600"
+    onClick={onToggle} aria-expanded={isOpen} aria-controls="wet-hours-details"
+    aria-label={isOpen ? "Hide wet-hours details" : "Show wet-hours details"} title={isOpen ? "Hide details" : "Wet spells today"}>
+    <Box as={FiChevronDown} transition="transform 0.2s" transform={isOpen ? "rotate(180deg)" : undefined} />
+  </Button>;
+}
+
+function WetHoursDetails({ wet, rainToday, isOpen, nowMs }) {
+  if (!wetShown(wet, rainToday)) {
+    return null;
+  }
+  const rate = wet.rate != null ? formatObs(unit, wet.rate, "rain") + "/h" : "–";
+  const pct = wet.day_end ? Math.round(wet.wet_h * 3600000 / (Math.min(nowMs || wet.day_end, wet.day_end) - wet.day_start) * 100) : null;
+  return <Collapse in={isOpen} animateOpacity>
+    <Box id="wet-hours-details" className="wet-hours-details" fontSize="sm" lineHeight="short" color="gray.700" mb="1">
+      <WetRibbon wet={wet} nowMs={nowMs} />
+      <Text>{wet.spells} spell{wet.spells === 1 ? "" : "s"}, longest {formatObs(unit, wet.longest_h, "wet")}
+        {pct != null && <> · {pct}% of day so far</>} · {rate}</Text>
+    </Box>
+  </Collapse>;
 }
 
 // "Water Year: 0.00 in (0%)" with the percent of the normal expected by today,
@@ -652,9 +697,11 @@ function ChartCardDaily(props) {
   const [obs, setObs] = useState("temp");
   const [aggType, setAggType] = useState("avg");
   const [sunView, setSunView] = useState("sun");  // sunshine as hours or % of possible (#24)
+  const [rainView, setRainView] = useState("rain");  // rainfall as amount or wet hours
   const isSun = obs === "sun";
-  const chartObs = isSun ? sunView : obs;
-  const chartAgg = isSun ? (sunView === "sunpct" ? "avg" : "total") : aggType;
+  const isRain = obs === "rain";
+  const chartObs = isSun ? sunView : isRain ? rainView : obs;
+  const chartAgg = isSun ? (sunView === "sunpct" ? "avg" : "total") : isRain ? "total" : aggType;
   // const [period, setPeriod] = useState("7")
   const period = "30";
 
@@ -665,6 +712,8 @@ function ChartCardDaily(props) {
       <Box m={1}></Box>
       {isSun
         ? <RadioButtonGroup name="sunView" default={sunView} options={SUN_VIEWS} optFormat={(v) => SUN_VIEW_NAMES[v]} fn={setSunView} />
+        : isRain
+        ? <RadioButtonGroup name="rainView" default={rainView} options={RAIN_VIEWS} optFormat={(v) => RAIN_VIEW_NAMES[v]} fn={setRainView} />
         : <RadioButtonGroup name="aggType" default={aggType} options={aggOpts} optFormat={(c) => c} fn={setAggType} />}
       <Box m={1}></Box>
       {/* <RadioButtonGroup name="period" options={periodOptions} optFormat={fmatDaysOpt} default={"30"} fn={setPeriod} /> */}

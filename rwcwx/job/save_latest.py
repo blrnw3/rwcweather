@@ -18,6 +18,8 @@ from rwcwx.config import AQI_FILE_NAME
 from rwcwx.model.cumulus import CumulusObs
 from rwcwx.models import db, m
 from rwcwx.util import DateUtil
+from rwcwx.wet import store as wet_store
+from rwcwx.wet.rules import WINDOW_MIN as WET_WINDOW_MIN
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_LOG_FILE = os.path.join(REPO_ROOT, "log", "save_latest.log")
@@ -206,6 +208,20 @@ class CumulusObsImporter:
                     )
                 )
         db.execute_batch(records)
+        CumulusObsImporter.update_wet(d)
+
+    @staticmethod
+    def update_wet(d: date) -> None:
+        """Derived wet minutes (obs.wet) and daily wet hours. Never breaks the ingest."""
+        try:
+            days = [d]
+            # A tip just after midnight makes the end of yesterday wet too (the window reaches back)
+            if d == DateUtil.now().date() and DateUtil.now().hour == 0 and DateUtil.now().minute < 2 * WET_WINDOW_MIN:
+                days.insert(0, d - timedelta(days=1))
+            for day in days:
+                wet_store.update_day(day)
+        except Exception as e:
+            logger.warning(f"wet update failed for {d}: {e!r}")
 
 
 def _exit_on_sigterm(signum, frame):

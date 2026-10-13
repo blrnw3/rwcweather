@@ -1,7 +1,7 @@
 import { Box, Flex, Text, useRadioGroup } from "@chakra-ui/react";
 import { useContext } from "react";
 import { convFunction, formatObs, scaleForObsType } from "../format";
-import { baseObs, dailyStatsFor, OBS, SUN_VIEW_NAMES, SUN_VIEWS } from "./conf";
+import { baseObs, dailyStatsFor, OBS, VIEW_GROUPS } from "./conf";
 import { UnitCtx } from "./Page";
 import RadioCard from "./RadioCard";
 
@@ -16,7 +16,7 @@ export const REPORT_OBS_OPTIONS = [
 export const DAILY_VALUE_OBS_OPTIONS = REPORT_OBS_OPTIONS;
 
 // Every value the "var" URL parameter may take: the buttons plus alternative views (sunshine as %).
-export const DAILY_VALUE_OBS_STATES = [...DAILY_VALUE_OBS_OPTIONS, "sunpct"];
+export const DAILY_VALUE_OBS_STATES = [...DAILY_VALUE_OBS_OPTIONS, "sunpct", "wet"];
 
 export const COUNT_THRESHOLDS = {
     temp: ["0", "5", "10", "15", "20", "25", "30", "35"],
@@ -30,6 +30,7 @@ export const COUNT_THRESHOLDS = {
     gust: ["0", "10", "20", "30", "40"],
     sun: ["0", "1", "4", "8", "10"],
     sunpct: ["0", "25", "50", "75", "90"],
+    wet: ["0", "1", "3", "6", "12"],
 };
 
 export const SUMMARY_NAMES = {
@@ -127,13 +128,16 @@ export function CountThresholdSelector({ obs, value, fn }) {
     </Box>;
 }
 
-// "Show sunshine as: Hours | % of possible", shown under the Variable buttons while sunshine is selected.
+// Views of one variable button, shown under the Variable buttons while it is selected:
+// "Show sunshine as: Hours | % of possible", "Show rainfall as: Amount | Wet hours".
 export function SunViewToggle({ obs, fn, Group = RadioButtonGroup }) {
-    if (baseObs(obs) !== "sun") {
+    const base = baseObs(obs);
+    const g = VIEW_GROUPS[base];
+    if (!g) {
         return null;
     }
     return <>
-        <Text mt="1" fontWeight="bold">Show sunshine as:</Text>
-        <Group name="sun-view" value={obs} options={SUN_VIEWS} optFormat={(v) => SUN_VIEW_NAMES[v]} fn={fn} />
+        <Text mt="1" fontWeight="bold">{g.label}</Text>
+        <Group name={base + "-view"} value={obs} options={g.views} optFormat={(v) => g.names[v]} fn={fn} />
     </>;
 }

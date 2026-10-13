@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "eslint --no-eslintrc -c lint.eslintrc.json --ext .js pages components format.js"
   },
   "dependencies": {
     "@chakra-ui/icons": "^1.0.6",

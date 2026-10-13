@@ -76,14 +76,35 @@ export const OBS = new Map([
         icon: <WiDaySunny />,
         dailyStats: ["avg"],
     }],
+    // Derived from rain-gauge tips (30 min either side of a spell); shown via the "Show rainfall as"
+    // toggle under the Rainfall button rather than as its own variable button.
+    ["wet", {
+        name: "Wet hours",
+        summary: "total",
+        fmat: "wet",
+        icon: <WiRain />,
+    }],
 ]);
 
 // Alternative views of one variable (the button stays the base variable).
 export const SUN_VIEWS = ["sun", "sunpct"];
 export const SUN_VIEW_NAMES = { sun: "Hours", sunpct: "% of possible" };
+export const RAIN_VIEWS = ["rain", "wet"];
+export const RAIN_VIEW_NAMES = { rain: "Amount", wet: "Wet hours" };
+
+// Variable button -> its views and their labels (the toggle shown under the Variable buttons).
+export const VIEW_GROUPS = {
+    sun: { views: SUN_VIEWS, names: SUN_VIEW_NAMES, label: "Show sunshine as:" },
+    rain: { views: RAIN_VIEWS, names: RAIN_VIEW_NAMES, label: "Show rainfall as:" },
+};
 
 export function baseObs(obs) {
-    return SUN_VIEWS.includes(obs) ? "sun" : obs;
+    for (const [base, g] of Object.entries(VIEW_GROUPS)) {
+        if (g.views.includes(obs)) {
+            return base;
+        }
+    }
+    return obs;
 }
 
 // Daily statistics available for a variable.

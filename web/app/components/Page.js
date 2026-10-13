@@ -46,7 +46,8 @@ export function carryVarHref(to, query) {
     return to;
   }
   // The daily report has sunshine hours but no "% of possible" view.
-  return to + "?var=" + encodeURIComponent(to === "/reports/day" && v === "sunpct" ? "sun" : v);
+  const dayVar = { sunpct: "sun", wet: "rain" };
+  return to + "?var=" + encodeURIComponent(to === "/reports/day" && dayVar[v] ? dayVar[v] : v);
 }
 
 function useCarryHref() {

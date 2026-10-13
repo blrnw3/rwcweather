@@ -49,7 +49,7 @@ const SUMMARY_PERIODS = ["monthly", "annual", "wateryear"];
 
 // Multi-day periods: N consecutive days, ranked server-side from the daily
 // table (see rwcwx/calc/rolling.py). Rain and sunshine totals, temperature means.
-const ROLLING_OBS = ["rain", "temp", "sun", "sunpct"];
+const ROLLING_OBS = ["rain", "temp", "sun", "sunpct", "wet"];
 const ROLLING_DAYS = ["3", "7", "14", "30"];
 const MIN_COVERAGE = { 3: 3, 7: 7, 14: 13, 30: 27 };
 

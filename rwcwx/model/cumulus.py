@@ -58,5 +58,5 @@ class CumulusObs:
             pres=self.pres,
             intemp=self.intemp,
             inhumi=self.inhumi,
-            wet=self.wet
+            # obs.wet is derived from rain tips by rwcwx/wet (save_latest.update_avg_ext), not Cumulus's rhour > 0
         )
