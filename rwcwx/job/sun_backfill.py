@@ -112,7 +112,7 @@ def classify_backfill_day(day: date, clf: Classifier, index) -> dict:
         if r is None:
             continue
         f = Frame(t=t, p=r["p"], ps=r["ps"], smean=r["smean"], stale=(r["md5"] == prev_md5),
-                  glitch=r["pink"] > GLITCH_PINK)
+                  glitch=r["pink"] > GLITCH_PINK, pink=r["pink"])
         prev_md5 = r["md5"]
         seq.append(f)
         snaps.append(f)
