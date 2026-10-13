@@ -26,7 +26,8 @@ const NAV = new Map([
   ])],
   ["charts", new Map([
     ["latest", "/charts/latest"],
-    ["summary", "/charts/summary"]
+    ["summary", "/charts/summary"],
+    ["year", "/charts/year"]
   ])],
   ["more", new Map([
     ["about", "/about"],
@@ -37,7 +38,7 @@ const NAV = new Map([
 // viewed (including the sunshine Hours / % of possible view, which is part of var); a page that
 // doesn't support that variable falls back to its own default (see useUrlState validation).
 const VAR_PAGES = new Set(["/reports/day", "/reports/matrix", "/reports/alltime", "/reports/ranking",
-  "/charts/latest", "/charts/summary"]);
+  "/charts/latest", "/charts/summary", "/charts/year"]);
 
 export function carryVarHref(to, query) {
   const v = query?.var;
@@ -182,6 +183,7 @@ function Footer(props) {
       <ChakraLink variant="subtle" color="inherit" href="/reports/climate" display="block">Climate</ChakraLink>
       <ChakraLink variant="subtle" color="inherit" href="/charts/latest" display="block">Latest Charts</ChakraLink>
       <ChakraLink variant="subtle" color="inherit" href="/charts/summary" display="block">Summary Charts</ChakraLink>
+      <ChakraLink variant="subtle" color="inherit" href="/charts/year" display="block">Year Charts</ChakraLink>
     </Box>
     <Box m={3}>
       <Text>
