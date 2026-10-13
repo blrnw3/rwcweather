@@ -9,7 +9,7 @@ from rwcwx import logger
 
 from rwcwx.astronomy import get_all_times_rwc, getTimes
 from rwcwx.calc.avg_extreme import AvgExtAggregator, MonthSummary, DaySummary, YearSummary, WaterYearRainSummary
-from rwcwx.calc.rolling import ROLLING_DAYS, ROLLING_VARS, min_days_required, rolling_ranking
+from rwcwx.calc.rolling import ROLLING_DAYS, ROLLING_VARS, min_days_required, rolling_ranking_with_current
 from rwcwx.config import TZ
 from rwcwx.model.avgext import AvgExtQ
 from rwcwx.model.obs import ObsQ
@@ -173,16 +173,17 @@ def var_rolling(var: str, typ: str):
                               order=["highest", "lowest"], limit="1-100"),
         }, 400
     now = DateUtil.now()
+    ranking, current = _rolling_cached(var, typ, days, order, limit, now.date(), int(now.timestamp() // 300))
     return _wrap_result(
-        _rolling_cached(var, typ, days, order, limit, now.date(), int(now.timestamp() // 300)),
-        var=var, type=typ, days=days, order=order, min_days=min_days_required(days),
+        ranking,
+        var=var, type=typ, days=days, order=order, min_days=min_days_required(days), current=current,
     )
 
 
 @lru_cache(maxsize=64)
-def _rolling_cached(var: str, typ: str, days: int, order: str, limit: int, today: date, _bucket: int) -> list:
+def _rolling_cached(var: str, typ: str, days: int, order: str, limit: int, today: date, _bucket: int) -> tuple:
     """Each ranking is computed at most once per 5 minutes per worker (the reports refresh every 5 minutes)."""
-    return rolling_ranking(_daily_values(var, typ), var, typ, days, order, limit, today)
+    return rolling_ranking_with_current(_daily_values(var, typ), var, typ, days, order, limit, today)
 
 
 def _daily_values(var: str, typ: str):

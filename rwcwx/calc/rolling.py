@@ -84,6 +84,25 @@ def rank_non_overlapping(windows: List[dict], order: str = "highest", limit: int
     return picked
 
 
+def current_window_rank(windows: List[dict], order: str = "highest") -> Optional[dict]:
+    """
+    Context for the most recent window (the N days ending on the last eligible day): its value and
+    where it would rank among the full non-overlapping list (1 + number of listed periods strictly
+    better), out of all listed periods. Pure Python over the same ~2,100 windows, no extra query.
+    """
+    if not windows:
+        return None
+    current = max(windows, key=lambda w: w["idx"])
+    picked = rank_non_overlapping(windows, order, limit=len(windows))
+    better = sum(1 for w in picked if (w["val"] > current["val"] if order == "highest" else w["val"] < current["val"]))
+    return dict(
+        start=(current["start"].year, current["start"].month, current["start"].day),
+        end=(current["end"].year, current["end"].month, current["end"].day),
+        val=current["val"], days=current["days"], n=current["n"],
+        rank=better + 1, of=len(picked),
+    )
+
+
 def rolling_ranking(daily: Iterable[Tuple[date, float]], var: str, typ: str, n: int,
                     order: str = "highest", limit: int = 25, today: Optional[date] = None) -> List[dict]:
     how = ROLLING_VARS[var][typ]
@@ -92,6 +111,21 @@ def rolling_ranking(daily: Iterable[Tuple[date, float]], var: str, typ: str, n: 
     if (how == "mean" or var in PARTIAL_DAY_EXCLUDED) and today is not None:
         last_day = today - timedelta(days=1)
     picked = rank_non_overlapping(rolling_windows(daily, n, how, last_day), order, limit)
+    return _fmt_picked(picked)
+
+
+def rolling_ranking_with_current(daily: Iterable[Tuple[date, float]], var: str, typ: str, n: int,
+                                 order: str = "highest", limit: int = 25, today: Optional[date] = None):
+    """(top-N ranking, current-period context) from a single pass over the daily values."""
+    how = ROLLING_VARS[var][typ]
+    last_day = None
+    if (how == "mean" or var in PARTIAL_DAY_EXCLUDED) and today is not None:
+        last_day = today - timedelta(days=1)
+    windows = rolling_windows(daily, n, how, last_day)
+    return _fmt_picked(rank_non_overlapping(windows, order, limit)), current_window_rank(windows, order)
+
+
+def _fmt_picked(picked: List[dict]) -> List[dict]:
     return [
         dict(
             start=(w["start"].year, w["start"].month, w["start"].day),
