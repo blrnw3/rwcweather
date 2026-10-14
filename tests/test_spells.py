@@ -65,3 +65,11 @@ def test_temperature_stops_at_yesterday():
     today = D0 + timedelta(days=3)
     r = spell_ranking(series([33, 33, 33, 10]), "temp", "max", 90, "above", today=today)
     assert r["result"][0]["length"] == 3 and r["current"]["length"] == 3 and r["current"]["status"] == "yesterday"
+
+
+def test_celsius_thresholds_accepted_as_fahrenheit():
+    from rwcwx.calc.spells import SPELL_VARS
+    assert 86 in SPELL_VARS[("temp", "max")]["thresholds"]  # 30 °C
+    assert 95 in SPELL_VARS[("temp", "max")]["thresholds"]  # 35 °C
+    assert {32, 41, 50, 59} <= set(SPELL_VARS[("temp", "min")]["thresholds"])
+    assert abs(stored_threshold("temp", "max", 86) - 30) < 1e-9

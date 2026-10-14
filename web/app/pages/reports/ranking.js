@@ -12,7 +12,7 @@ import {
     Tr,
 } from "@chakra-ui/react";
 import NextLink from "next/link";
-import { useContext } from "react";
+import { useContext, useEffect } from "react";
 import useSWR from "swr";
 import { baseObs, defaultDailyStat, fetcher, fmatObsOpt, isTotalObs, OBS } from "../../components/conf";
 import { ClimateNormalsLink } from "../../components/climate";
@@ -66,6 +66,16 @@ const SPELL_CONF = {
     },
     sun: { total: ["0.1", "1", "4", "8", "10", "12"] },
 };
+// Metric users get round Celsius thresholds. The API (and the URL) still take °F, so each is stored as its exact
+// °F equivalent (multiples of 5 °C are whole °F, e.g. 30 °C = 86 °F); mirrors SPELL_VARS in rwcwx/calc/spells.py.
+const cToF = (c) => String(c * 9 / 5 + 32);
+const SPELL_CONF_C = {
+    temp: {
+        max: [10, 15, 20, 25, 30, 35, 40].map(cToF),
+        min: [0, 5, 10, 15].map(cToF),
+        avg: [5, 10, 15, 20, 25].map(cToF),
+    },
+};
 const SPELL_OBS = Object.keys(SPELL_CONF);
 // Opening defaults: wet days for rain, warm days for temperatures, sunny days for sunshine.
 const SPELL_DEFAULTS = { rain: "0.01", wet: "1", max: "80", min: "50", avg: "60", sun: "10" };
@@ -84,8 +94,22 @@ const SPELL_TITLE_WORDS = {
 const SPELL_STATUS = { today: ", so far", pending: ", may continue today", yesterday: ", to yesterday" };
 const SPELL_START_YEARS = ["all", ...Array.from(Array(new Date().getFullYear() - 2021 + 1).keys()).map((i) => String(2021 + i))];
 
-function spellThresholds(obs, stat) {
-    return SPELL_CONF[obs]?.[stat] || [];
+// Options shown for the unit preference ("uk" = metric temperatures).
+function spellThresholds(obs, stat, unit = "us") {
+    return (unit === "uk" && SPELL_CONF_C[obs]?.[stat]) || SPELL_CONF[obs]?.[stat] || [];
+}
+
+// Every value the URL / API accepts: both unit systems' options.
+function spellThresholdsAny(obs, stat) {
+    return [...new Set([...spellThresholds(obs, stat, "us"), ...spellThresholds(obs, stat, "uk")])];
+}
+
+// Closest option for the current unit, so switching units keeps a similar threshold (e.g. 90 °F -> 30 °C).
+function nearestThreshold(value, options) {
+    if (!options.length || options.includes(value)) {
+        return value;
+    }
+    return options.reduce((best, o) => Math.abs(Number(o) - Number(value)) < Math.abs(Number(best) - Number(value)) ? o : best);
 }
 
 function spellDefaultThreshold(obs, stat) {
@@ -99,8 +123,12 @@ function formatThreshold(unit, obs, value) {
     if (obs === "wet" || obs === "sun") {
         return value + " h";
     }
-    const stored = obs === "temp" ? (Number(value) - 32) * 5 / 9 : Number(value);
-    return formatObs(unit, stored, OBS.get(obs).fmat);
+    if (obs === "temp") {
+        // Whole degrees in the viewer's unit: 86 -> "30 °C" (metric) or "86 °F".
+        const f = Number(value);
+        return unit === "uk" ? Math.round((f - 32) * 5 / 9 * 10) / 10 + " °C" : f + " °F";
+    }
+    return formatObs(unit, Number(value), OBS.get(obs).fmat);
 }
 
 function periodOptions(obs) {
@@ -416,9 +444,18 @@ function SpellTitle({ obs, dailyAggregation, dir, threshold, limit }) {
 
 function SpellThresholdSelector({ obs, dailyAggregation, value, fn }) {
     const unit = useContext(UnitCtx);
+    const options = spellThresholds(obs, dailyAggregation, unit);
+    const nearest = nearestThreshold(value, options);
+    // A °F value in a metric view (or vice versa), e.g. from a shared link or after switching units:
+    // move to the nearest option for this unit so a button is always selected.
+    useEffect(() => {
+        if (nearest !== value) {
+            fn(nearest);
+        }
+    }, [nearest, value]);  // eslint-disable-line react-hooks/exhaustive-deps
     return <>
         <Text mt="1" fontWeight="bold">Threshold:</Text>
-        <RadioButtonGroup name="level" value={value} options={spellThresholds(obs, dailyAggregation)}
+        <RadioButtonGroup name="level" value={value} options={options}
             optFormat={(v) => formatThreshold(unit, obs, v)} fn={fn} />
     </>;
 }
@@ -671,7 +708,7 @@ const RANKING_URL_STATE = {
     dir: { def: () => "above", valid: inList(["above", "below"]), use: (s) => s.period === "spells" },
     spellThreshold: {
         param: "level", def: (s) => spellDefaultThreshold(s.obs, s.dailyAggregation),
-        valid: (v, s) => spellThresholds(s.obs, s.dailyAggregation).includes(v),
+        valid: (v, s) => spellThresholdsAny(s.obs, s.dailyAggregation).includes(v),
         use: (s) => s.period === "spells",
     },
     startYear: { param: "from", def: () => "all", valid: inList(SPELL_START_YEARS), use: (s) => s.period === "spells" },

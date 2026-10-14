@@ -33,6 +33,15 @@ SPELL_VARS: Dict[Tuple[str, str], dict] = {
     ("sun", "total"): dict(thresholds=(0.1, 1, 4, 8, 10, 12), sum=True),
 }
 
+# Round Celsius thresholds offered to metric users, accepted as their exact °F equivalents (5 °C steps are whole °F).
+CELSIUS_THRESHOLDS = {
+    ("temp", "max"): (10, 15, 20, 25, 30, 35, 40),
+    ("temp", "min"): (0, 5, 10, 15),
+    ("temp", "avg"): (5, 10, 15, 20, 25),
+}
+for _key, _cs in CELSIUS_THRESHOLDS.items():
+    SPELL_VARS[_key]["thresholds"] = tuple(sorted(set(SPELL_VARS[_key]["thresholds"]) | {c * 9 / 5 + 32 for c in _cs}))
+
 EPS = 1e-9
 
 
