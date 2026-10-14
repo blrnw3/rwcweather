@@ -21,3 +21,14 @@ def test_days_and_period_use_total_rain_over_total_wet_hours():
     WetRate = pytest.importorskip("rwcwx.calc.avg_extreme").WetRate   # needs the DB models
     s = WetRate.multiday_summary(days)
     assert round(s.avg, 4) == round(0.6 / 5.5, 4) and s.max_val == 0.2 and s.min_val == 0.1
+
+
+def test_days_with_wet_hours_but_no_rain_have_no_rate():
+    from datetime import date
+    from types import SimpleNamespace as NS
+    d1, d2 = date(2026, 1, 7), date(2026, 1, 8)
+    rain = [NS(d=d1, val=0.5), NS(d=d2, val=0.0)]
+    wet = [NS(d=d1, val=4.0, cnt=None), NS(d=d2, val=0.5, cnt=None)]
+    days = rate_days(rain, wet)
+    assert [x.d for x in days] == [d1]
+    assert period_rate(days) == 0.125
