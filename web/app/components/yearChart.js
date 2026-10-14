@@ -5,7 +5,7 @@ import { useContext } from "react";
 import useSWR from "swr";
 import { convFunction, unitAndPrecisionForObsType } from "../format";
 import { dailyNormal, hasClimate } from "./climate";
-import { fetcher, fmatAggTypeOpt, OBS } from "./conf";
+import { fetcher, fmatAggTypeOpt, fmatForObs, OBS } from "./conf";
 import { UnitCtx } from "./Page";
 
 // Full-year daily time series against the daily climate normal (/charts/year),
@@ -114,7 +114,7 @@ const round = (v, p) => (v == null ? null : Number(v.toFixed(p)));
 
 export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, today }) {
     const unit = useContext(UnitCtx);
-    const fmat = OBS.get(obs).fmat;
+    const fmat = fmatForObs(obs, stat);
     const { unitSymbol, precision } = unitAndPrecisionForObsType(unit, fmat);
     const conv = convFunction(unit, fmat);
     const { result, isLoading } = useYearDaily(obs, stat, year, waterYear);

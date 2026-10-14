@@ -49,7 +49,7 @@ export default function About() {
         </TabPanels>
       </Tabs>
       <Text mb="4">
-        Station coordinates: approx <RwcExternalLink href="https://www.google.com/maps/@37.47,-122.265,13z">37.470, -122.265</RwcExternalLink>
+        Station coordinates: approx <RwcExternalLink href="https://www.google.com/maps/@37.469153,-122.265031,13z">37.469153, -122.265031</RwcExternalLink>
       </Text>
 
       <Heading as="h2" size="2">Technical specs</Heading>

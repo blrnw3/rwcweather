@@ -27,9 +27,12 @@ def test_missing_day_breaks_spell():
     assert [x["length"] for x in find_spells(data, 0.01, "below")] == [1, 1]
 
 
-def test_month_filter_and_start_year():
+def test_month_and_season_filter_and_start_year():
     data = series([0] * 70, date(2023, 12, 20))  # 20 Dec 2023 .. 27 Feb 2024
-    assert [x["length"] for x in find_spells(data, 0.01, "below", month=1)] == [31]
+    # Any spell overlapping the month/season is returned in full (not cut at month boundaries).
+    assert [x["length"] for x in find_spells(data, 0.01, "below", month=1)] == [70]
+    assert [x["length"] for x in find_spells(data, 0.01, "below", month="winter")] == [70]
+    assert find_spells(data, 0.01, "below", month="summer") == []
     assert find_spells(data, 0.01, "below", start_year=2024)[0]["start"] == date(2024, 1, 1)
 
 

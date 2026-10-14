@@ -202,7 +202,7 @@ export default function ClimateReport() {
         {mounted && <MonthlyNormalsChart period={CLIMATE_META.period} />}
         <Text mt="2" fontSize="sm">
             Bars span the normal monthly low to high temperature, with the mean marked; blue columns show the
-            normal monthly rainfall (right-hand axis).
+            normal monthly rainfall and the gold line shows normal monthly sunshine hours (right-hand axes).
         </Text>
         {mounted && <DailyTempNormalsChart year={stationToday()[0]} today={stationToday()} />}
         <Text mt="2" fontSize="sm">

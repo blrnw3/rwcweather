@@ -32,8 +32,10 @@ def sun_times(d: date) -> dict:
     # datetime carries tm_isdst=1 in summer, which glibc rejects when the process zone is UTC (prod).
     times = get_all_times_rwc(datetime(d.year, d.month, d.day, 12))
     sr, ss = times["sunrise"], times["sunset"]
+    dawn, dusk = times.get("dawn", sr), times.get("dusk", ss)
     # astronomy returns naive datetimes in the process's local zone; .timestamp() interprets them the same way
     return dict(sunrise=int(sr.timestamp() * 1000), sunset=int(ss.timestamp() * 1000),
+                dawn=int(dawn.timestamp() * 1000), dusk=int(dusk.timestamp() * 1000),
                 daylight_h=round(times["daylight_secs"] / 3600, 2))
 
 

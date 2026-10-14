@@ -19,7 +19,9 @@ Rules:
   yesterday and today can still extend it.
 """
 from datetime import date, timedelta
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple, Union
+
+from rwcwx.calc.rolling import SEASONS, span_overlaps_months, target_months
 
 DIRECTIONS = ("above", "below")
 
@@ -27,10 +29,33 @@ DIRECTIONS = ("above", "below")
 SPELL_VARS: Dict[Tuple[str, str], dict] = {
     ("rain", "total"): dict(thresholds=(0.01, 0.1, 0.25, 0.5, 1.0), sum=True, partial=True),
     ("wet", "total"): dict(thresholds=(1, 3, 6, 12), sum=True, partial=True),
+    ("wetrate", "avg"): dict(thresholds=(0.02, 0.05, 0.1, 0.2)),
+    ("rain60", "max"): dict(thresholds=(0.05, 0.1, 0.25, 0.5), partial=True),
+    ("rain10", "max"): dict(thresholds=(0.02, 0.05, 0.1, 0.2), partial=True),
     ("temp", "max"): dict(thresholds=(40, 50, 60, 70, 80, 90, 100), fahrenheit=True),
     ("temp", "min"): dict(thresholds=(32, 40, 45, 50, 55, 60), fahrenheit=True),
     ("temp", "avg"): dict(thresholds=(40, 50, 60, 70, 80), fahrenheit=True),
     ("sun", "total"): dict(thresholds=(0.1, 1, 4, 8, 10, 12), sum=True),
+    ("sunpct", "avg"): dict(thresholds=(10, 25, 50, 75, 90)),
+    ("humi", "max"): dict(thresholds=(50, 60, 70, 80, 90, 95)),
+    ("humi", "min"): dict(thresholds=(20, 30, 40, 50, 60, 70)),
+    ("humi", "avg"): dict(thresholds=(30, 40, 50, 60, 70, 80, 90)),
+    ("dewpt", "max"): dict(thresholds=(32, 40, 50, 55, 60, 65), fahrenheit=True),
+    ("dewpt", "min"): dict(thresholds=(25, 32, 40, 45, 50, 55), fahrenheit=True),
+    ("dewpt", "avg"): dict(thresholds=(32, 40, 45, 50, 55, 60), fahrenheit=True),
+    ("aqi", "max"): dict(thresholds=(25, 50, 100, 150, 200)),
+    ("aqi", "min"): dict(thresholds=(10, 25, 50, 100)),
+    ("aqi", "avg"): dict(thresholds=(25, 50, 100, 150)),
+    ("wind", "max"): dict(thresholds=(5, 10, 15, 20, 25)),
+    ("wind", "avg"): dict(thresholds=(2, 4, 6, 8, 10)),
+    ("wind", "min"): dict(thresholds=(1, 2, 5)),
+    ("gust", "max"): dict(thresholds=(10, 15, 20, 25, 30, 40)),
+    ("gust", "avg"): dict(thresholds=(4, 6, 8, 10, 15)),
+    ("gust", "min"): dict(thresholds=(1, 2, 5)),
+    ("wdir", "avg"): dict(thresholds=(45, 90, 135, 180, 225, 270, 315)),
+    ("pres", "max"): dict(thresholds=(1005, 1010, 1015, 1020, 1025)),
+    ("pres", "min"): dict(thresholds=(1005, 1010, 1015, 1020, 1025)),
+    ("pres", "avg"): dict(thresholds=(1005, 1010, 1015, 1020, 1025)),
 }
 
 # Round Celsius thresholds offered to metric users, accepted as their exact °F equivalents (5 °C steps are whole °F).
@@ -38,6 +63,9 @@ CELSIUS_THRESHOLDS = {
     ("temp", "max"): (10, 15, 20, 25, 30, 35, 40),
     ("temp", "min"): (0, 5, 10, 15),
     ("temp", "avg"): (5, 10, 15, 20, 25),
+    ("dewpt", "max"): (0, 5, 10, 15, 20),
+    ("dewpt", "min"): (-5, 0, 5, 10, 15),
+    ("dewpt", "avg"): (0, 5, 10, 15, 20),
 }
 for _key, _cs in CELSIUS_THRESHOLDS.items():
     SPELL_VARS[_key]["thresholds"] = tuple(sorted(set(SPELL_VARS[_key]["thresholds"]) | {c * 9 / 5 + 32 for c in _cs}))
@@ -59,11 +87,13 @@ def meets(val: float, threshold: float, direction: str) -> bool:
 
 
 def find_spells(daily: Iterable[Tuple[date, Optional[float]]], threshold: float, direction: str,
-                month: int = 0, start_year: Optional[int] = None, last_day: Optional[date] = None) -> List[dict]:
-    """Every maximal run of consecutive qualifying days (threshold already in stored units), oldest first."""
+                month: Union[int, str, None] = 0, start_year: Optional[int] = None,
+                last_day: Optional[date] = None, season: Optional[str] = None) -> List[dict]:
+    """Every maximal run of consecutive qualifying days (threshold already in stored units), oldest first.
+    When a month or season filter is given, any spell overlapping that month/season is included in full.
+    """
     days = sorted((d, v) for d, v in daily if v is not None
                   and (last_day is None or d <= last_day)
-                  and (not month or d.month == month)
                   and (start_year is None or d.year >= start_year))
     spells, run = [], []
     for d, v in days:
@@ -75,6 +105,9 @@ def find_spells(daily: Iterable[Tuple[date, Optional[float]]], threshold: float,
             run.append((d, v))
     if run:
         spells.append(_spell(run))
+    months = target_months(month, season)
+    if months:
+        spells = [s for s in spells if span_overlaps_months(s["start"], s["end"], months)]
     return spells
 
 
@@ -89,8 +122,8 @@ def rank_spells(spells: List[dict], limit: int = 25) -> List[dict]:
 
 
 def spell_ranking(daily: Iterable[Tuple[date, Optional[float]]], var: str, typ: str, threshold: float,
-                  direction: str = "above", month: int = 0, start_year: Optional[int] = None, limit: int = 25,
-                  today: Optional[date] = None) -> dict:
+                  direction: str = "above", month: Union[int, str, None] = 0, start_year: Optional[int] = None,
+                  limit: int = 25, today: Optional[date] = None, season: Optional[str] = None) -> dict:
     """{result: top spells, current: the running spell with its rank (or None), found: number of spells}."""
     cfg = SPELL_VARS[(var, typ)]
     daily = list(daily)
@@ -98,15 +131,16 @@ def spell_ranking(daily: Iterable[Tuple[date, Optional[float]]], var: str, typ: 
     last_day = None
     if today is not None:
         last_day = today if cfg.get("partial") else today - timedelta(days=1)
-    spells = find_spells(daily, stored, direction, month, start_year, last_day)
+    spells = find_spells(daily, stored, direction, month, start_year, last_day, season=season)
+    months = target_months(month, season)
 
     current = None
     if today is not None and spells:
         latest = spells[-1]
         running = latest["end"] == last_day
         if not running and cfg.get("partial") and latest["end"] == today - timedelta(days=1):
-            # Today hasn't met the condition yet but still can (rain / wet hours only grow) - if today is in scope.
-            in_scope = (not month or today.month == month) and (start_year is None or today.year >= start_year)
+            # Today hasn't met the condition yet but still can (rain / wet hours only grow) - if spell is in scope.
+            in_scope = span_overlaps_months(latest["start"], today, months) and (start_year is None or today.year >= start_year)
             running = in_scope and direction == "above"
         if running:
             better = sum(1 for s in spells if s["length"] > latest["length"])

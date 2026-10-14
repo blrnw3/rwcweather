@@ -20,9 +20,11 @@ export const OBS = new Map([
     }],
     ["wind", {
         name: "Wind speed",
+        buttonName: "Wind",
         summary: "avg",
         fmat: "wind",
         icon: <FiWind />,
+        dailyStats: ["max", "avg"],
     }],
     ["rain", {
         name: "Rainfall",
@@ -53,12 +55,14 @@ export const OBS = new Map([
         summary: "avg",
         fmat: "gust",
         icon: <GiLeafSwirl />,
+        dailyStats: ["max", "avg"],
     }],
     ["wdir", {
         name: "Wind Direction",
         summary: "avg",
         fmat: "wdir",
         icon: <WiWindDeg />,
+        dailyStats: ["avg"],
     }],
     // Webcam-derived; daily totals only (no minute observations)
     ["sun", {
@@ -114,11 +118,22 @@ export const SUN_VIEWS = ["sun", "sunpct"];
 export const SUN_VIEW_NAMES = { sun: "Hours", sunpct: "% of possible" };
 export const RAIN_VIEWS = ["rain", "wet", "wetrate", "rain60", "rain10"];
 export const RAIN_VIEW_NAMES = { rain: "Amount", wet: "Wet hours", wetrate: "Rate when wet", rain60: "Max 60-min", rain10: "Max 10-min" };
+export const WIND_VIEWS = ["wind", "gust", "wdir"];
+export const WIND_VIEW_NAMES = { wind: "Wind speed", gust: "Gust speed", wdir: "Wind direction" };
+export const WIND_SUMMARY_VIEWS = ["wind:max", "gust:max", "wind:avg", "gust:avg", "wdir:avg"];
+export const WIND_SUMMARY_NAMES = {
+    "wind:max": "Max speed",
+    "gust:max": "Max gust",
+    "wind:avg": "Avg speed",
+    "gust:avg": "Avg gust",
+    "wdir:avg": "Avg direction",
+};
 
 // Variable button -> its views and their labels (the toggle shown under the Variable buttons).
 export const VIEW_GROUPS = {
     sun: { views: SUN_VIEWS, names: SUN_VIEW_NAMES, label: "Show sunshine as:" },
     rain: { views: RAIN_VIEWS, names: RAIN_VIEW_NAMES, label: "Show rainfall as:" },
+    wind: { views: WIND_VIEWS, names: WIND_VIEW_NAMES, summaryViews: WIND_SUMMARY_VIEWS, summaryNames: WIND_SUMMARY_NAMES, label: "Show wind as:" },
 };
 
 export function baseObs(obs) {
@@ -128,6 +143,16 @@ export function baseObs(obs) {
         }
     }
     return obs;
+}
+
+export function fmatForObs(obs, stat) {
+    if ((obs === "wind" || obs === "gust") && (stat === "max" || stat === "min")) {
+        return "gust";
+    }
+    if (obs === "gust" && stat === "avg") {
+        return "wind";
+    }
+    return OBS.get(obs).fmat;
 }
 
 // Daily statistics available for a variable.
@@ -165,7 +190,8 @@ const aggNames = {
   }
 
   export function fmatObsOpt(obs) {
-    return OBS.get(obs).name;
+    const o = OBS.get(obs);
+    return o.buttonName || o.name;
   }
 
   export function fmatYrOpt(yr) {

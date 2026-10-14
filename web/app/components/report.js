@@ -7,16 +7,20 @@ import RadioCard from "./RadioCard";
 
 export const REPORT_YEAR_START = 2021;
 
-// Variables with minute observations (daily report graphs).
+// Variables with minute observations (daily report graphs, latest charts).
 export const REPORT_OBS_OPTIONS = [
-    "temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust", "sun",
+    "temp", "rain", "humi", "dewpt", "aqi", "wind", "pres",
 ];
 
-// Variables with daily values (rankings, all-time). "sun" is already in REPORT_OBS_OPTIONS (added in #28).
-export const DAILY_VALUE_OBS_OPTIONS = REPORT_OBS_OPTIONS;
+export const MINUTE_OBS_STATES = [...REPORT_OBS_OPTIONS, "gust", "wdir"];
 
-// Every value the "var" URL parameter may take: the buttons plus alternative views (sunshine as %).
-export const DAILY_VALUE_OBS_STATES = [...DAILY_VALUE_OBS_OPTIONS, "sunpct", "wet", "wetrate", "rain60", "rain10"];
+// Variables with daily values (rankings, all-time, matrix, summary, year charts).
+export const DAILY_VALUE_OBS_OPTIONS = [
+    "temp", "rain", "sun", "humi", "dewpt", "aqi", "wind", "pres",
+];
+
+// Every value the "var" URL parameter may take: the buttons plus alternative views (sunshine as %, rain views, wind views).
+export const DAILY_VALUE_OBS_STATES = [...DAILY_VALUE_OBS_OPTIONS, "sunpct", "wet", "wetrate", "rain60", "rain10", "gust", "wdir"];
 
 export const COUNT_THRESHOLDS = {
     temp: ["0", "5", "10", "15", "20", "25", "30", "35"],
@@ -133,15 +137,33 @@ export function CountThresholdSelector({ obs, value, fn }) {
 }
 
 // Views of one variable button, shown under the Variable buttons while it is selected:
-// "Show sunshine as: Hours | % of possible", "Show rainfall as: Amount | Wet hours".
-export function SunViewToggle({ obs, fn, Group = RadioButtonGroup }) {
+// "Show sunshine as: Hours | % of possible", "Show rainfall as: Amount | Wet hours",
+// "Show wind as: Max speed | Max gust | Avg speed | Avg gust | Avg direction" (or minute-level wind views).
+export function SunViewToggle({ obs, stat, fn, Group = RadioButtonGroup, summaryMode = true }) {
     const base = baseObs(obs);
     const g = VIEW_GROUPS[base];
     if (!g) {
         return null;
     }
+    if (base === "wind" && summaryMode) {
+        const effStat = stat || (obs === "wdir" ? "avg" : "max");
+        const val = g.summaryViews.includes(obs + ":" + effStat) ? obs + ":" + effStat : "wind:max";
+        return <>
+            <Text mt="1" fontWeight="bold">{g.label}</Text>
+            <Group
+                name="wind-view"
+                value={val}
+                options={g.summaryViews}
+                optFormat={(v) => g.summaryNames[v]}
+                fn={(v) => {
+                    const [nextObs, nextStat] = v.split(":");
+                    fn(nextObs, nextStat);
+                }}
+            />
+        </>;
+    }
     return <>
         <Text mt="1" fontWeight="bold">{g.label}</Text>
-        <Group name={base + "-view"} value={obs} options={g.views} optFormat={(v) => g.names[v]} fn={fn} />
+        <Group name={base + "-view"} value={obs} options={g.views} optFormat={(v) => g.names[v]} fn={(v) => fn(v)} />
     </>;
 }

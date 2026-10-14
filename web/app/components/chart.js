@@ -4,7 +4,8 @@ import HighchartsReact from 'highcharts-react-official';
 import { useContext } from 'react';
 import useSWR from 'swr';
 import { convFunction, unitAndPrecisionForObsType } from '../format';
-import { fetcher, fmatAggTypeOpt, OBS } from './conf';
+import { daysInMonth } from './dateUtil';
+import { fetcher, fmatAggTypeOpt, fmatForObs, OBS } from './conf';
 import { UnitCtx } from "./Page";
 
 let cache;
@@ -59,8 +60,25 @@ function useLatest(mins) {
     return [res, data["server"]["offset"]];
 }
 
-function useSummary(obs, agg, period) {
-    const { data, error } = useSWR("/api/var/daily/" + obs + "/" + agg + "?include_today&n=" + period, fetcher,
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function summaryQuery(period, year, month) {
+    if (year && year !== "recent") {
+        const y = Number(year);
+        if (month && month !== "all") {
+            const m = Number(month);
+            const mm = String(m).padStart(2, "0");
+            const lastDay = String(daysInMonth(y, m)).padStart(2, "0");
+            return "?start=" + y + mm + "01&end=" + y + mm + lastDay;
+        }
+        return "?start=" + y + "0101&end=" + y + "1231";
+    }
+    return "?include_today&n=" + period;
+}
+
+function useSummary(obs, agg, period, year, month) {
+    const query = summaryQuery(period, year, month);
+    const { data, error } = useSWR("/api/var/daily/" + obs + "/" + agg + query, fetcher,
         { refreshInterval: 300000, revalidateOnFocus: false })
     if (error || !data) {
         console.log(error);
@@ -172,10 +190,11 @@ export function SummaryChart(props) {
 
     let unit = useContext(UnitCtx);
     let obsName = OBS.get(obs).name;
-    let { unitSymbol, precision } = unitAndPrecisionForObsType(unit, OBS.get(obs).fmat);
-    let converter = convFunction(unit, OBS.get(obs).fmat);
+    let fmat = fmatForObs(obs, aggType);
+    let { unitSymbol, precision } = unitAndPrecisionForObsType(unit, fmat);
+    let converter = convFunction(unit, fmat);
 
-    const [latest, offset] = useSummary(obs, aggType, props.period);
+    const [latest, offset] = useSummary(obs, aggType, props.period, props.year, props.month);
     let data;
     let isLoading = false;
     if (!latest) {
@@ -188,6 +207,9 @@ export function SummaryChart(props) {
             converter(x["val"])
         ]).reverse();
     }
+    const periodTitle = (props.year && props.year !== "recent")
+        ? ((props.month && props.month !== "all" ? MONTH_NAMES[Number(props.month) - 1] + " " : "") + props.year)
+        : ("Last " + props.period + " days");
     let options = {
         chart: {
             type: chartType,
@@ -203,7 +225,7 @@ export function SummaryChart(props) {
             text: "@rwcweather"
         },
         title: {
-            text: (isLoading ? "LOADING: " : "") + "Last " + props.period + " days " + aggTypePretty + " " + obsName
+            text: (isLoading ? "LOADING: " : "") + periodTitle + " " + aggTypePretty + " " + obsName
                 + (!isLoading && !data.some(([, v]) => Number.isFinite(v)) ? " – no data in this period" : ""),
             style: {
                 fontSize: responsiveFontSize(18)

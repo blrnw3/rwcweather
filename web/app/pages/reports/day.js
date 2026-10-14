@@ -18,10 +18,10 @@ import {
 import { useContext, useEffect, useState } from "react";
 import useSWR from "swr";
 import { DailyChart } from "../../components/chart";
-import { fetcher, fmatObsOpt, OBS } from "../../components/conf";
+import { baseObs, fetcher, fmatForObs, fmatObsOpt, OBS } from "../../components/conf";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
-import { RadioButtonGroup, REPORT_OBS_OPTIONS, styleForReportValue } from "../../components/report";
+import { MINUTE_OBS_STATES, RadioButtonGroup, REPORT_OBS_OPTIONS, styleForReportValue, SunViewToggle } from "../../components/report";
 import { SunLegend, SunRibbon, useSunDay } from "../../components/sun";
 import { useWetDay, WetLegend, WetRibbon } from "../../components/wet";
 import { formatObs, timeOf } from "../../format";
@@ -51,13 +51,16 @@ function stationToday() {
     return values.year + "-" + values.month + "-" + values.day;
 }
 
-function stationHour() {
+function stationNowHm() {
     const parts = new Intl.DateTimeFormat("en-US", {
         timeZone: STATION_TIME_ZONE,
         hour: "2-digit",
+        minute: "2-digit",
         hourCycle: "h23",
     }).formatToParts(new Date());
-    return Number(parts.find(({ type }) => type === "hour")?.value || 0);
+    const h = Number(parts.find(({ type }) => type === "hour")?.value || 0);
+    const m = Number(parts.find(({ type }) => type === "minute")?.value || 0);
+    return [h, m];
 }
 
 function shiftDate(date, amount) {
@@ -103,11 +106,11 @@ function dayNormal(obs, summary, date) {
 }
 
 function SummaryCell({ value, at, obs, summary, unit, date }) {
-    const obsObj = OBS.get(obs);
-    const { bg, col } = styleForReportValue(value, obsObj.fmat, unit, summary);
+    const fmat = fmatForObs(obs, summary);
+    const { bg, col } = styleForReportValue(value, fmat, unit, summary);
     const climate = dayNormal(obs, summary, date);
     return <Td isNumeric backgroundColor={bg} color={col}>
-        <Text fontWeight="bold">{formatObs(unit, value, obsObj.fmat)}</Text>
+        <Text fontWeight="bold">{formatObs(unit, value, fmat)}</Text>
         {climate && <ClimateAnom value={value} normal={climate.normal} obs={obs} stat={climate.stat} unit={unit} />}
         {at != null && <Text fontSize="xs">at {stationTime(at)}</Text>}
     </Td>;
@@ -146,14 +149,10 @@ function DailySummary({ summary, date }) {
     </Box>;
 }
 
-function formatHour(hour) {
-    if (hour === 0) {
-        return "12:00 AM";
-    }
-    if (hour === 12) {
-        return "12:00 PM";
-    }
-    return (hour % 12) + ":00 " + (hour < 12 ? "AM" : "PM");
+function formatSlotTime(hour, minute = 0) {
+    const mm = String(minute).padStart(2, "0");
+    const h12 = hour % 12 || 12;
+    return h12 + ":" + mm + " " + (hour < 12 ? "AM" : "PM");
 }
 
 function stationDateTimeParts(timestamp) {
@@ -178,9 +177,9 @@ function stationOffsetMs(timestamp) {
     return wallTimeAsUtc - timestamp;
 }
 
-function webcamArchiveStamp(date, hour) {
+function slotEpochMs(date, hour, minute = 0) {
     const [year, month, day] = date.split("-").map(Number);
-    const desiredWallTime = Date.UTC(year, month - 1, day, hour);
+    const desiredWallTime = Date.UTC(year, month - 1, day, hour, minute);
     const noonUtc = Date.UTC(year, month - 1, day, 12);
     let archiveTime = desiredWallTime - stationOffsetMs(noonUtc);
     archiveTime = desiredWallTime - stationOffsetMs(archiveTime);
@@ -189,23 +188,31 @@ function webcamArchiveStamp(date, hour) {
     if (Number(stationParts.year) !== year
         || Number(stationParts.month) !== month
         || Number(stationParts.day) !== day
-        || Number(stationParts.hour) !== hour) {
+        || Number(stationParts.hour) !== hour
+        || Number(stationParts.minute) !== minute) {
         return null;
     }
+    return archiveTime;
+}
 
+function webcamArchiveStamp(date, hour, minute = 0) {
+    const archiveTime = slotEpochMs(date, hour, minute);
+    if (archiveTime == null) {
+        return null;
+    }
     const utc = new Date(archiveTime);
     return utc.getUTCFullYear().toString()
         + (utc.getUTCMonth() + 1).toString().padStart(2, "0")
         + utc.getUTCDate().toString().padStart(2, "0")
         + "_"
         + utc.getUTCHours().toString().padStart(2, "0")
-        + "00";
+        + utc.getUTCMinutes().toString().padStart(2, "0");
 }
 
-function HourlyWebcamImage({ date, dateLabel, hour }) {
+function WebcamImage({ date, dateLabel, hour, minute = 0 }) {
     const [missing, setMissing] = useState(false);
-    const hourLabel = formatHour(hour);
-    const archiveStamp = webcamArchiveStamp(date, hour);
+    const slotLabel = formatSlotTime(hour, minute);
+    const archiveStamp = webcamArchiveStamp(date, hour, minute);
     const imageUrl = archiveStamp
         ? "https://rwcweather.com/cumulus/camdump/sky_lg/" + archiveStamp + ".jpg"
         : null;
@@ -215,11 +222,11 @@ function HourlyWebcamImage({ date, dateLabel, hour }) {
             ? <Flex style={{ aspectRatio: "16 / 9" }} align="center" justify="center" backgroundColor="gray.200" color="gray.600">
                 <Text>No archived image</Text>
             </Flex>
-            : <ChakraLink href={imageUrl} isExternal display="block" title={"Open " + hourLabel + " image"}>
+            : <ChakraLink href={imageUrl} isExternal display="block" title={"Open " + slotLabel + " image"}>
                 <Box
                     as="img"
                     src={imageUrl}
-                    alt={"Redwood City webcam at " + hourLabel + " on " + dateLabel}
+                    alt={"Redwood City webcam at " + slotLabel + " on " + dateLabel}
                     loading="lazy"
                     width="100%"
                     style={{ aspectRatio: "16 / 9" }}
@@ -227,23 +234,82 @@ function HourlyWebcamImage({ date, dateLabel, hour }) {
                     onError={() => setMissing(true)}
                 />
             </ChakraLink>}
-        <Text px="3" py="2" fontWeight="bold">{hourLabel}</Text>
+        <Text px="3" py="2" fontWeight="bold">{slotLabel}</Text>
     </Box>;
 }
 
-function HourlyWebcamGallery({ date, dateLabel, isToday, currentHour }) {
-    const hours = Array.from({ length: isToday ? currentHour + 1 : 24 }, (_, hour) => hour);
+const CAM_INTERVALS = ["60", "30", "15"];
+const CAM_SPANS = ["daytime", "all"];
+const CAM_SPAN_NAMES = { daytime: "Daytime (incl. twilight)", all: "All day" };
+
+// Civil twilight bounds (sun 6° below horizon) in UTC ms for `date` at 37.469, -122.265.
+function twilightBoundsMs(date, sunDay) {
+    if (sunDay?.dawn && sunDay?.dusk) {
+        return [sunDay.dawn, sunDay.dusk];
+    }
+    if (sunDay?.sunrise && sunDay?.sunset) {
+        return [sunDay.sunrise - 30 * 60000, sunDay.sunset + 30 * 60000];
+    }
+    return [slotEpochMs(date, 5, 30), slotEpochMs(date, 21, 0)];
+}
+
+function WebcamGallery({ date, dateLabel, isToday, currentHm, datestamp }) {
+    const [interval, setIntervalMin] = useState("60");
+    const [span, setSpan] = useState("daytime");
+    const { day: sunDay } = useSunDay(datestamp);
+
+    const step = Number(interval);
+    const [curH, curM] = currentHm;
+    const maxMins = isToday ? curH * 60 + curM : 24 * 60 - 1;
+    const [dawnMs, duskMs] = twilightBoundsMs(date, sunDay);
+
+    const slots = [];
+    for (let m = 0; m <= maxMins; m += step) {
+        const hour = Math.floor(m / 60);
+        const minute = m % 60;
+        if (span === "daytime" && dawnMs != null && duskMs != null) {
+            const t = slotEpochMs(date, hour, minute);
+            // Include the interval containing dawn through the interval containing dusk.
+            if (t != null && (t + step * 60000 <= dawnMs || t > duskMs)) {
+                continue;
+            }
+        }
+        slots.push([hour, minute]);
+    }
 
     return <Box mt="6">
-        <Heading as="h3" size="3">Hourly webcam</Heading>
-        <Text mb="3">Images captured at the start of each hour, in Redwood City local time.</Text>
+        <Heading as="h3" size="3">Webcam archive</Heading>
+        <Text mb="2">Archived webcam images in Redwood City local time.</Text>
+        <Flex wrap="wrap" gap="4" mb="3" align="center">
+            <Box>
+                <Text fontWeight="bold" fontSize="sm">Interval:</Text>
+                <RadioButtonGroup
+                    name="webcam-interval"
+                    value={interval}
+                    options={CAM_INTERVALS}
+                    optFormat={(v) => v + " min"}
+                    fn={setIntervalMin}
+                />
+            </Box>
+            <Box>
+                <Text fontWeight="bold" fontSize="sm">Hours:</Text>
+                <RadioButtonGroup
+                    name="webcam-span"
+                    value={span}
+                    options={CAM_SPANS}
+                    optFormat={(v) => CAM_SPAN_NAMES[v]}
+                    fn={setSpan}
+                />
+            </Box>
+        </Flex>
         <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="3">
-            {hours.map((hour) =>
-                <HourlyWebcamImage
-                    key={date + "-" + hour}
+            {slots.map(([hour, minute]) =>
+                <WebcamImage
+                    key={date + "-" + hour + "-" + minute}
                     date={date}
                     dateLabel={dateLabel}
                     hour={hour}
+                    minute={minute}
                 />
             )}
         </SimpleGrid>
@@ -320,17 +386,17 @@ const DAY_URL_STATE = {
         def: () => "",
         valid: (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) && v <= stationToday(),
     },
-    obs: { param: "var", def: () => "temp", valid: inList(REPORT_OBS_OPTIONS) },
+    obs: { param: "var", def: () => "temp", valid: inList(MINUTE_OBS_STATES) },
 };
 
 export default function DailyReport() {
     const [today, setToday] = useState("");
-    const [currentHour, setCurrentHour] = useState(0);
+    const [currentHm, setCurrentHm] = useState([0, 0]);
     const [{ date, obs }, update, ready] = useUrlState(DAY_URL_STATE);
 
     useEffect(() => {
         setToday(stationToday());
-        setCurrentHour(stationHour());
+        setCurrentHm(stationNowHm());
     }, []);
 
     // An empty date means "today" (the default, left out of the URL); the
@@ -391,11 +457,12 @@ export default function DailyReport() {
                 <Text fontWeight="bold">Variable:</Text>
                 <RadioButtonGroup
                     name="daily-graph-variable"
-                    value={obs}
+                    value={baseObs(obs)}
                     options={REPORT_OBS_OPTIONS}
                     optFormat={fmatObsOpt}
                     fn={setObs}
                 />
+                {baseObs(obs) === "wind" && <SunViewToggle obs={obs} fn={setObs} summaryMode={false} />}
                 <DailyChart
                     observations={observations}
                     obs={obs}
@@ -406,11 +473,12 @@ export default function DailyReport() {
                 />
             </Box>
 
-            <HourlyWebcamGallery
+            <WebcamGallery
                 date={selectedDate}
                 dateLabel={dateLabel}
                 isToday={selectedDate === today}
-                currentHour={currentHour}
+                currentHm={currentHm}
+                datestamp={datestamp}
             />
         </>}
     </Page>;

@@ -15,7 +15,7 @@ def series(values, start=date(2024, 1, 1)):
 class RollingTest(unittest.TestCase):
 
     def test_coverage_rule(self):
-        self.assertEqual([min_days_required(n) for n in (3, 7, 14, 30)], [3, 7, 13, 27])
+        self.assertEqual([min_days_required(n) for n in (3, 5, 7, 14, 30)], [3, 5, 7, 13, 27])
 
     def test_sum_and_non_overlap(self):
         res = rolling_ranking(series([0, 1, 5, 2, 0, 0, 3, 3, 3, 0]), "rain", "total", 3, limit=5)
@@ -62,6 +62,19 @@ class RollingTest(unittest.TestCase):
         _, cur = rolling_ranking_with_current(data, "temp", "max", 3, today=date(2024, 1, 6))
         self.assertEqual(cur["end"], (2024, 1, 5))
 
+    def test_month_and_season_overlap_filter(self):
+        # 5-day window crossing Jan 30 - Feb 3 overlaps both Jan (month=1), Feb (month=2), and winter.
+        data = series([1, 2, 3, 4, 5, 6, 7], start=date(2024, 1, 29))
+        jan_res = rolling_ranking(data, "rain", "total", 5, month=1)
+        feb_res = rolling_ranking(data, "rain", "total", 5, month=2)
+        summer_res = rolling_ranking(data, "rain", "total", 5, season="summer")
+        winter_res = rolling_ranking(data, "rain", "total", 5, month="winter")
+        self.assertEqual(len(jan_res), 1)
+        self.assertEqual(jan_res[0]["end"], (2024, 2, 4))
+        self.assertEqual(feb_res[0]["end"], (2024, 2, 4))
+        self.assertEqual(winter_res[0]["end"], (2024, 2, 4))
+        self.assertEqual(summer_res, [])
+
 
 class RollingEndpointTest(unittest.TestCase):
 
@@ -91,8 +104,9 @@ class RollingEndpointTest(unittest.TestCase):
                 self.assertTrue(e1 < s2 or e2 < s1, "windows overlap")
 
     def test_rejects_unsupported(self):
-        for url in ("/api/var/rolling/wind/avg/?days=3", "/api/var/rolling/rain/total/?days=5",
-                    "/api/var/rolling/rain/total/?limit=1000", "/api/var/rolling/temp/max/?order=up"):
+        for url in ("/api/var/rolling/unknown/avg/?days=3", "/api/var/rolling/rain/total/?days=4",
+                    "/api/var/rolling/rain/total/?limit=1000", "/api/var/rolling/temp/max/?order=up",
+                    "/api/var/rolling/rain/total/?month=13"):
             self.assertEqual(self.client.get(url).status_code, 400, url)
 
 

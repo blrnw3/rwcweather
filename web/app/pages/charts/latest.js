@@ -1,7 +1,8 @@
-import { Flex, Heading, Text, useRadioGroup } from "@chakra-ui/react";
+import { Flex, Heading, useRadioGroup } from "@chakra-ui/react";
 import { LatestChart } from "../../components/chart";
-import { fmatObsOpt, fmatTimeOpt, OBS } from '../../components/conf';
+import { baseObs, fmatObsOpt, fmatTimeOpt, OBS } from '../../components/conf';
 import { Page } from "../../components/Page";
+import { MINUTE_OBS_STATES, REPORT_OBS_OPTIONS, SunViewToggle } from "../../components/report";
 import { inList, useUrlState } from "../../components/urlState";
 import RadioCard from "../../components/RadioCard";
 
@@ -25,12 +26,12 @@ function RadioButtonGroup(props) {
   </Flex>
 }
 
-const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust"];
+const obsOptions = REPORT_OBS_OPTIONS;
 const hrsOptions = ["6", "12", "24", "48", "72", "120", "168", "336", "744", "2208"];
 
 // Selections kept in the URL, e.g. /charts/latest?var=wind&hours=48
 const LATEST_URL_STATE = {
-  obs: { param: "var", def: () => "temp", valid: inList(obsOptions) },
+  obs: { param: "var", def: () => "temp", valid: inList(MINUTE_OBS_STATES) },
   hrs: { param: "hours", def: () => "12", valid: inList(hrsOptions) },
 };
 
@@ -45,10 +46,11 @@ export default function Charts() {
         Latest Charts
       </Heading>
       <Heading as="h2" size="2">
-        Last {fmatTimeOpt(hrs)} {fmatObsOpt(obs)}
+        Last {fmatTimeOpt(hrs)} {OBS.get(obs).name}
       </Heading>
       
-      <RadioButtonGroup name="obs" value={obs} options={obsOptions} optFormat={fmatObsOpt} fn={setObs} />
+      <RadioButtonGroup name="obs" value={baseObs(obs)} options={obsOptions} optFormat={fmatObsOpt} fn={setObs} />
+      {baseObs(obs) === "wind" && <SunViewToggle obs={obs} fn={setObs} Group={RadioButtonGroup} summaryMode={false} />}
       <LatestChart obs={obs} hrs={hrs} my={4} mx={{base: 0, md: 4, xl: 6}} height="responsive" spacing={[20, 20, 25, 10]} />
       <RadioButtonGroup name="hrs" value={hrs} options={hrsOptions} optFormat={fmatTimeOpt} fn={setHrs} />
     </Page>
