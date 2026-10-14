@@ -84,13 +84,21 @@ export const OBS = new Map([
         fmat: "wet",
         icon: <WiRain />,
     }],
+    // Average rain rate when wet = rain / wet hours, derived at query time; blank on days without wet hours.
+    ["wetrate", {
+        name: "Rain rate (when wet)",
+        summary: "avg",
+        fmat: "wetrate",
+        icon: <WiRain />,
+        dailyStats: ["avg"],
+    }],
 ]);
 
 // Alternative views of one variable (the button stays the base variable).
 export const SUN_VIEWS = ["sun", "sunpct"];
 export const SUN_VIEW_NAMES = { sun: "Hours", sunpct: "% of possible" };
-export const RAIN_VIEWS = ["rain", "wet"];
-export const RAIN_VIEW_NAMES = { rain: "Amount", wet: "Wet hours" };
+export const RAIN_VIEWS = ["rain", "wet", "wetrate"];
+export const RAIN_VIEW_NAMES = { rain: "Amount", wet: "Wet hours", wetrate: "Rate when wet" };
 
 // Variable button -> its views and their labels (the toggle shown under the Variable buttons).
 export const VIEW_GROUPS = {

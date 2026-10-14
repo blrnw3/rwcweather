@@ -69,3 +69,24 @@ def test_find_tips_counts_multi_tip_minutes():
     tips, unknown = find_tips(series({300: 0.03}))
     assert [round(t.amount, 2) for t in tips] == [0.03] and not unknown
     assert not spells_from_tips(tips)[0].lone
+
+
+def test_stored_flags_round_trip_to_the_same_day_summary():
+    from rwcwx.wet.rules import day_from_flags, wet_flags
+    rows = series({600: 0.01, 620: 0.01, 900: 0.01})
+    wd = wet_day(D, rows)
+    st, en = T0, T0 + timedelta(days=1)
+    day_rows = [(t, r) for t, r in rows if st <= t < en]
+    flags = wet_flags([t for t, _ in day_rows], wd.spells)
+    s = day_from_flags(D, [(t, f, r) for (t, r), f in zip(day_rows, flags)])
+    assert s["wet_h"] == round(wd.wet_min / 60, 2) and s["spells"] == 2
+    assert s["longest_h"] == round((620 + 30 - 570) / 60, 2) and s["rain"] == 0.03
+
+
+def test_flag_runs_split_on_dry_rows_but_bridge_short_silences():
+    from rwcwx.wet.rules import spells_from_flags
+    t = [T0 + timedelta(minutes=i) for i in (0, 1, 2, 6, 7, 8, 9)]
+    runs = spells_from_flags(list(zip(t, [1, 1, 0, 1, 1, 0, 1])))
+    assert [n for *_, n in runs] == [2, 2, 1]
+    runs = spells_from_flags([(T0, 1), (T0 + timedelta(minutes=5), 1)])
+    assert len(runs) == 1

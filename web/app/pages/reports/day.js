@@ -23,6 +23,7 @@ import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
 import { RadioButtonGroup, REPORT_OBS_OPTIONS, styleForReportValue } from "../../components/report";
 import { SunLegend, SunRibbon, useSunDay } from "../../components/sun";
+import { useWetDay, WetLegend, WetRibbon } from "../../components/wet";
 import { formatObs } from "../../format";
 import { ClimateAnom, ClimateNormalsLink, ClimateNote, dailyNormal, hasClimate } from "../../components/climate";
 
@@ -275,6 +276,29 @@ function DailySunshine({ datestamp }) {
     </Box>;
 }
 
+// Wet hours for the day (from the stored wet minutes): total, spells and the midnight-to-midnight bar.
+// Hidden on dry days.
+function DailyWet({ datestamp }) {
+    const unit = useContext(UnitCtx);
+    const { wet, now } = useWetDay(datestamp);
+    if (!wet || !(wet.wet_h > 0)) {
+        return null;
+    }
+    const elapsed = Math.min(now || wet.day_end, wet.day_end) - wet.day_start;
+    const pct = elapsed > 0 ? Math.round(100 * wet.wet_h * 3600000 / elapsed) : null;
+    return <Box mt="6" className="daily-wet">
+        <Heading as="h3" size="3">Wet hours</Heading>
+        <Text>
+            <Text as="span" fontWeight="bold">{formatObs(unit, wet.wet_h, "wet")}</Text> wet
+            {pct != null ? " (" + pct + "% of the day" + (now && now < wet.day_end ? " so far" : "") + ")" : ""}
+            {" · "}{wet.spells} spell{wet.spells === 1 ? "" : "s"}, longest {formatObs(unit, wet.longest_h, "wet")}
+            {wet.rate != null ? " · " + formatObs(unit, wet.rate, "rain") + "/h when wet" : ""}
+        </Text>
+        <Box maxW="900px" my="2"><WetRibbon wet={wet} nowMs={now} height="22px" /></Box>
+        <WetLegend />
+    </Box>;
+}
+
 // Selections kept in the URL, e.g. /reports/day?date=2026-10-05&var=rain
 const DAY_URL_STATE = {
     date: {
@@ -344,6 +368,7 @@ export default function DailyReport() {
             {observations.length === 0 && <Text py="3">No observations are available for this date.</Text>}
             <DailySummary summary={report.summary} date={selectedDate} />
             <DailySunshine datestamp={datestamp} />
+            <DailyWet datestamp={datestamp} />
 
             <Box mt="6">
                 <Heading as="h3" size="3">Daily graph</Heading>

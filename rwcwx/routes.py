@@ -16,6 +16,7 @@ from rwcwx.model.obs import ObsQ
 from rwcwx.model import sun as sun_model
 from rwcwx.models import AvgExt, Base, db, m, Obs
 from rwcwx.util import DateStampConverter, DateUtil
+from rwcwx.wet import rate as wet_rate
 from rwcwx.wet import store as wet_store
 
 
@@ -88,6 +89,14 @@ def _wet_today(day: date, _minute: int) -> Optional[dict]:
     except Exception as e:
         logger.warning(f"wet dashboard block failed: {e}")
         return None
+
+
+def wet_day(d: date = None):
+    """Derived wet hours for one local day from the stored obs.wet minutes: total, spells, longest, rate."""
+    d = d or DateUtil.now().date()
+    if isinstance(d, datetime):
+        d = d.date()
+    return _wrap_result(wet_store.stored_day(d), date=d)
 
 
 def sun_day(d: date = None):
@@ -270,6 +279,11 @@ def _dictify_obs_result(res):
 
 
 def _var_avg_exts_from_request(var: str, typ: str) -> List[AvgExt]:
+    if var == wet_rate.RATE_VAR:
+        # Derived per day from the rain and wet-hours totals; blank (left out) on days without wet hours.
+        if typ != wet_rate.RATE_TYPE:
+            return []
+        return wet_rate.rate_days(_var_avg_exts_from_request("rain", "total"), _var_avg_exts_from_request("wet", "total"))
     if var == sun_model.PCT_VAR:
         # Derived from the daily sunshine totals; only one daily statistic exists.
         return sun_model.pct_days(_var_avg_exts_from_request("sun", "total")) if typ == sun_model.PCT_TYPE else []

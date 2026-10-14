@@ -148,6 +148,25 @@ const OBS_FORMAT = {
         year: [150, 200, 250, 300, 350, 400, 450, 500],
       },
     },
+    // Average rain rate when wet (rain / wet hours), per hour.
+    wetrate: {
+      units: {
+        base: "mm/h",
+        us: "in/h",
+      },
+      conv: {
+        uk: r => r * 25.4,
+        eu: r => r * 25.4,
+      },
+      precision: {
+        base: 1,
+        us: 3
+      },
+      scale: {
+        base: [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5],
+        us: [0.01, 0.02, 0.03, 0.04, 0.06, 0.08, 0.12, 0.2]
+      }
+    },
     sunpct: {
       units: {
         base: "%",

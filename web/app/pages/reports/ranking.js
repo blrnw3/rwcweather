@@ -65,7 +65,7 @@ function periodOptions(obs) {
 
 // The driest N-day spells are all zero, so rain multi-day only ranks highest.
 function orderOptions(obs, period) {
-    return period === "rolling" && obs === "rain" ? ["highest"] : ["highest", "lowest"];
+    return period === "rolling" && (obs === "rain" || obs === "wet") ? ["highest"] : ["highest", "lowest"];
 }
 
 const ORDER_NAMES = {
@@ -607,7 +607,7 @@ export default function RankingReport() {
             daily series within each month. Rankings use records from {REPORT_YEAR_START} onward.
         </Text>
         <Text mt="2">
-            Annual rankings use calendar years; water-year rankings (rainfall only) use 1 October to 30 September,
+            Annual rankings use calendar years; water-year rankings (rainfall and wet hours only) use 1 October to 30 September,
             labelled by the year they end (e.g. {waterYearLabel(2026)} = {waterYearRange(2026)}). Both only rank
             complete years: the current, still in-progress year and any partially recorded first year are left out.
         </Text>
