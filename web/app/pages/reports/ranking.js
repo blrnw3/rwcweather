@@ -488,7 +488,8 @@ const RANKING_URL_STATE = {
         valid: (v, s) => dailyAggregationOptions(s.obs).includes(v),
     },
     summary: {
-        def: (s) => isTotalObs(s.obs) ? "total" : "max",
+        // Totals and the rain rate default to their period statistic (sum; rain / wet hours), not the max of daily values.
+        def: (s) => isTotalObs(s.obs) || s.obs === "wetrate" ? OBS.get(s.obs).summary : "max",
         valid: (v, s) => summaryOptions(s.obs).includes(v),
         use: (s) => SUMMARY_PERIODS.includes(s.period),
     },
