@@ -9,6 +9,7 @@ from rwcwx import logger
 
 from rwcwx.astronomy import get_all_times_rwc, getTimes
 from rwcwx.calc.avg_extreme import AvgExtAggregator, MonthSummary, DaySummary, YearSummary, WaterYearRainSummary
+from rwcwx.calc.spells import DIRECTIONS, SPELL_VARS, spell_ranking, supported as spells_supported
 from rwcwx.calc.rolling import ROLLING_DAYS, ROLLING_VARS, min_days_required, rolling_ranking_with_current
 from rwcwx.config import TZ
 from rwcwx.model.avgext import AvgExtQ
@@ -222,6 +223,38 @@ def var_rolling(var: str, typ: str):
 def _rolling_cached(var: str, typ: str, days: int, order: str, limit: int, today: date, _bucket: int) -> tuple:
     """Each ranking is computed at most once per 5 minutes per worker (the reports refresh every 5 minutes)."""
     return rolling_ranking_with_current(_daily_values(var, typ), var, typ, days, order, limit, today)
+
+
+def var_spells(var: str, typ: str):
+    """
+    Longest runs of consecutive days above/below a threshold, e.g. /api/var/spells/rain/total/?dir=below&threshold=0.01
+    Query params: dir (above|below), threshold (in, °F or hours; one of the supported values), month (0 = all, 1-12),
+    start_year, limit (1-100).
+    """
+    cfg = SPELL_VARS.get((var, typ))
+    try:
+        threshold = float(request.args.get("threshold", "nan"))
+        month = int(request.args.get("month", "0"))
+        start_year = int(request.args["start_year"]) if request.args.get("start_year") else None
+        limit = int(request.args.get("limit", "25"))
+    except ValueError:
+        threshold = None
+    direction = request.args.get("dir", "above")
+    if cfg is None or threshold is None or threshold not in cfg["thresholds"] or direction not in DIRECTIONS \
+            or not 0 <= month <= 12 or not 1 <= limit <= 100 or (start_year is not None and not 2000 <= start_year <= 2100):
+        return {
+            "error": "Unsupported spell ranking",
+            "supported": dict(vars=spells_supported(), dir=list(DIRECTIONS), month="0-12", limit="1-100"),
+        }, 400
+    now = DateUtil.now()
+    res = _spells_cached(var, typ, threshold, direction, month, start_year, limit, now.date(), int(now.timestamp() // 300))
+    return _wrap_result(res["result"], var=var, type=typ, dir=direction, threshold=threshold, month=month,
+                        start_year=start_year, current=res["current"], found=res["found"], stat=res["stat"])
+
+
+@lru_cache(maxsize=128)
+def _spells_cached(var, typ, threshold, direction, month, start_year, limit, today: date, _bucket: int) -> dict:
+    return spell_ranking(_daily_values(var, typ), var, typ, threshold, direction, month, start_year, limit, today)
 
 
 def _daily_values(var: str, typ: str):
