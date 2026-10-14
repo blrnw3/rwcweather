@@ -90,6 +90,14 @@ def _wet_today(day: date, _minute: int) -> Optional[dict]:
         return None
 
 
+def wet_day(d: date = None):
+    """Derived wet hours for one local day from the stored obs.wet minutes: total, spells, longest, rate."""
+    d = d or DateUtil.now().date()
+    if isinstance(d, datetime):
+        d = d.date()
+    return _wrap_result(wet_store.stored_day(d), date=d)
+
+
 def sun_day(d: date = None):
     """Webcam sunshine for one local day: total, spells (sun / no sun / unknown) and daylight."""
     d = d or DateUtil.now().date()

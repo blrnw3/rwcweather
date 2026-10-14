@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { baseObs, dailyStatsFor, defaultDailyStat, fmatAggTypeOpt, fmatObsOpt, isTotalObs } from "../../components/conf";
 import { Page } from "../../components/Page";
 import RadioCard from "../../components/RadioCard";
+import { hasWaterYears } from "../../components/waterYear";
 import { REPORT_YEAR_START, SunViewToggle } from "../../components/report";
 import { inList, useUrlState } from "../../components/urlState";
 import { hasNormal, YearChart } from "../../components/yearChart";
@@ -32,7 +33,7 @@ const canCume = (obs) => isTotalObs(obs);
 const YEAR_URL_STATE = {
   obs: { param: "var", def: () => "temp", valid: inList([...obsOptions, "sunpct", "wet"]) },
   stat: { param: "daily", def: (s) => defaultDailyStat(s.obs), valid: (v, s) => dailyStatsFor(s.obs).includes(v) },
-  period: { param: "period", def: () => "calendar", valid: (v, s) => v === "calendar" || (v === "water" && s.obs === "rain"), use: (s) => s.obs === "rain" },
+  period: { param: "period", def: () => "calendar", valid: (v, s) => v === "calendar" || (v === "water" && hasWaterYears(s.obs)), use: (s) => hasWaterYears(s.obs) },
   year: { param: "year", def: (s) => years(s.period === "water")[0], valid: (v, s) => years(s.period === "water").includes(v) },
   cume: { param: "mode", def: (s) => (canCume(s.obs) ? "cumulative" : "daily"), valid: (v, s) => v === "daily" || (v === "cumulative" && canCume(s.obs)) },
   normal: { param: "normal", def: () => "on", valid: inList(["on", "off"]) },
@@ -49,8 +50,8 @@ export default function YearCharts() {
   const handleObsChange = (x) => update({
     obs: x, stat: defaultDailyStat(x, stat),
     cume: canCume(x) ? (canCume(obs) ? cume : "cumulative") : "daily",
-    period: x === "rain" ? period : "calendar",
-    year: x === "rain" || !water ? year : String(Math.min(Number(year), CURRENT_YEAR)),
+    period: hasWaterYears(x) ? period : "calendar",
+    year: hasWaterYears(x) || !water ? year : String(Math.min(Number(year), CURRENT_YEAR)),
   });
   const handlePeriod = (p) => {
     const ys = years(p === "water");
@@ -69,7 +70,7 @@ export default function YearCharts() {
         <Text mt="1" fontWeight="bold">Daily value:</Text>
         <RadioButtonGroup name="stat" value={stat} options={dailyStatsFor(obs)} optFormat={fmatAggTypeOpt} fn={(v) => update({ stat: v })} />
       </>}
-      {obs === "rain" && <RadioButtonGroup name="period" value={period} options={["calendar", "water"]} optFormat={(p) => PERIOD_NAMES[p]} fn={handlePeriod} />}
+      {hasWaterYears(obs) && <RadioButtonGroup name="period" value={period} options={["calendar", "water"]} optFormat={(p) => PERIOD_NAMES[p]} fn={handlePeriod} />}
       <Text mt="1" fontWeight="bold">{water ? "Water year (ending):" : "Year:"}</Text>
       <RadioButtonGroup name="year" value={year} options={years(water)} optFormat={(y) => (water ? "WY" + y : y)} fn={(v) => update({ year: v })} />
       <Flex wrap="wrap" gap="4">

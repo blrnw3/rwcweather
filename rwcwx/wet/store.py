@@ -9,7 +9,7 @@ from typing import List, Optional, Tuple
 from sqlalchemy import text
 
 from rwcwx.models import db
-from rwcwx.wet.rules import WINDOW_MIN, WetDay, day_bounds_utc, wet_day
+from rwcwx.wet.rules import WINDOW_MIN, WetDay, day_bounds_utc, day_from_flags, wet_day
 
 VAR, TYPE = "wet", "total"
 CONTEXT = timedelta(minutes=2 * WINDOW_MIN + 15)
@@ -69,3 +69,10 @@ def update_day(d: date) -> WetDay:
     wd, times, flags = compute_day(d)
     write_day(d, wd, times, flags)
     return wd
+
+
+def stored_day(d: date) -> dict:
+    """A past or current day from the stored obs.wet flags (read-only)."""
+    st, en = day_bounds_utc(d)
+    q = text("SELECT t, wet, rain FROM obs WHERE t >= :st AND t < :en ORDER BY t")
+    return day_from_flags(d, [(r[0], r[1], r[2]) for r in db.execute(q, st=st, en=en)])

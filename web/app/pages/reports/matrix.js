@@ -232,14 +232,14 @@ function MonthlyMatrix(props) {
 
 }
 
-// Rain only: the calendar-year total for the selected year, supplemented by
+// Rain and wet hours: the calendar-year total for the selected year, supplemented by
 // the water years (Oct-Sep) that overlap it.
 function RainTotals(props) {
-    const summary = useSummary("rain", "total", props.year);
+    const summary = useSummary(props.obs, "total", props.year);
     const unit = useContext(UnitCtx);
     const yearly = (summary?.yearly || []).find((r) => r["m"] === Number(props.year));
     return <WaterYearTotals year={props.year} calendarTotal={yearly ? yearly["summary"]["total"] : null}
-        serverDate={summary?.["server"]?.["date"]} unit={unit} />
+        serverDate={summary?.["server"]?.["date"]} unit={unit} obs={props.obs} />
 }
 
 const OBS_OPTIONS = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust", "sun"];
@@ -278,7 +278,7 @@ export default function Obs() {
         
         <DailyMatrix obs={obs} aggType={aggType} year={year} />
         <MonthlyMatrix obs={obs} aggType={aggType} year={year} />
-        {hasWaterYears(obs) && <RainTotals year={year} />}
+        {hasWaterYears(obs) && <RainTotals year={year} obs={obs} />}
 
         <Text mt="3">
             Description: daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} data for every day in the year {year}, along with

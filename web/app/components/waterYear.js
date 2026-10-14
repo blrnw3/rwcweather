@@ -16,8 +16,9 @@ const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Se
 // its first water year includes every available record (e.g. late Dec 2020).
 const WATER_YEAR_DATA_START = (REPORT_YEAR_START - 1) + "1001";
 
+// Rainfall and its wet-hours view.
 export function hasWaterYears(obs) {
-    return obs === "rain";
+    return obs === "rain" || obs === "wet";
 }
 
 export function waterYearOf(year, month) {
@@ -148,8 +149,8 @@ export function useWaterYears(obs, summary, threshold) {
 // and year, the in-progress water year is compared unprorated (to date). A
 // "partial" water year (records start after 1 Oct, e.g. WY2021 from 27 Dec
 // 2020) is missing most of its wettest months, so it gets no comparison.
-export function waterYearClimateNormal(info) {
-    if (!info || info.value == null || info.status === "partial") {
+export function waterYearClimateNormal(info, obs = "rain") {
+    if (obs !== "rain" || !info || info.value == null || info.status === "partial") {
         return null;
     }
     return waterYearNormal("rain", "total");
@@ -195,7 +196,7 @@ export function WaterYearCell({ waterYear, data, obs, unit, summary, showClimate
         px="1"
     >
         {formatWaterYearValue(value, obs, unit, summary)}{flagged ? "*" : ""}
-        {showClimate && <ClimateAnom value={value} normal={waterYearClimateNormal(info)} obs={obs} stat="total" unit={unit} />}
+        {showClimate && <ClimateAnom value={value} normal={waterYearClimateNormal(info, obs)} obs={obs} stat="total" unit={unit} />}
     </Box>;
 }
 
@@ -232,9 +233,9 @@ export function WaterYearNote({ data, obs, unit, summary, showClimate = false })
 
 // Annual page: calendar-year total alongside the two water years that overlap
 // the selected calendar year (the one ending in it and the one starting in it).
-export function WaterYearTotals({ year, calendarTotal, serverDate, unit }) {
-    const data = useWaterYears("rain", "total", 0);
-    const obsObj = OBS.get("rain");
+export function WaterYearTotals({ year, calendarTotal, serverDate, unit, obs = "rain" }) {
+    const data = useWaterYears(obs, "total", 0);
+    const obsObj = OBS.get(obs);
     const yearNum = Number(year);
     const calendarInProgress = serverDate != null && serverDate[0] === yearNum;
     const firstDate = data?.firstDate;
@@ -254,7 +255,7 @@ export function WaterYearTotals({ year, calendarTotal, serverDate, unit }) {
             value: calendarTotal,
             flagged: calendarInProgress || calendarPartial,
             // Same rule as water years: in progress = to date, partial = none.
-            normal: calendarPartial ? null : annualNormal("rain", "total"),
+            normal: calendarPartial || obs !== "rain" ? null : annualNormal("rain", "total"),
         },
     ];
     for (const waterYear of [yearNum, yearNum + 1]) {
@@ -268,12 +269,12 @@ export function WaterYearTotals({ year, calendarTotal, serverDate, unit }) {
             range: info.status === "complete" ? waterYearRange(waterYear) : info.note.replace(/^WY\d+ /, ""),
             value: info.value,
             flagged: info.status !== "complete",
-            normal: waterYearClimateNormal(info),
+            normal: waterYearClimateNormal(info, obs),
         });
     }
 
     return <Box id="water-year-totals" mt="5">
-        <Text fontWeight="bold">Rainfall totals</Text>
+        <Text fontWeight="bold">{obs === "wet" ? "Wet-hours totals" : "Rainfall totals"}</Text>
         <Grid templateColumns={"repeat(" + columns.length + ", minmax(0, 220px))"} columnGap="3" rowGap="1" mt="1">
             {columns.map((c) => <Box key={c.key + "-label"} textAlign="center" fontWeight="bold">{c.label}</Box>)}
             {columns.map((c) => {
@@ -287,8 +288,8 @@ export function WaterYearTotals({ year, calendarTotal, serverDate, unit }) {
                     py="2"
                     px="1"
                 >
-                    {formatWaterYearValue(c.value, "rain", unit, "total")}{c.flagged ? "*" : ""}
-                    <ClimateAnom value={c.value} normal={c.normal} obs="rain" stat="total" unit={unit} />
+                    {formatWaterYearValue(c.value, obs, unit, "total")}{c.flagged ? "*" : ""}
+                    <ClimateAnom value={c.value} normal={c.normal} obs={obs} stat="total" unit={unit} />
                 </Box>;
             })}
             {columns.map((c) => <Box key={c.key + "-range"} textAlign="center" fontSize="sm" color="gray.500">
