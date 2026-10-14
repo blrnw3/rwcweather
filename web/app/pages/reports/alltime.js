@@ -5,7 +5,7 @@ import { baseObs, defaultDailyStat, fetcher, fmatForObs, fmatObsOpt, isTotalObs,
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
 import {
-    COUNT_THRESHOLDS,
+    countThresholdsAny,
     CountThresholdSelector,
     DAILY_AGGREGATION_NAMES,
     dailyAggregationOptions,
@@ -348,7 +348,7 @@ const ALLTIME_URL_STATE = {
     },
     summary: { def: (s) => OBS.get(s.obs).summary, valid: (v, s) => summaryOptions(s.obs).includes(v) },
     threshold: {
-        def: () => "0", valid: (v, s) => COUNT_THRESHOLDS[s.obs].includes(v), use: (s) => s.summary === "count",
+        def: () => "0", valid: (v, s) => countThresholdsAny(s.obs).includes(v), use: (s) => s.summary === "count",
     },
 };
 

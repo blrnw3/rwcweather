@@ -70,6 +70,37 @@ CELSIUS_THRESHOLDS = {
 for _key, _cs in CELSIUS_THRESHOLDS.items():
     SPELL_VARS[_key]["thresholds"] = tuple(sorted(set(SPELL_VARS[_key]["thresholds"]) | {c * 9 / 5 + 32 for c in _cs}))
 
+# Round mm (and mm/h) thresholds offered to metric users, accepted as their inch equivalents (rounded to 4 dp).
+MM_THRESHOLDS = {
+    ("rain", "total"): (0.2, 2, 5, 10, 25),
+    ("wetrate", "avg"): (0.5, 1, 2, 5),
+    ("rain60", "max"): (1, 2, 5, 10),
+    ("rain10", "max"): (0.5, 1, 2, 5),
+}
+for _key, _mms in MM_THRESHOLDS.items():
+    SPELL_VARS[_key]["thresholds"] = tuple(sorted(set(SPELL_VARS[_key]["thresholds"]) | {round(mm / 25.4, 4) for mm in _mms}))
+
+# Round kph thresholds offered to EU metric users, accepted as their mph equivalents (rounded to 4 dp).
+KPH_THRESHOLDS = {
+    ("wind", "max"): (10, 15, 20, 30, 40),
+    ("wind", "avg"): (5, 10, 15, 20),
+    ("wind", "min"): (2, 5, 10),
+    ("gust", "max"): (15, 25, 30, 40, 50, 60),
+    ("gust", "avg"): (5, 10, 15, 20, 25),
+    ("gust", "min"): (2, 5, 10),
+}
+for _key, _kphs in KPH_THRESHOLDS.items():
+    SPELL_VARS[_key]["thresholds"] = tuple(sorted(set(SPELL_VARS[_key]["thresholds"]) | {round(kph / 1.60934, 4) for kph in _kphs}))
+
+# Round inHg thresholds offered to US users, accepted as their mb equivalents (rounded to 2 dp).
+INHG_THRESHOLDS = {
+    ("pres", "max"): (29.7, 29.8, 29.9, 30.0, 30.1, 30.2),
+    ("pres", "min"): (29.7, 29.8, 29.9, 30.0, 30.1, 30.2),
+    ("pres", "avg"): (29.7, 29.8, 29.9, 30.0, 30.1, 30.2),
+}
+for _key, _inhgs in INHG_THRESHOLDS.items():
+    SPELL_VARS[_key]["thresholds"] = tuple(sorted(set(SPELL_VARS[_key]["thresholds"]) | {round(inhg / 0.02953, 2) for inhg in _inhgs}))
+
 EPS = 1e-9
 
 

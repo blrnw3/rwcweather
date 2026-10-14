@@ -19,10 +19,15 @@ import { ClimateNormalsLink } from "../../components/climate";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
 import {
-    COUNT_THRESHOLDS,
+    cToF,
+    countThresholdsAny,
     CountThresholdSelector,
     DAILY_AGGREGATION_NAMES,
     dailyAggregationOptions,
+    inHgToMb,
+    kphToMph,
+    mmToIn,
+    nearestThreshold,
     RadioButtonGroup,
     DAILY_VALUE_OBS_OPTIONS,
     DAILY_VALUE_OBS_STATES,
@@ -101,10 +106,13 @@ const SPELL_CONF = {
         avg: ["1005", "1010", "1015", "1020", "1025"],
     },
 };
-// Metric users get round Celsius thresholds. The API (and the URL) still take °F, so each is stored as its exact
-// °F equivalent (multiples of 5 °C are whole °F, e.g. 30 °C = 86 °F); mirrors SPELL_VARS in rwcwx/calc/spells.py.
-const cToF = (c) => String(c * 9 / 5 + 32);
-const SPELL_CONF_C = {
+// Metric users (uk & eu) get round Celsius and mm thresholds, stored as their °F / inch equivalents
+// to match SPELL_VARS in rwcwx/calc/spells.py.
+const SPELL_CONF_METRIC = {
+    rain: { total: ["0.01", ...[2, 5, 10, 25].map(mmToIn)] },
+    wetrate: { avg: [0.5, 1, 2, 5].map(mmToIn) },
+    rain60: { max: [1, 2, 5, 10].map(mmToIn) },
+    rain10: { max: [0.5, 1, 2, 5].map(mmToIn) },
     temp: {
         max: [10, 15, 20, 25, 30, 35, 40].map(cToF),
         min: [0, 5, 10, 15].map(cToF),
@@ -114,6 +122,25 @@ const SPELL_CONF_C = {
         max: [0, 5, 10, 15, 20].map(cToF),
         min: [-5, 0, 5, 10, 15].map(cToF),
         avg: [0, 5, 10, 15, 20].map(cToF),
+    },
+};
+const SPELL_CONF_EU = {
+    wind: {
+        max: [10, 15, 20, 30, 40].map(kphToMph),
+        avg: [5, 10, 15, 20].map(kphToMph),
+        min: [2, 5, 10].map(kphToMph),
+    },
+    gust: {
+        max: [15, 25, 30, 40, 50, 60].map(kphToMph),
+        avg: [5, 10, 15, 20, 25].map(kphToMph),
+        min: [2, 5, 10].map(kphToMph),
+    },
+};
+const SPELL_CONF_US = {
+    pres: {
+        max: [29.7, 29.8, 29.9, 30.0, 30.1, 30.2].map(inHgToMb),
+        min: [29.7, 29.8, 29.9, 30.0, 30.1, 30.2].map(inHgToMb),
+        avg: [29.7, 29.8, 29.9, 30.0, 30.1, 30.2].map(inHgToMb),
     },
 };
 const SPELL_OBS = Object.keys(SPELL_CONF);
@@ -147,22 +174,28 @@ const SPELL_TITLE_WORDS = {
 const SPELL_STATUS = { today: ", so far", pending: ", may continue today", yesterday: ", to yesterday" };
 const SPELL_START_YEARS = ["all", ...Array.from(Array(new Date().getFullYear() - 2021 + 1).keys()).map((i) => String(2021 + i))];
 
-// Options shown for the unit preference ("uk" = metric temperatures).
+// Options shown for the unit preference ("uk" / "eu" = metric temperatures & rainfall; "eu" = kph wind).
 function spellThresholds(obs, stat, unit = "us") {
-    return (unit === "uk" && SPELL_CONF_C[obs]?.[stat]) || SPELL_CONF[obs]?.[stat] || [];
-}
-
-// Every value the URL / API accepts: both unit systems' options.
-function spellThresholdsAny(obs, stat) {
-    return [...new Set([...spellThresholds(obs, stat, "us"), ...spellThresholds(obs, stat, "uk")])];
-}
-
-// Closest option for the current unit, so switching units keeps a similar threshold (e.g. 90 °F -> 30 °C).
-function nearestThreshold(value, options) {
-    if (!options.length || options.includes(value)) {
-        return value;
+    if (unit === "eu" && SPELL_CONF_EU[obs]?.[stat]) {
+        return SPELL_CONF_EU[obs][stat];
     }
-    return options.reduce((best, o) => Math.abs(Number(o) - Number(value)) < Math.abs(Number(best) - Number(value)) ? o : best);
+    if (unit !== "us" && SPELL_CONF_METRIC[obs]?.[stat]) {
+        return SPELL_CONF_METRIC[obs][stat];
+    }
+    if (unit === "us" && SPELL_CONF_US[obs]?.[stat]) {
+        return SPELL_CONF_US[obs][stat];
+    }
+    return SPELL_CONF[obs]?.[stat] || [];
+}
+
+// Every value the URL / API accepts: all unit systems' options.
+function spellThresholdsAny(obs, stat) {
+    return [...new Set([
+        ...spellThresholds(obs, stat, "us"),
+        ...spellThresholds(obs, stat, "uk"),
+        ...spellThresholds(obs, stat, "eu"),
+        ...(obs === "rain" ? [mmToIn(0.2)] : []),
+    ])];
 }
 
 function spellDefaultThreshold(obs, stat) {
@@ -176,12 +209,19 @@ function formatThreshold(unit, obs, value, stat) {
     if (obs === "wet" || obs === "sun") {
         return value + " h";
     }
+    const num = Number(value);
+    if (obs === "rain" && (num === 0.01 || num === 0.0079) && unit !== "us") {
+        return "0.2 mm";
+    }
     if (obs === "temp" || obs === "dewpt") {
         // Whole degrees in the viewer's unit: 86 -> "30 °C" (metric) or "86 °F".
-        const f = Number(value);
-        return unit === "uk" ? Math.round((f - 32) * 5 / 9 * 10) / 10 + " °C" : f + " °F";
+        return unit !== "us" ? Math.round((num - 32) * 5 / 9 * 10) / 10 + " °C" : num + " °F";
     }
-    return formatObs(unit, Number(value), fmatForObs(obs, stat));
+    const fmat = fmatForObs(obs, stat);
+    const raw = formatObs(unit, num, fmat);
+    return unit === "us" && (fmat === "rain" || fmat === "wetrate" || fmat === "pres")
+        ? raw
+        : raw.replace(/\.0+(?=\s|$)/, "");
 }
 
 function periodOptions(obs) {
@@ -784,7 +824,7 @@ const RANKING_URL_STATE = {
         use: (s) => SUMMARY_PERIODS.includes(s.period),
     },
     threshold: {
-        def: () => "0", valid: (v, s) => COUNT_THRESHOLDS[s.obs].includes(v),
+        def: () => "0", valid: (v, s) => countThresholdsAny(s.obs).includes(v),
         use: (s) => SUMMARY_PERIODS.includes(s.period) && s.summary === "count",
     },
     month: {

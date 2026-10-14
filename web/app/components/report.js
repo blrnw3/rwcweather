@@ -1,11 +1,26 @@
 import { Box, Flex, Text, useRadioGroup } from "@chakra-ui/react";
-import { useContext } from "react";
+import { useContext, useEffect } from "react";
 import { convFunction, formatObs, scaleForObsType } from "../format";
 import { baseObs, dailyStatsFor, OBS, VIEW_GROUPS } from "./conf";
 import { UnitCtx } from "./Page";
 import RadioCard from "./RadioCard";
 
 export const REPORT_YEAR_START = 2021;
+
+// Unit conversion helpers for threshold options (stored in DB base units: °C, inches, mph, mb).
+export const cToF = (c) => String(c * 9 / 5 + 32);
+export const fToC = (f) => String(Math.round((f - 32) * 5 / 9 * 10000) / 10000);
+export const mmToIn = (mm) => String(Math.round(mm / 25.4 * 10000) / 10000);
+export const kphToMph = (kph) => String(Math.round(kph / 1.60934 * 10000) / 10000);
+export const inHgToMb = (inhg) => String(Math.round(inhg / 0.02953 * 100) / 100);
+
+// Closest option for the current unit, so switching units keeps a similar threshold (e.g. 0.1 in -> 2 mm, 90 °F -> 30 °C).
+export function nearestThreshold(value, options) {
+    if (!options.length || options.includes(value)) {
+        return value;
+    }
+    return options.reduce((best, o) => Math.abs(Number(o) - Number(value)) < Math.abs(Number(best) - Number(value)) ? o : best);
+}
 
 // Variables with minute observations (daily report graphs, latest charts).
 export const REPORT_OBS_OPTIONS = [
@@ -39,6 +54,60 @@ export const COUNT_THRESHOLDS = {
     rain60: ["0", "0.05", "0.1", "0.25", "0.5"],
     rain10: ["0", "0.02", "0.05", "0.1", "0.2"],
 };
+
+// Metric (uk & eu) count thresholds for variables stored in imperial units (rainfall in inches, rain rate in in/h).
+const COUNT_THRESHOLDS_METRIC = {
+    rain: ["0", "0.01", ...[2, 5, 10, 25].map(mmToIn)],
+    wetrate: ["0", ...[0.5, 1, 2, 5].map(mmToIn)],
+    rain60: ["0", ...[1, 2, 5, 10].map(mmToIn)],
+    rain10: ["0", ...[0.5, 1, 2, 5].map(mmToIn)],
+};
+
+// EU count thresholds for wind/gust (displayed in kph, stored in mph).
+const COUNT_THRESHOLDS_EU = {
+    wind: ["0", ...[10, 15, 20, 30, 40].map(kphToMph)],
+    gust: ["0", ...[15, 30, 45, 60].map(kphToMph)],
+};
+
+// US count thresholds for variables stored in metric units (temp/dewpt in °C, pres in mb; 0 °C = 32 °F).
+const COUNT_THRESHOLDS_US = {
+    temp: ["0", ...[40, 50, 60, 70, 80, 90, 100].map(fToC)],
+    dewpt: ["0", ...[40, 45, 50, 55, 60, 65].map(fToC)],
+    pres: ["0", ...[29.6, 29.8, 30.0, 30.2, 30.4].map(inHgToMb)],
+};
+
+export function countThresholds(obs, unit = "us") {
+    if (unit === "eu" && COUNT_THRESHOLDS_EU[obs]) {
+        return COUNT_THRESHOLDS_EU[obs];
+    }
+    if (unit !== "us" && COUNT_THRESHOLDS_METRIC[obs]) {
+        return COUNT_THRESHOLDS_METRIC[obs];
+    }
+    if (unit === "us" && COUNT_THRESHOLDS_US[obs]) {
+        return COUNT_THRESHOLDS_US[obs];
+    }
+    return COUNT_THRESHOLDS[obs] || [];
+}
+
+export function countThresholdsAny(obs) {
+    return [...new Set([
+        ...countThresholds(obs, "us"),
+        ...countThresholds(obs, "uk"),
+        ...countThresholds(obs, "eu"),
+    ])];
+}
+
+export function formatCountThreshold(unit, obs, threshold) {
+    const num = Number(threshold);
+    if (obs === "rain" && (num === 0.01 || num === 0.0079) && unit !== "us") {
+        return "0.2 mm";
+    }
+    const fmat = OBS.get(obs).fmat;
+    const raw = formatObs(unit, num, fmat);
+    return unit === "us" && (fmat === "rain" || fmat === "wetrate" || fmat === "pres") && num !== 0
+        ? raw
+        : raw.replace(/\.0+(?=\s|$)/, "");
+}
 
 export const SUMMARY_NAMES = {
     min: "Minimum",
@@ -122,15 +191,22 @@ export function RadioButtonGroup(props) {
 
 export function CountThresholdSelector({ obs, value, fn }) {
     const unit = useContext(UnitCtx);
-    const obsObj = OBS.get(obs);
+    const options = countThresholds(obs, unit);
+    const nearest = nearestThreshold(value, options);
+
+    useEffect(() => {
+        if (nearest !== value) {
+            fn(nearest);
+        }
+    }, [nearest, value]);  // eslint-disable-line react-hooks/exhaustive-deps
 
     return <Box mt="1">
         <Text fontWeight="bold">Count days greater than:</Text>
         <RadioButtonGroup
             name="threshold"
             value={value}
-            options={COUNT_THRESHOLDS[obs]}
-            optFormat={(threshold) => formatObs(unit, Number(threshold), obsObj.fmat)}
+            options={options}
+            optFormat={(threshold) => formatCountThreshold(unit, obs, threshold)}
             fn={fn}
         />
     </Box>;
