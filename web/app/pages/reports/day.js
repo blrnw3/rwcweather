@@ -212,7 +212,7 @@ function HourlyWebcamImage({ date, dateLabel, hour }) {
 
     return <Box border="1px solid" borderColor="gray.300" borderRadius="md" overflow="hidden" backgroundColor="white">
         {missing || !imageUrl
-            ? <Flex aspectRatio="16 / 9" align="center" justify="center" backgroundColor="gray.200" color="gray.600">
+            ? <Flex style={{ aspectRatio: "16 / 9" }} align="center" justify="center" backgroundColor="gray.200" color="gray.600">
                 <Text>No archived image</Text>
             </Flex>
             : <ChakraLink href={imageUrl} isExternal display="block" title={"Open " + hourLabel + " image"}>
@@ -222,7 +222,7 @@ function HourlyWebcamImage({ date, dateLabel, hour }) {
                     alt={"Redwood City webcam at " + hourLabel + " on " + dateLabel}
                     loading="lazy"
                     width="100%"
-                    aspectRatio="16 / 9"
+                    style={{ aspectRatio: "16 / 9" }}
                     objectFit="cover"
                     onError={() => setMissing(true)}
                 />
