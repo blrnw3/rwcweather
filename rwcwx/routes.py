@@ -16,6 +16,7 @@ from rwcwx.model.obs import ObsQ
 from rwcwx.model import sun as sun_model
 from rwcwx.models import AvgExt, Base, db, m, Obs
 from rwcwx.util import DateStampConverter, DateUtil
+from rwcwx.wet import rate as wet_rate
 from rwcwx.wet import store as wet_store
 
 
@@ -278,6 +279,11 @@ def _dictify_obs_result(res):
 
 
 def _var_avg_exts_from_request(var: str, typ: str) -> List[AvgExt]:
+    if var == wet_rate.RATE_VAR:
+        # Derived per day from the rain and wet-hours totals; blank (left out) on days without wet hours.
+        if typ != wet_rate.RATE_TYPE:
+            return []
+        return wet_rate.rate_days(_var_avg_exts_from_request("rain", "total"), _var_avg_exts_from_request("wet", "total"))
     if var == sun_model.PCT_VAR:
         # Derived from the daily sunshine totals; only one daily statistic exists.
         return sun_model.pct_days(_var_avg_exts_from_request("sun", "total")) if typ == sun_model.PCT_TYPE else []

@@ -235,10 +235,11 @@ function MonthlyMatrix(props) {
 // Rain and wet hours: the calendar-year total for the selected year, supplemented by
 // the water years (Oct-Sep) that overlap it.
 function RainTotals(props) {
-    const summary = useSummary(props.obs, "total", props.year);
+    const stat = OBS.get(props.obs).summary;
+    const summary = useSummary(props.obs, stat, props.year);
     const unit = useContext(UnitCtx);
     const yearly = (summary?.yearly || []).find((r) => r["m"] === Number(props.year));
-    return <WaterYearTotals year={props.year} calendarTotal={yearly ? yearly["summary"]["total"] : null}
+    return <WaterYearTotals year={props.year} calendarTotal={yearly ? yearly["summary"][stat === "avg" ? "avg" : "total"] : null}
         serverDate={summary?.["server"]?.["date"]} unit={unit} obs={props.obs} />
 }
 
@@ -247,7 +248,7 @@ const aggOptionsFor = (obs) => isTotalObs(obs) ? ["total"] : (OBS.get(obs).daily
 
 // Selections kept in the URL, e.g. /reports/matrix?var=rain&year=2023
 const MATRIX_URL_STATE = {
-    obs: { param: "var", def: () => "temp", valid: inList([...OBS_OPTIONS, "sunpct", "wet"]) },
+    obs: { param: "var", def: () => "temp", valid: inList([...OBS_OPTIONS, "sunpct", "wet", "wetrate"]) },
     aggType: { param: "daily", def: (s) => aggOptionsFor(s.obs)[0], valid: (v, s) => aggOptionsFor(s.obs).includes(v) },
     year: { def: () => yrEnd.toString(), valid: inList(years) },
 };

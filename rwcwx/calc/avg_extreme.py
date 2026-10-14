@@ -213,12 +213,28 @@ class Wet(ObsVar):
     db_field = "wet"
 
 
+class WetRate(ObsVar):
+    """Average rain rate when wet: rain / wet hours (rwcwx/wet/rate.py). Period mean = total rain / total wet hours."""
+    name = "rain rate (when wet)"
+    unit = Unit.inch
+    db_field = "wetrate"
+
+    @classmethod
+    def multiday_summary(cls, avg_exts) -> SummaryStats:
+        from rwcwx.wet.rate import period_rate
+        stats = super().multiday_summary(avg_exts)
+        r = period_rate(avg_exts)
+        if r is not None and stats.count:
+            stats.total = r * stats.count       # so .avg == rain / wet hours
+        return stats
+
+
 class ObsVarGroup:
     ALL: Iterable[ObsVarT] = (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt)
 
 
 OBS_VAR_MAP = {o.db_field: o for o in (
-    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun, SunPct, Wet)
+    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun, SunPct, Wet, WetRate)
 )}
 
 
@@ -275,7 +291,15 @@ class MonthSummary:
             from rwcwx.model import sun as sun_model
             pct = sun_model.pct_days(by_type[("sun", "total")])
             stats[f"{sun_model.PCT_VAR}_{sun_model.PCT_TYPE}"] = ObsVar.multiday_summary(pct).as_dict
+        _add_rate(stats, by_type)
         return stats
+
+
+def _add_rate(stats: dict, by_type: dict) -> None:
+    from rwcwx.wet.rate import RATE_TYPE, RATE_VAR, rate_days
+    days = rate_days(by_type.get(("rain", "total"), []), by_type.get(("wet", "total"), []))
+    if days:
+        stats[f"{RATE_VAR}_{RATE_TYPE}"] = WetRate.multiday_summary(days).as_dict
 
 
 class YearSummary:
@@ -296,6 +320,7 @@ class YearSummary:
         stats = {}
         for (var, typ), aes in by_type.items():
             stats[f"{var}_{typ}"] = ObsVar.multiday_summary(aes).as_dict
+        _add_rate(stats, by_type)
         return stats
 
 
@@ -317,6 +342,7 @@ class WaterYearRainSummary:
         stats = {}
         for (var, typ), aes in by_type.items():
             stats[f"{var}_{typ}"] = ObsVar.multiday_summary(aes).as_dict
+        _add_rate(stats, by_type)
         return stats
 
 

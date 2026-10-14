@@ -31,7 +31,7 @@ const canCume = (obs) => isTotalObs(obs);
 
 // e.g. /charts/year?var=rain&period=water&year=2026 ; /charts/year?var=temp&daily=min&year=2024
 const YEAR_URL_STATE = {
-  obs: { param: "var", def: () => "temp", valid: inList([...obsOptions, "sunpct", "wet"]) },
+  obs: { param: "var", def: () => "temp", valid: inList([...obsOptions, "sunpct", "wet", "wetrate"]) },
   stat: { param: "daily", def: (s) => defaultDailyStat(s.obs), valid: (v, s) => dailyStatsFor(s.obs).includes(v) },
   period: { param: "period", def: () => "calendar", valid: (v, s) => v === "calendar" || (v === "water" && hasWaterYears(s.obs)), use: (s) => hasWaterYears(s.obs) },
   year: { param: "year", def: (s) => years(s.period === "water")[0], valid: (v, s) => years(s.period === "water").includes(v) },
