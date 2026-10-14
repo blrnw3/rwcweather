@@ -18,6 +18,7 @@ from rwcwx.config import AQI_FILE_NAME
 from rwcwx.model.cumulus import CumulusObs
 from rwcwx.models import db, m
 from rwcwx.util import DateUtil
+from rwcwx.wet import intensity_store
 from rwcwx.wet import store as wet_store
 from rwcwx.wet.rules import WINDOW_MIN as WET_WINDOW_MIN
 
@@ -222,6 +223,10 @@ class CumulusObsImporter:
                 wet_store.update_day(day)
         except Exception as e:
             logger.warning(f"wet update failed for {d}: {e!r}")
+        try:
+            intensity_store.update_day(d)       # max 10 / 60-min rain; tips only count on their own day
+        except Exception as e:
+            logger.warning(f"rain intensity update failed for {d}: {e!r}")
 
 
 def _exit_on_sigterm(signum, frame):

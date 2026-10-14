@@ -32,7 +32,7 @@ const aggOptionsFor = (obs) => isTotalObs(obs) ? ["total"] : (OBS.get(obs).daily
 
 // Selections kept in the URL, e.g. /charts/summary?var=rain&days=365&chart=line
 const SUMMARY_URL_STATE = {
-  obs: { param: "var", def: () => "temp", valid: inList([...obsOptions, "sunpct", "wet", "wetrate"]) },
+  obs: { param: "var", def: () => "temp", valid: inList([...obsOptions, "sunpct", "wet", "wetrate", "rain60", "rain10"]) },
   aggType: { param: "daily", def: (s) => aggOptionsFor(s.obs)[0], valid: (v, s) => aggOptionsFor(s.obs).includes(v) },
   period: { param: "days", def: () => "30", valid: inList(periodOpts) },
   chartType: { param: "chart", def: () => "column", valid: inList(["column", "line"]) },

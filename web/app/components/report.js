@@ -16,7 +16,7 @@ export const REPORT_OBS_OPTIONS = [
 export const DAILY_VALUE_OBS_OPTIONS = REPORT_OBS_OPTIONS;
 
 // Every value the "var" URL parameter may take: the buttons plus alternative views (sunshine as %).
-export const DAILY_VALUE_OBS_STATES = [...DAILY_VALUE_OBS_OPTIONS, "sunpct", "wet", "wetrate"];
+export const DAILY_VALUE_OBS_STATES = [...DAILY_VALUE_OBS_OPTIONS, "sunpct", "wet", "wetrate", "rain60", "rain10"];
 
 export const COUNT_THRESHOLDS = {
     temp: ["0", "5", "10", "15", "20", "25", "30", "35"],
@@ -32,6 +32,8 @@ export const COUNT_THRESHOLDS = {
     sunpct: ["0", "25", "50", "75", "90"],
     wet: ["0", "1", "3", "6", "12"],
     wetrate: ["0", "0.02", "0.05", "0.1", "0.2"],
+    rain60: ["0", "0.05", "0.1", "0.25", "0.5"],
+    rain10: ["0", "0.02", "0.05", "0.1", "0.2"],
 };
 
 export const SUMMARY_NAMES = {

@@ -227,6 +227,18 @@ class WetRate(ObsVar):
         if r is not None and stats.count:
             stats.total = r * stats.count       # so .avg == rain / wet hours
         return stats
+class Rain10(ObsVar):
+    """Daily max rain in any 10 minutes, from gauge tips (rwcwx/wet/intensity.py); avg_extreme type 'max'."""
+    name = "max 10-min rain"
+    unit = Unit.inch
+    db_field = "rain10"
+
+
+class Rain60(ObsVar):
+    """Daily max rain in any 60 minutes, from gauge tips; avg_extreme type 'max'."""
+    name = "max 60-min rain"
+    unit = Unit.inch
+    db_field = "rain60"
 
 
 class ObsVarGroup:
@@ -234,7 +246,7 @@ class ObsVarGroup:
 
 
 OBS_VAR_MAP = {o.db_field: o for o in (
-    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun, SunPct, Wet, WetRate)
+    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun, SunPct, Wet, WetRate, Rain10, Rain60)
 )}
 
 

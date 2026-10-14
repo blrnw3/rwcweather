@@ -248,7 +248,7 @@ const aggOptionsFor = (obs) => isTotalObs(obs) ? ["total"] : (OBS.get(obs).daily
 
 // Selections kept in the URL, e.g. /reports/matrix?var=rain&year=2023
 const MATRIX_URL_STATE = {
-    obs: { param: "var", def: () => "temp", valid: inList([...OBS_OPTIONS, "sunpct", "wet", "wetrate"]) },
+    obs: { param: "var", def: () => "temp", valid: inList([...OBS_OPTIONS, "sunpct", "wet", "wetrate", "rain60", "rain10"]) },
     aggType: { param: "daily", def: (s) => aggOptionsFor(s.obs)[0], valid: (v, s) => aggOptionsFor(s.obs).includes(v) },
     year: { def: () => yrEnd.toString(), valid: inList(years) },
 };
