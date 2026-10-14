@@ -1,6 +1,7 @@
 """Average rain rate when wet = daily rain / daily wet hours (in. per hour), derived at query time.
 
-API var "wetrate", type "avg". Days without wet hours have no rate (left out, shown blank). Periods (months, years,
+API var "wetrate", type "avg". Days without wet hours, or without rain
+(wet only through a neighbouring day's spell padding), have no rate (left out, shown blank). Periods (months, years,
 water years) use total rain / total wet hours, i.e. the wet-hours-weighted mean of the daily rates.
 """
 from dataclasses import dataclass
@@ -43,6 +44,10 @@ def rate_days(rain_aes: Iterable, wet_aes: Iterable) -> List[RateDay]:
     rain = {ae.d: ae.val for ae in rain_aes}
     out = []
     for ae in wet_aes:
+        # A day can have wet hours but no rain of its own: the 30-min padding of a spell that ended or began
+        # around midnight. A 0.000 in/h "rate" for it would be meaningless (and the all-time minimum), so it's left out.
+        if not rain.get(ae.d):
+            continue
         r = rate(rain.get(ae.d), ae.val)
         if r is not None:
             out.append(RateDay(d=ae.d, val=r, rain=rain[ae.d], wet_h=ae.val, cnt=ae.cnt))
