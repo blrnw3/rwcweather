@@ -174,3 +174,35 @@ def wet_day(d: date, rows: Sequence[Tuple[datetime, Optional[float]]], window: i
 def wet_flags(times: Iterable[datetime], spells: Sequence[Spell]) -> List[int]:
     """1 for each obs minute inside a spell, else 0."""
     return [int(any(s.start <= t < s.end for s in spells)) for t in times]
+
+
+def spells_from_flags(rows: Sequence[Tuple[datetime, Optional[int]]], gap_min: int = GAP_MIN) -> List[Tuple[datetime, datetime, int]]:
+    """[start, end) runs of obs minutes flagged wet (obs.wet = 1), with their minute counts. A run continues across
+    dry-flag-free silences of up to gap_min (missing rows), never across a row flagged 0."""
+    runs: List[List] = []
+    one = timedelta(minutes=1)
+    prev_t, prev_wet = None, False
+    for t, w in rows:
+        if w:
+            if runs and prev_wet and t - prev_t <= timedelta(minutes=gap_min):
+                runs[-1][1] = t + one
+                runs[-1][2] += 1
+            else:
+                runs.append([t, t + one, 1])
+        prev_t, prev_wet = t, bool(w)
+    return [(a, b, n) for a, b, n in runs]
+
+
+def day_from_flags(d: date, rows: Sequence[Tuple[datetime, Optional[int], Optional[float]]]) -> dict:
+    """Summary of a stored day (rows = (t, wet, rain) for the local day), in the same shape as WetDay.summary."""
+    st, en = day_bounds_utc(d)
+    runs = spells_from_flags([(t, w) for t, w, _ in rows])
+    wet_min = sum(n for *_, n in runs)
+    rains = [r for *_, r in rows if r is not None]
+    rain = max(rains) if rains else 0.0              # daily running total
+    return dict(
+        wet_h=round(wet_min / 60, 2), spells=len(runs), longest_h=round(max((n for *_, n in runs), default=0) / 60, 2),
+        rate=round(rain / (wet_min / 60), 3) if wet_min >= 1 else None, rain=round(rain, 2),
+        observed_h=round(len(rows) / 60, 2), day_start=_ms(st), day_end=_ms(en),
+        spell_list=[dict(start=_ms(a), end=_ms(b), wet_h=round(n / 60, 2)) for a, b, n in runs],
+    )

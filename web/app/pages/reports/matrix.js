@@ -232,14 +232,15 @@ function MonthlyMatrix(props) {
 
 }
 
-// Rain only: the calendar-year total for the selected year, supplemented by
+// Rain and wet hours: the calendar-year total for the selected year, supplemented by
 // the water years (Oct-Sep) that overlap it.
 function RainTotals(props) {
-    const summary = useSummary("rain", "total", props.year);
+    const stat = OBS.get(props.obs).summary;
+    const summary = useSummary(props.obs, stat, props.year);
     const unit = useContext(UnitCtx);
     const yearly = (summary?.yearly || []).find((r) => r["m"] === Number(props.year));
-    return <WaterYearTotals year={props.year} calendarTotal={yearly ? yearly["summary"]["total"] : null}
-        serverDate={summary?.["server"]?.["date"]} unit={unit} />
+    return <WaterYearTotals year={props.year} calendarTotal={yearly ? yearly["summary"][stat === "avg" ? "avg" : "total"] : null}
+        serverDate={summary?.["server"]?.["date"]} unit={unit} obs={props.obs} />
 }
 
 const OBS_OPTIONS = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust", "sun"];
@@ -247,7 +248,7 @@ const aggOptionsFor = (obs) => isTotalObs(obs) ? ["total"] : (OBS.get(obs).daily
 
 // Selections kept in the URL, e.g. /reports/matrix?var=rain&year=2023
 const MATRIX_URL_STATE = {
-    obs: { param: "var", def: () => "temp", valid: inList([...OBS_OPTIONS, "sunpct", "wet", "rain60", "rain10"]) },
+    obs: { param: "var", def: () => "temp", valid: inList([...OBS_OPTIONS, "sunpct", "wet", "wetrate", "rain60", "rain10"]) },
     aggType: { param: "daily", def: (s) => aggOptionsFor(s.obs)[0], valid: (v, s) => aggOptionsFor(s.obs).includes(v) },
     year: { def: () => yrEnd.toString(), valid: inList(years) },
 };
@@ -278,7 +279,7 @@ export default function Obs() {
         
         <DailyMatrix obs={obs} aggType={aggType} year={year} />
         <MonthlyMatrix obs={obs} aggType={aggType} year={year} />
-        {hasWaterYears(obs) && <RainTotals year={year} />}
+        {hasWaterYears(obs) && <RainTotals year={year} obs={obs} />}
 
         <Text mt="3">
             Description: daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} data for every day in the year {year}, along with

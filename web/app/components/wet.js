@@ -1,4 +1,6 @@
 import { Box, Flex, Text, Tooltip } from "@chakra-ui/react";
+import useSWR from "swr";
+import { fetcher } from "./conf";
 import { fmtTime } from "./sun";
 
 // Today's wet spells on a midnight-to-midnight bar, styled like the sunshine ribbon (SunRibbon).
@@ -52,4 +54,21 @@ export function WetRibbon({ wet, nowMs, height = "16px" }) {
             <Text position="absolute" right="0">24</Text>
         </Box>
     </Box>;
+}
+
+// Stored wet minutes (obs.wet) for one local day: /api/wet/day/<YYYYMMDD>, same shape as the dashboard block.
+export function useWetDay(datestamp, refreshMs = 300000) {
+    const { data, error } = useSWR(datestamp ? "/api/wet/day/" + datestamp : null, fetcher, { refreshInterval: refreshMs });
+    if (error) {
+        return { error: true };
+    }
+    return { wet: data?.result, now: data?.server?.epoch ? data.server.epoch * 1000 : null };
+}
+
+export function WetLegend() {
+    return <Flex gap="3" fontSize="xs" color="gray.600" wrap="wrap">
+        {["wet", "dry"].map((k) => <Flex key={k} align="center" gap="1">
+            <Box w="12px" h="12px" background={COLOURS[k]} border="1px solid #cbd5e0" />{LABELS[k]}
+        </Flex>)}
+    </Flex>;
 }
