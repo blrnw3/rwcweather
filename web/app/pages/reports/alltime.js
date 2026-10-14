@@ -1,7 +1,7 @@
 import { Box, Flex, Grid, Heading, Spinner, Text } from "@chakra-ui/react";
 import { useContext } from "react";
 import useSWR from "swr";
-import { baseObs, defaultDailyStat, fetcher, fmatObsOpt, OBS } from "../../components/conf";
+import { baseObs, defaultDailyStat, fetcher, fmatObsOpt, isTotalObs, OBS } from "../../components/conf";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
 import {
@@ -361,7 +361,8 @@ export default function AllTimeReport() {
         obs: nextObs,
         dailyAggregation: defaultDailyStat(nextObs, OBS.get(nextObs).summary),
         threshold: "0",
-        summary: summary === "avg" || summary === "total" ? OBS.get(nextObs).summary : summary,
+        // Totals (rain amount, wet hours) open on Total, as in the rankings; otherwise keep min/max/count.
+        summary: isTotalObs(nextObs) || summary === "avg" || summary === "total" ? OBS.get(nextObs).summary : summary,
     });
     const setDailyAggregation = (value) => update({ dailyAggregation: value });
     const setSummary = (value) => update({ summary: value });

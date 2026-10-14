@@ -56,7 +56,8 @@ export function dailyAggregationOptions(obs) {
 }
 
 export function summaryOptions(obs) {
-    return ["min", "max", OBS.get(obs).summary, "count"];
+    // Variables summarised by their max (e.g. max 10-/60-min rain) would otherwise list "max" twice.
+    return [...new Set(["min", "max", OBS.get(obs).summary, "count"])];
 }
 
 export function summaryKey(summary) {
