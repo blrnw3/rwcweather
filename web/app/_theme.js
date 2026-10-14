@@ -59,13 +59,13 @@ const themeDefault = {
         display: "inline",
       },
       "span.home_ico svg": {
-        "font-size": "3em"
+        fontSize: "3em"
       },
       "span.home_ico_sml svg": {
-        "font-size": "2.3em"
+        fontSize: "2.3em"
       },
       "span.home_ico_sml": {
-        "margin-right": "2px"
+        marginRight: "2px"
       },
     },
   },

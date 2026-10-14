@@ -9,6 +9,11 @@ import { UnitCtx } from "./Page";
 
 let cache;
 
+// Variables that can't go below zero: anchor the y axis at 0 so an all-zero series (a dry day, a sunless
+// spell) sits on the baseline instead of floating mid-chart.
+const NON_NEGATIVE = ["rain", "wet", "wetrate", "rain10", "rain60", "sun", "sunpct", "wind", "gust", "aqi", "humi", "solr"];
+const yMin = (obs) => NON_NEGATIVE.includes(obs) ? 0 : undefined;
+
 function responsiveFontSize(base) {
     let scale = 1;
     if (typeof window !== "undefined") {
@@ -80,11 +85,12 @@ export function LatestChart(props) {
     let temp;
     let isLoading = false;
     if (!latest) {
-        temp = (cache != "undefined") ? cache : [[0, 0]];
+        // While a new range loads, keep showing the last points for this variable (cache holds [t, value] pairs).
+        temp = cache && cache.obs === obs ? cache.points : [[0, 0]];
         isLoading = true;
     } else {
-        cache = latest;
         temp = latest.map(x => [x["t"], converter(x[obs])]).reverse();
+        cache = { obs, points: temp };
     }
 
     let options = {
@@ -118,6 +124,7 @@ export function LatestChart(props) {
             type: "datetime"
         },
         yAxis: {
+            min: yMin(obs),
             title: {
                 text: obsName + " / " + unitSymbol,
                 style: {
@@ -196,7 +203,8 @@ export function SummaryChart(props) {
             text: "@rwcweather"
         },
         title: {
-            text: (isLoading ? "LOADING: " : "") + "Last " + props.period + " days " + aggTypePretty + " " + obsName + "",
+            text: (isLoading ? "LOADING: " : "") + "Last " + props.period + " days " + aggTypePretty + " " + obsName
+                + (!isLoading && !data.some(([, v]) => Number.isFinite(v)) ? " – no data in this period" : ""),
             style: {
                 fontSize: responsiveFontSize(18)
             }
@@ -205,6 +213,7 @@ export function SummaryChart(props) {
             type: "datetime"
         },
         yAxis: {
+            min: yMin(obs),
             title: {
                 text: obsName + " / " + unitSymbol,
                 style: {
@@ -290,6 +299,7 @@ export function DailyChart({ observations, obs, dateLabel, isLoading, ...boxProp
             title: { text: "Local time" },
         },
         yAxis: {
+            min: yMin(obs),
             title: {
                 text: obsObj.name + " / " + unitSymbol,
                 style: { fontSize: responsiveFontSize(13) },
