@@ -213,12 +213,26 @@ class Wet(ObsVar):
     db_field = "wet"
 
 
+class Rain10(ObsVar):
+    """Daily max rain in any 10 minutes, from gauge tips (rwcwx/wet/intensity.py); avg_extreme type 'max'."""
+    name = "max 10-min rain"
+    unit = Unit.inch
+    db_field = "rain10"
+
+
+class Rain60(ObsVar):
+    """Daily max rain in any 60 minutes, from gauge tips; avg_extreme type 'max'."""
+    name = "max 60-min rain"
+    unit = Unit.inch
+    db_field = "rain60"
+
+
 class ObsVarGroup:
     ALL: Iterable[ObsVarT] = (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt)
 
 
 OBS_VAR_MAP = {o.db_field: o for o in (
-    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun, SunPct, Wet)
+    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun, SunPct, Wet, Rain10, Rain60)
 )}
 
 

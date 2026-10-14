@@ -84,13 +84,28 @@ export const OBS = new Map([
         fmat: "wet",
         icon: <WiRain />,
     }],
+    // Daily max rain in any 10 / 60 minutes, from gauge tips (avg_extreme type "max", with the time reached).
+    ["rain10", {
+        name: "Max 10-min rain",
+        summary: "max",
+        fmat: "rain",
+        icon: <WiRain />,
+        dailyStats: ["max"],
+    }],
+    ["rain60", {
+        name: "Max 60-min rain",
+        summary: "max",
+        fmat: "rain",
+        icon: <WiRain />,
+        dailyStats: ["max"],
+    }],
 ]);
 
 // Alternative views of one variable (the button stays the base variable).
 export const SUN_VIEWS = ["sun", "sunpct"];
 export const SUN_VIEW_NAMES = { sun: "Hours", sunpct: "% of possible" };
-export const RAIN_VIEWS = ["rain", "wet"];
-export const RAIN_VIEW_NAMES = { rain: "Amount", wet: "Wet hours" };
+export const RAIN_VIEWS = ["rain", "wet", "rain60", "rain10"];
+export const RAIN_VIEW_NAMES = { rain: "Amount", wet: "Wet hours", rain60: "Max 60-min", rain10: "Max 10-min" };
 
 // Variable button -> its views and their labels (the toggle shown under the Variable buttons).
 export const VIEW_GROUPS = {

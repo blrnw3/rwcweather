@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS `avg_extreme` (
   `d` date NOT NULL,
   `var` enum(
         'rain', 'temp', 'humi', 'pres', 'wind', 'gust', 'wdir', 'solr', 'wet', 'sun', 'feels', 'inhumi', 'intemp',
-        'night_temp', 'day_temp', 'day_wet', 'rain_rate', 'frost', 'pm2', 'dewpt', 'aqi'
+        'night_temp', 'day_temp', 'day_wet', 'rain_rate', 'frost', 'pm2', 'dewpt', 'aqi', 'rain10', 'rain60'
    ) not null,
   `type` enum('avg', 'total', 'min', 'max') not null,
   `period` enum('day') not null default 'day',

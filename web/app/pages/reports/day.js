@@ -23,7 +23,7 @@ import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
 import { RadioButtonGroup, REPORT_OBS_OPTIONS, styleForReportValue } from "../../components/report";
 import { SunLegend, SunRibbon, useSunDay } from "../../components/sun";
-import { formatObs } from "../../format";
+import { formatObs, timeOf } from "../../format";
 import { ClimateAnom, ClimateNormalsLink, ClimateNote, dailyNormal, hasClimate } from "../../components/climate";
 
 const STATION_TIME_ZONE = "America/Los_Angeles";
@@ -275,6 +275,21 @@ function DailySunshine({ datestamp }) {
     </Box>;
 }
 
+// Max rain in any 10 / 60 minutes for the day, with the time it was reached. Hidden on dry days.
+function DailyRainIntensity({ intensity }) {
+    const unit = useContext(UnitCtx);
+    if (!intensity || !(intensity.rain10?.val > 0 || intensity.rain60?.val > 0)) {
+        return null;
+    }
+    const line = (label, v) => <Text>{label}: <Text as="span" fontWeight="bold">{formatObs(unit, v?.val, "rain")}</Text>
+        {v?.at ? " ending " + timeOf(v.at) : ""}</Text>;
+    return <Box mt="6" className="daily-rain-intensity">
+        <Heading as="h3" size="3">Rain intensity</Heading>
+        {line("Max in 10 minutes", intensity.rain10)}
+        {line("Max in 60 minutes", intensity.rain60)}
+    </Box>;
+}
+
 // Selections kept in the URL, e.g. /reports/day?date=2026-10-05&var=rain
 const DAY_URL_STATE = {
     date: {
@@ -344,6 +359,7 @@ export default function DailyReport() {
             {observations.length === 0 && <Text py="3">No observations are available for this date.</Text>}
             <DailySummary summary={report.summary} date={selectedDate} />
             <DailySunshine datestamp={datestamp} />
+            <DailyRainIntensity intensity={report.rain_intensity} />
 
             <Box mt="6">
                 <Heading as="h3" size="3">Daily graph</Heading>

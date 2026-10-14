@@ -16,6 +16,7 @@ from rwcwx.model.obs import ObsQ
 from rwcwx.model import sun as sun_model
 from rwcwx.models import AvgExt, Base, db, m, Obs
 from rwcwx.util import DateStampConverter, DateUtil
+from rwcwx.wet import intensity_store
 from rwcwx.wet import store as wet_store
 
 
@@ -128,9 +129,24 @@ def day_report(d: date):
         dict(
             summary=DaySummary(d).stats_json(observations),
             observations=observations,
+            rain_intensity=_rain_intensity(d),
         ),
         date=d,
     )
+
+
+def _rain_intensity(d: date) -> Optional[dict]:
+    """Max rain in any 10 / 60 minutes for the day (stored values, else computed from obs for days not yet stored)."""
+    try:
+        res = {ae.var: dict(val=ae.val, at=ae.at) for ae in AvgExtQ.for_var_between_dates("rain10", "max", d, d)
+               + AvgExtQ.for_var_between_dates("rain60", "max", d, d)}
+        if len(res) < 2:
+            computed, _ = intensity_store.compute_day(d)
+            res = {v: dict(val=val, at=at.replace(tzinfo=UTC) if at else None) for v, (val, at) in computed.items()}
+        return res
+    except Exception as e:
+        logger.warning(f"rain intensity failed for {d}: {e}")
+        return None
 
 
 def month_summary(mnth: date = None):

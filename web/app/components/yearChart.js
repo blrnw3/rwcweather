@@ -125,7 +125,7 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
     const isTotal = OBS.get(obs).summary === "total";
     const name = OBS.get(obs).name + (isTotal || obs === "sunpct" ? "" : " (" + fmatAggTypeOpt(stat).toLowerCase() + ")");
     const period = waterYear ? "Water year " + (year - 1) + "–" + String(year).slice(2) : String(year);
-    const color = obs === "rain" ? "#2299dd" : obs === "wet" ? "#1f6fae" : obs.startsWith("sun") ? "#e6a700" : stat === "min" ? "#3377dd" : "#ff5511";
+    const color = obs === "rain" ? "#2299dd" : obs === "wet" ? "#1f6fae" : obs.startsWith("rain") ? "#2299dd" : obs.startsWith("sun") ? "#e6a700" : stat === "min" ? "#3377dd" : "#ff5511";
     const columns = !cumulative && isTotal;
 
     const plotLines = today ? [{
