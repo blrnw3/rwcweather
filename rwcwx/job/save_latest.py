@@ -41,7 +41,7 @@ def setup_logging(log_file: str, max_bytes: int, backups: int, verbose: bool) ->
             root.removeHandler(h)
         root.addHandler(handler)
     root.setLevel(logging.DEBUG if verbose else logging.INFO)
-    # rwcwx.model.db turns SQL echo on (useful for the API); here it would log every insert
+    # SQL echo (opt-in via RWCWX_SQL_ECHO in rwcwx.model.db) would log every insert here, so keep it off
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 
