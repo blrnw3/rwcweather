@@ -12,6 +12,7 @@ from rwcwx.calc.avg_extreme import (
     AvgExtAggregator, MonthSummary, DaySummary, YearSummary, WaterYearRainSummary, DayOfYearSummary,
 )
 from rwcwx.calc.spells import DIRECTIONS, SPELL_VARS, spell_ranking, supported as spells_supported
+from rwcwx.calc import anom_spells as anom_spells_mod
 from rwcwx.calc.rolling import (
     ROLLING_DAYS, ROLLING_VARS, SEASONS, min_days_required, rolling_ranking_with_current,
 )
@@ -287,6 +288,48 @@ def var_spells(var: str, typ: str):
 @lru_cache(maxsize=128)
 def _spells_cached(var, typ, threshold, direction, month, start_year, limit, today: date, _bucket: int) -> dict:
     return spell_ranking(_daily_values(var, typ), var, typ, threshold, direction, month, start_year, limit, today)
+
+
+def var_anom_spells(var: str, typ: str):
+    """
+    Heatwave / cold-snap spells vs climate normal.
+    /api/var/anom_spells/temp/max/?dir=above&level=5&order=length
+    level is a departure in °F (3,5,8,10 or metric °C equivalents); only temp is supported.
+    """
+    try:
+        level = float(request.args.get("level", "nan"))
+        limit = int(request.args.get("limit", "25"))
+    except ValueError:
+        level, limit = None, 0
+    month = _parse_month_or_season(request.args.get("month", "0"))
+    season = request.args.get("season")
+    if season and season.lower() in SEASONS:
+        month = season.lower()
+    direction = request.args.get("dir", "above")
+    order = request.args.get("order", "length")
+    if (var != "temp" or typ not in anom_spells_mod.TYPES or level is None
+            or not any(abs(level - x) < 1e-6 for x in anom_spells_mod.LEVELS) or direction not in anom_spells_mod.DIRECTIONS
+            or order not in anom_spells_mod.ORDERS or month is None or not 1 <= limit <= 100):
+        return {
+            "error": "Unsupported anomaly spell ranking",
+            "supported": dict(
+                vars=["temp/" + t for t in anom_spells_mod.TYPES],
+                level=list(anom_spells_mod.LEVELS),
+                dir=list(anom_spells_mod.DIRECTIONS),
+                order=list(anom_spells_mod.ORDERS),
+                month="0-12 or season", limit="1-100",
+            ),
+        }, 400
+    now = DateUtil.now()
+    res = _anom_spells_cached(var, typ, level, direction, month, order, limit, now.date(), int(now.timestamp() // 300))
+    return _wrap_result(res["result"], var=var, type=typ, dir=direction, level=level, order=order,
+                        month=month, current=res["current"], found=res["found"])
+
+
+@lru_cache(maxsize=128)
+def _anom_spells_cached(var, typ, level, direction, month, order, limit, today: date, _bucket: int) -> dict:
+    return anom_spells_mod.anom_spell_ranking(
+        _daily_values(var, typ), typ, level, direction, month, order, limit, today)
 
 
 def _daily_values(var: str, typ: str):
