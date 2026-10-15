@@ -41,7 +41,16 @@ class AvgExtQ:
     def all_for_month(month: date) -> List[AvgExt]:
         start_date = month.replace(day=1)
         end_date = DateUtil.last_date_of_month(month)
-        q = db.s.query(AvgExt).filter(AvgExt.d >= start_date).filter(AvgExt.d <= end_date)
+        return AvgExtQ._light_between(start_date, end_date)
+
+    # Summary tables only read these columns. Selecting them as plain rows instead of hydrating
+    # full AvgExt ORM objects is several times faster for a year's ~11k rows.
+    _LIGHT_COLS = (AvgExt.d, AvgExt.var, AvgExt.type, AvgExt.period, AvgExt.val, AvgExt.cnt, AvgExt.comment)
+
+    @staticmethod
+    def _light_between(start_date: date, end_date: date) -> list:
+        """Rows with .d .var .type .period .val .cnt .comment (read-only, not ORM objects)."""
+        q = db.s.query(*AvgExtQ._LIGHT_COLS).filter(AvgExt.d >= start_date).filter(AvgExt.d <= end_date)
         return q.all()
 
     @staticmethod
@@ -57,8 +66,7 @@ class AvgExtQ:
     @staticmethod
     def all_for_year(year: int) -> List[AvgExt]:
         start_date, end_date = DateUtil.year_start_end_dates(year)
-        q = db.s.query(AvgExt).filter(AvgExt.d >= start_date).filter(AvgExt.d <= end_date)
-        return q.all()
+        return AvgExtQ._light_between(start_date, end_date)
 
     @staticmethod
     def rain_for_water_year(year: int) -> List[AvgExt]:

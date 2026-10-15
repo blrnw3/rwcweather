@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 from dateutil.tz import UTC
 from flask import request
 
-from rwcwx import logger
+from rwcwx import logger, ttl_cache
 
 from rwcwx.astronomy import get_all_times_rwc, getTimes
 from rwcwx.calc.avg_extreme import (
@@ -117,12 +117,17 @@ def dashboard_summary():
     """
     Amalgamates all useful data for a live dashboard to reduce number of http calls
     """
+    # The page polls this every 5 minutes per visitor. Month/year tables include today, so they are
+    # reused for at most a minute (same freshness as the live obs feed); yesterday's minute obs can
+    # still be revised shortly after midnight, so it is recomputed every 10 minutes.
+    today = DateUtil.now().date()
+    yesterday = DateUtil.yesterday().date()
     return _wrap_result(
         dict(
-            yesterday=DaySummary(DateUtil.yesterday().date()).stats_json(),
-            month=MonthSummary.for_this_month().stats(),
-            year=YearSummary.for_this_year().stats(),
-            water_year=WaterYearRainSummary.for_this_year().stats(),
+            yesterday=ttl_cache.cached(("yesterday", yesterday), 600, lambda: DaySummary(yesterday).stats_json()),
+            month=ttl_cache.cached(("month", today), 60, lambda: MonthSummary(today).stats()),
+            year=ttl_cache.cached(("year", today), 60, lambda: YearSummary(today.year).stats()),
+            water_year=ttl_cache.cached(("water_year", today), 60, lambda: WaterYearRainSummary.for_this_year().stats()),
             day_of_year=DayOfYearSummary.for_today().stats(),
             astronomy=get_all_times_rwc(),
         )
