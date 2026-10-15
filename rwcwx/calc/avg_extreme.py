@@ -11,6 +11,10 @@ from rwcwx.model.obs import ObsQ
 from rwcwx.models import AvgExt, Obs
 from rwcwx.util import DateUtil
 
+# Circular quantities: a daily mean direction is meaningful, but averaging those means over
+# several days (or comparing them against thresholds) is not, so they get no multi-day summaries.
+DAILY_ONLY_VARS = frozenset({"wdir"})
+
 
 class Unit(Enum):
     inch = "in."
@@ -294,6 +298,8 @@ class MonthSummary:
     def stats(self) -> Dict[str, Dict]:
         by_type = defaultdict(list)
         for ae in AvgExtQ.all_for_month(self.month):
+            if ae.var in DAILY_ONLY_VARS:
+                continue
             by_type[(ae.var, ae.type)].append(ae)
         stats = {}
         for (var, typ), aes in by_type.items():
@@ -328,6 +334,8 @@ class YearSummary:
     def stats(self) -> Dict[str, Dict]:
         by_type = defaultdict(list)
         for ae in AvgExtQ.all_for_year(self.year):
+            if ae.var in DAILY_ONLY_VARS:
+                continue
             by_type[(ae.var, ae.type)].append(ae)
         stats = {}
         for (var, typ), aes in by_type.items():
@@ -363,13 +371,27 @@ class DayOfYearSummary:
     def __init__(self, day: Optional[date] = None) -> None:
         self.day: date = day or DateUtil.now().date()
 
+    # Past years' values for a calendar day don't change during that day (today itself is
+    # excluded), so the full-table scan runs once per day per process.
+    _cache: Dict[date, Dict[str, Dict]] = {}
+
     @classmethod
     def for_today(cls) -> DayOfYearSummary:
         return DayOfYearSummary(None)
 
     def stats(self) -> Dict[str, Dict]:
+        cached = DayOfYearSummary._cache.get(self.day)
+        if cached is None:
+            cached = self._compute()
+            DayOfYearSummary._cache.clear()
+            DayOfYearSummary._cache[self.day] = cached
+        return cached
+
+    def _compute(self) -> Dict[str, Dict]:
         by_type = defaultdict(list)
         for ae in AvgExtQ.all_for_day_of_year(self.day.month, self.day.day, exclude_date=self.day):
+            if ae.var in DAILY_ONLY_VARS:
+                continue
             by_type[(ae.var, ae.type)].append(ae)
         stats = {}
         for (var, typ), aes in by_type.items():
@@ -403,6 +425,8 @@ class AvgExtAggregator:
 
     @staticmethod
     def monthly(avg_exts: List[AvgExt], var: str):
+        if var in DAILY_ONLY_VARS:
+            return []
         by_month = defaultdict(list)
         for ae in avg_exts:
             by_month[(ae.d.year, ae.d.month)].append(ae)
@@ -417,6 +441,8 @@ class AvgExtAggregator:
 
     @staticmethod
     def annual(avg_exts: List[AvgExt], var: str):
+        if var in DAILY_ONLY_VARS:
+            return []
         by_yr = defaultdict(list)
         for ae in avg_exts:
             by_yr[ae.d.year].append(ae)

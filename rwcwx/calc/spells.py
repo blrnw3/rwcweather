@@ -52,7 +52,6 @@ SPELL_VARS: Dict[Tuple[str, str], dict] = {
     ("gust", "max"): dict(thresholds=(10, 15, 20, 25, 30, 40)),
     ("gust", "avg"): dict(thresholds=(4, 6, 8, 10, 15)),
     ("gust", "min"): dict(thresholds=(1, 2, 5)),
-    ("wdir", "avg"): dict(thresholds=(45, 90, 135, 180, 225, 270, 315)),
     ("pres", "max"): dict(thresholds=(1005, 1010, 1015, 1020, 1025)),
     ("pres", "min"): dict(thresholds=(1005, 1010, 1015, 1020, 1025)),
     ("pres", "avg"): dict(thresholds=(1005, 1010, 1015, 1020, 1025)),

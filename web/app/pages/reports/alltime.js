@@ -11,7 +11,7 @@ import {
     dailyAggregationOptions,
     RadioButtonGroup,
     DAILY_VALUE_OBS_OPTIONS,
-    DAILY_VALUE_OBS_STATES,
+    MULTIDAY_OBS_STATES,
     REPORT_YEAR_START,
     SUMMARY_NAMES,
     summaryKey,
@@ -342,7 +342,7 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
 
 // Selections kept in the URL, e.g. /reports/alltime?var=rain&summary=count&threshold=0.1
 const ALLTIME_URL_STATE = {
-    obs: { param: "var", def: () => "temp", valid: inList(DAILY_VALUE_OBS_STATES) },
+    obs: { param: "var", def: () => "temp", valid: inList(MULTIDAY_OBS_STATES) },
     dailyAggregation: {
         param: "daily", def: (s) => s.obs === "wind" || s.obs === "gust" ? "max" : defaultDailyStat(s.obs, OBS.get(s.obs).summary), valid: (v, s) => dailyAggregationOptions(s.obs).includes(v),
     },
@@ -379,7 +379,7 @@ export default function AllTimeReport() {
 
         <Text fontWeight="bold">Variable:</Text>
         <RadioButtonGroup name="obs" value={baseObs(obs)} options={DAILY_VALUE_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
-        <SunViewToggle obs={obs} stat={dailyAggregation} fn={handleObsChange} />
+        <SunViewToggle obs={obs} stat={dailyAggregation} fn={handleObsChange} multiDay />
         {baseObs(obs) !== "wind" && dailyOptions.length > 1 && <>
             <Text mt="1" fontWeight="bold">Daily statistic:</Text>
             <RadioButtonGroup
