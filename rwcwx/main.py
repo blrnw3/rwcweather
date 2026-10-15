@@ -69,6 +69,7 @@ app.add_url_rule("/api/var/all_periods/<var>/<typ>/", view_func=r.var_all_period
 # Non-overlapping N consecutive day rankings (e.g. wettest 3-day periods)
 app.add_url_rule("/api/var/rolling/<var>/<typ>/", view_func=r.var_rolling)
 app.add_url_rule("/api/var/spells/<var>/<typ>/", view_func=r.var_spells)
+app.add_url_rule("/api/var/anom_spells/<var>/<typ>/", view_func=r.var_anom_spells)
 
 # Other
 app.add_url_rule("/api/astronomy", view_func=r.astronomy)
