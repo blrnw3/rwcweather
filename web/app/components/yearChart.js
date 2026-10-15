@@ -112,7 +112,9 @@ export function buildSeries(rows, obs, stat, year, waterYear, cumulative) {
 
 const round = (v, p) => (v == null ? null : Number(v.toFixed(p)));
 
-export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, today }) {
+export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, today, height, spacing }) {
+    // Optional height / spacing override for embedded uses (e.g. homepage); defaults match /charts/year.
+
     const unit = useContext(UnitCtx);
     const fmat = fmatForObs(obs, stat);
     const { unitSymbol, precision } = unitAndPrecisionForObsType(unit, fmat);
@@ -151,7 +153,8 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
     const options = {
         credits: { href: null, text: "@rwcweather" },
         chart: {
-            height: isMobile() ? 360 : 460, spacing: isMobile() ? [8, 2, 10, 0] : [15, 15, 15, 10],
+            height: height != null ? height : (isMobile() ? 360 : 460),
+            spacing: spacing != null ? spacing : (isMobile() ? [8, 2, 10, 0] : [15, 15, 15, 10]),
             backgroundColor: isLoading ? "#00000022" : "#fff", zoomType: "x",
         },
         title: {
