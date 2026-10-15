@@ -1036,7 +1036,7 @@ const RANKING_URL_STATE = {
         def: () => "all", valid: inList(monthOptions), toUrl: monthParam, fromUrl: monthFromParam,
         // Day window replaces month/season for daily (mutual exclusive); other periods keep month.
         use: (s) => (s.period === "daily" && s.window === "all")
-            || s.period === "monthly" || s.period === "rolling" || s.period === "spells",
+            || s.period === "monthly" || s.period === "rolling" || s.period === "spells" || s.period === "anom",
     },
     dir: { def: () => "above", valid: inList(["above", "below"]), use: (s) => s.period === "spells" || s.period === "anom" },
     anomLevel: {
