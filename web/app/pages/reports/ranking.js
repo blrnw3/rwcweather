@@ -723,11 +723,14 @@ function AnomSpellRankingTable({ dailyAggregation, dir, level, order, month, lim
     let displayedRank = 0;
     const rankKey = (r) => order === "cum" ? r.cum : order === "peak" ? r.peak : r.length;
 
-    return <Box mt="5" overflowX="auto" maxW="860px">
+    return <Box mt="5" overflowX="auto" maxW="1100px">
         {isValidating && <Text color="gray.500" fontSize="sm">Refreshing…</Text>}
         {current ? <Text id="ranking-current" mt="3" p="2" bg="blue.50" borderLeftWidth="4px" borderColor="blue.400">
             <b>Current spell</b> ({formatSpan(current.start, current.end)}, through yesterday):
-            {" "}<b>{days(current.length)}</b>, mean {formatAnomDep(unit, current.mean)}, peak {formatAnomDep(unit, current.peak)},
+            {" "}<b>{days(current.length)}</b>, mean {formatAnomDep(unit, current.mean)}
+            {current.mean_temp != null ? " (" + formatObs(unit, current.mean_temp, "temp") + ")" : ""},
+            {" "}peak {formatAnomDep(unit, current.peak)}
+            {current.peak_temp != null ? " (" + formatObs(unit, current.peak_temp, "temp") + ")" : ""},
             {" "}rank <b>{current.rank}</b> of {current.of}{curPtile != null ? ` (${curPtile}%ile)` : ""}{currentInTop ? " (in the list below)" : ""}
         </Text> : <Text mt="3" color="gray.500">No matching heat/cold spell is running (through yesterday).</Text>}
         <RecentLegend />
@@ -738,7 +741,9 @@ function AnomSpellRankingTable({ dailyAggregation, dir, level, order, month, lim
                     <Th isNumeric>Length</Th>
                     <Th>Period</Th>
                     <Th isNumeric>Mean dep.</Th>
+                    <Th isNumeric>Mean temp</Th>
                     <Th isNumeric>Peak dep.</Th>
+                    <Th isNumeric>Peak temp</Th>
                     <Th isNumeric>Cumulative</Th>
                 </Tr>
             </Thead>
@@ -758,7 +763,9 @@ function AnomSpellRankingTable({ dailyAggregation, dir, level, order, month, lim
                         <Td isNumeric bg={hl.bg} fontWeight="bold">{days(record.length)}</Td>
                         <Td bg={hl.bg} fontWeight={hl.fontWeight}>{spanParts(record)}</Td>
                         <Td isNumeric>{formatAnomDep(unit, record.mean)}</Td>
+                        <Td isNumeric>{record.mean_temp != null ? formatObs(unit, record.mean_temp, "temp") : "–"}</Td>
                         <Td isNumeric>{formatAnomDep(unit, record.peak)}</Td>
+                        <Td isNumeric>{record.peak_temp != null ? formatObs(unit, record.peak_temp, "temp") : "–"}</Td>
                         <Td isNumeric>{formatAnomDep(unit, record.cum)}</Td>
                     </Tr>;
                 })}
@@ -767,7 +774,9 @@ function AnomSpellRankingTable({ dailyAggregation, dir, level, order, month, lim
                     <Td isNumeric bg="blue.50" fontWeight="bold">{days(current.length)}</Td>
                     <Td bg="blue.50">Current: {spanParts(current)}</Td>
                     <Td isNumeric bg="blue.50">{formatAnomDep(unit, current.mean)}</Td>
+                    <Td isNumeric bg="blue.50">{current.mean_temp != null ? formatObs(unit, current.mean_temp, "temp") : "–"}</Td>
                     <Td isNumeric bg="blue.50">{formatAnomDep(unit, current.peak)}</Td>
+                    <Td isNumeric bg="blue.50">{current.peak_temp != null ? formatObs(unit, current.peak_temp, "temp") : "–"}</Td>
                     <Td isNumeric bg="blue.50">{formatAnomDep(unit, current.cum)}</Td>
                 </Tr>}
             </Tbody>
@@ -806,7 +815,7 @@ function SpellRankingTable({ obs, dailyAggregation, dir, threshold, month, start
     let previousLength = null;
     let displayedRank = 0;
 
-    return <Box mt="5" overflowX="auto" maxW="860px">
+    return <Box mt="5" overflowX="auto" maxW="1100px">
         {isValidating && <Text color="gray.500" fontSize="sm">Refreshing…</Text>}
         {current ? <Text id="ranking-current" mt="3" p="2" bg="blue.50" borderLeftWidth="4px" borderColor="blue.400">
             <b>Current spell</b> ({formatSpan(current.start, current.end)}{SPELL_STATUS[current.status]}):
