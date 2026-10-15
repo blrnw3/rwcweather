@@ -253,21 +253,17 @@ function AboutHomeCard() {
 
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-function RecordFlag({ status }) {
+function RecordDot({ status }) {
   if (!status) return null;
-  const label = status === RECORD ? "record" : status === TIE ? "tie" : "on track";
-  const color = status === RECORD ? "red.600" : status === TIE ? "orange.600" : "blue.600";
-  const weight = status === ON_TRACK ? "normal" : "bold";
-  return <Text as="span" className={"record-flag record-flag-" + status}
-    ml="1" fontSize="xs" fontWeight={weight} color={color} textTransform="uppercase">{label}</Text>;
+  const color = status === RECORD ? "red.500" : status === TIE ? "orange.400" : "blue.400";
+  const title = status === RECORD ? "Record" : status === TIE ? "Tie" : "On track";
+  return <Box as="span" className={"record-dot record-dot-" + status} title={title}
+    display="inline-block" w="6px" h="6px" borderRadius="full" bg={color} ml="1" mb="2px" verticalAlign="middle" />;
 }
 
 function rainFreqLabel(freq) {
   if (!freq || freq.n == null || freq.n === 0 || freq.pct == null) return "–";
-  const sample = freq.unit === "days"
-    ? (freq.wet + " of " + freq.n + " days (±" + (freq.radius || 3) + "d)")
-    : (freq.wet + " of " + freq.n + " years");
-  return freq.pct + "% wet (" + sample + ")";
+  return freq.pct + "% wet";
 }
 
 function DayClimateExtremesCard(props) {
@@ -291,8 +287,25 @@ function DayClimateExtremesCard(props) {
       return "–";
     }
     const yr = entry?.[key + "_yr"] ?? entry?.[key + "_at"]?.[0];
-    return <>{formatObs(unit, val, fmat)}{yr ? <Text as="span" fontSize="xs" color="gray.600"> ({yr})</Text> : null}<RecordFlag status={flag} /></>;
+    return <>{formatObs(unit, val, fmat)}{yr ? <Text as="span" fontSize="xs" color="gray.600"> ({yr})</Text> : null}<RecordDot status={flag} /></>;
   };
+
+  const recYr = (entry, key) => entry?.[key + "_yr"] ?? entry?.[key + "_at"]?.[0];
+  const notes = [];
+  const pushNote = (status, kind, todayVal, recEntry, recKey) => {
+    if (!status || todayVal == null || recEntry?.[recKey + "_val"] == null) return;
+    const todayS = formatObs(unit, todayVal, "temp");
+    const recS = formatObs(unit, recEntry[recKey + "_val"], "temp");
+    const yr = recYr(recEntry, recKey);
+    const yrBit = yr != null ? " (" + yr + ")" : "";
+    if (status === RECORD) notes.push({ status, text: "Record " + kind + ": " + todayS + " beats " + recS + yrBit });
+    else if (status === TIE) notes.push({ status, text: "Tie " + kind + ": " + todayS + " matches " + recS + yrBit });
+    else notes.push({ status, text: "On track for " + kind + ": " + todayS + " vs " + recS + yrBit });
+  };
+  pushNote(flagHotMax, "hot high", todayTemp?.max_val, doy?.temp_max, "max");
+  pushNote(flagColdMax, "cold high", todayTemp?.max_val, doy?.temp_max, "min");
+  pushNote(flagColdMin, "cold low", todayTemp?.min_val, doy?.temp_min, "min");
+  pushNote(flagWarmMin, "warm low", todayTemp?.min_val, doy?.temp_min, "max");
 
   return <Box id="day-climate-extremes-card" width={{ base: "98%", md: "460px" }} minHeight="250px" border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 4 }} my={2} mx={{ base: 0, md: 3 }} borderRadius="10px">
     <Text fontSize={{ base: "lg", md: "xl" }}>Climate &amp; extremes for {dateLabel}</Text>
@@ -338,10 +351,18 @@ function DayClimateExtremesCard(props) {
       <Box>–</Box>
       <Box>{fmtExt(doy?.gust_max, "max", "gust")}</Box>
     </Grid>
+    {notes.length > 0 && <Box id="day-climate-record-notes" mt="2" fontSize="xs" color="gray.700">
+      {notes.map((n) => (
+        <Text key={n.text} className={"record-note record-note-" + n.status}>
+          <Box as="span" display="inline-block" w="6px" h="6px" borderRadius="full" mr="1.5" mb="1px"
+            bg={n.status === RECORD ? "red.500" : n.status === TIE ? "orange.400" : "blue.400"} verticalAlign="middle" />
+          {n.text}
+        </Text>
+      ))}
+    </Box>}
     <Text fontSize="xs" color="gray.600" mt="2">
       <Link href={CLIMATE_PAGE}>Climate normals</Link> &middot; Records since Nov 2020
       {" "}&middot; Rain normal is % of years with measurable rain (≥0.01 in) on this date
-      {" "}&middot; Record flags: hottest high / coldest low as soon as beaten; warmest low after ~10am; coldest high after ~6pm
     </Text>
   </Box>;
 }
