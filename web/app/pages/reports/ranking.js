@@ -31,6 +31,7 @@ import {
     RadioButtonGroup,
     DAILY_VALUE_OBS_OPTIONS,
     DAILY_VALUE_OBS_STATES,
+    MULTIDAY_OBS_STATES,
     REPORT_YEAR_START,
     SUMMARY_NAMES,
     summaryKey,
@@ -55,7 +56,7 @@ const SUMMARY_PERIODS = ["monthly", "annual", "wateryear"];
 
 // Multi-day periods: N consecutive days, ranked server-side from the daily
 // table (see rwcwx/calc/rolling.py).
-const ROLLING_OBS = DAILY_VALUE_OBS_STATES;
+const ROLLING_OBS = MULTIDAY_OBS_STATES;
 const ROLLING_DAYS = ["3", "5", "7", "14", "30"];
 const MIN_COVERAGE = { 3: 3, 5: 5, 7: 7, 14: 13, 30: 27 };
 
@@ -99,7 +100,6 @@ const SPELL_CONF = {
         avg: ["4", "6", "8", "10", "15"],
         min: ["1", "2", "5"],
     },
-    wdir: { avg: ["45", "90", "135", "180", "225", "270", "315"] },
     pres: {
         max: ["1005", "1010", "1015", "1020", "1025"],
         min: ["1005", "1010", "1015", "1020", "1025"],
@@ -149,7 +149,7 @@ const SPELL_DEFAULTS = {
     rain: "0.01", wet: "1", wetrate: "0.05", rain60: "0.1", rain10: "0.05",
     max: "80", min: "50", avg: "60",
     sun: "10", sunpct: "75",
-    humi: "70", dewpt: "50", aqi: "50", wind: "10", gust: "20", wdir: "180", pres: "1015",
+    humi: "70", dewpt: "50", aqi: "50", wind: "10", gust: "20", pres: "1015",
 };
 const DEFAULT_SPELL_DIR_NAMES = { above: "Above (≥)", below: "Below (<)" };
 const SPELL_DIR_NAMES = {
@@ -229,8 +229,7 @@ function periodOptions(obs) {
         "daily",
         ...(ROLLING_OBS.includes(obs) ? ["rolling"] : []),
         ...(SPELL_OBS.includes(obs) ? ["spells"] : []),
-        "monthly",
-        "annual",
+        ...(MULTIDAY_OBS_STATES.includes(obs) ? ["monthly", "annual"] : []),
         ...(hasWaterYears(obs) ? ["wateryear"] : []),
     ];
 }
@@ -924,7 +923,7 @@ export default function RankingReport() {
         </>}
         <Text mt="1" fontWeight="bold">Variable:</Text>
         <RadioButtonGroup name="obs" value={baseObs(obs)} options={DAILY_VALUE_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
-        <SunViewToggle obs={obs} stat={dailyAggregation} fn={handleObsChange} />
+        <SunViewToggle obs={obs} stat={dailyAggregation} fn={handleObsChange} multiDay={period !== "daily"} />
         {baseObs(obs) !== "wind" && dailyOptions.length > 1 && <>
             <Text mt="1" fontWeight="bold">Daily statistic:</Text>
             <RadioButtonGroup name="daily-aggregation" value={dailyAggregation}

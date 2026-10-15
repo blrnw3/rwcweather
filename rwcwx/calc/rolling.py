@@ -47,7 +47,6 @@ ROLLING_VARS: Dict[str, Dict[str, str]] = {
     "aqi": {"avg": "mean", "max": "mean", "min": "mean"},
     "wind": {"avg": "mean", "max": "mean", "min": "mean"},
     "gust": {"avg": "mean", "max": "mean", "min": "mean"},
-    "wdir": {"avg": "mean", "max": "mean", "min": "mean"},
     "pres": {"avg": "mean", "max": "mean", "min": "mean"},
 }
 

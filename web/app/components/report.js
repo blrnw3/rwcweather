@@ -37,6 +37,11 @@ export const DAILY_VALUE_OBS_OPTIONS = [
 // Every value the "var" URL parameter may take: the buttons plus alternative views (sunshine as %, rain views, wind views).
 export const DAILY_VALUE_OBS_STATES = [...DAILY_VALUE_OBS_OPTIONS, "sunpct", "wet", "wetrate", "rain60", "rain10", "gust", "wdir"];
 
+// Wind direction is circular: a day's mean direction is shown, but it is never averaged over several days
+// (monthly / annual summaries, multi-day means, spells), matching DAILY_ONLY_VARS in rwcwx/calc/avg_extreme.py.
+export const DAILY_ONLY_OBS = ["wdir"];
+export const MULTIDAY_OBS_STATES = DAILY_VALUE_OBS_STATES.filter((o) => !DAILY_ONLY_OBS.includes(o));
+
 export const COUNT_THRESHOLDS = {
     temp: ["0", "5", "10", "15", "20", "25", "30", "35"],
     wind: ["0", "5", "10", "15", "20", "25"],
@@ -215,7 +220,8 @@ export function CountThresholdSelector({ obs, value, fn }) {
 // Views of one variable button, shown under the Variable buttons while it is selected:
 // "Show sunshine as: Hours | % of possible", "Show rainfall as: Amount | Wet hours",
 // "Show wind as: Max speed | Max gust | Avg speed | Avg gust | Avg direction" (or minute-level wind views).
-export function SunViewToggle({ obs, stat, fn, Group = RadioButtonGroup, summaryMode = true }) {
+// multiDay: the page summarises several days, so daily-only views (wind direction) are left out.
+export function SunViewToggle({ obs, stat, fn, Group = RadioButtonGroup, summaryMode = true, multiDay = false }) {
     const base = baseObs(obs);
     const g = VIEW_GROUPS[base];
     if (!g) {
@@ -223,13 +229,14 @@ export function SunViewToggle({ obs, stat, fn, Group = RadioButtonGroup, summary
     }
     if (base === "wind" && summaryMode) {
         const effStat = stat || (obs === "wdir" ? "avg" : "max");
-        const val = g.summaryViews.includes(obs + ":" + effStat) ? obs + ":" + effStat : "wind:max";
+        const views = multiDay ? g.summaryViews.filter((v) => !DAILY_ONLY_OBS.includes(v.split(":")[0])) : g.summaryViews;
+        const val = views.includes(obs + ":" + effStat) ? obs + ":" + effStat : "wind:max";
         return <>
             <Text mt="1" fontWeight="bold">{g.label}</Text>
             <Group
                 name="wind-view"
                 value={val}
-                options={g.summaryViews}
+                options={views}
                 optFormat={(v) => g.summaryNames[v]}
                 fn={(v) => {
                     const [nextObs, nextStat] = v.split(":");

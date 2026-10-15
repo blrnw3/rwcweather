@@ -2,7 +2,7 @@ import { Box, Flex, Grid, Heading, Spinner, Text, useRadioGroup } from "@chakra-
 import { Fragment, useContext } from 'react';
 import useSWR from 'swr';
 import { baseObs, fetcher, fmatAggTypeOpt, fmatForObs, fmatObsOpt, fmatYrOpt, isTotalObs, OBS } from '../../components/conf';
-import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, MINUTE_OBS_STATES, SunViewToggle } from '../../components/report';
+import { DAILY_ONLY_OBS, DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, MINUTE_OBS_STATES, SunViewToggle } from '../../components/report';
 import { daysInMonth } from "../../components/dateUtil";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
@@ -283,7 +283,7 @@ export default function Obs() {
         <RadioButtonGroup name="yr" value={year} options={years} optFormat={fmatYrOpt} fn={setYear} />
         
         <DailyMatrix obs={obs} aggType={aggType} year={year} />
-        <MonthlyMatrix obs={obs} aggType={aggType} year={year} />
+        {!DAILY_ONLY_OBS.includes(obs) && <MonthlyMatrix obs={obs} aggType={aggType} year={year} />}
         {hasWaterYears(obs) && <RainTotals year={year} obs={obs} />}
 
         <Text mt="3">
