@@ -13,6 +13,13 @@ def test_daily_temp_normal_mid_january_near_monthly():
 def test_level_c_and_accepted_levels():
     assert abs(level_c(9) - 5.0) < 1e-9  # 5 °C in °F
     assert 3 in LEVELS and 5 in LEVELS
+    # Metric options 2,3,5,7,10 °C accepted as exact °F equivalents
+    from rwcwx.calc import anom_spells as m
+    assert m.LEVELS_C == (2, 3, 5, 7, 10)
+    for c in m.LEVELS_C:
+        assert round(c * 9 / 5, 4) in LEVELS
+    assert abs(level_c(18) - 10.0) < 1e-9  # 10 °C
+    assert abs(level_c(12.6) - 7.0) < 1e-9  # 7 °C
 
 
 def test_heatwave_spell_from_departures():
