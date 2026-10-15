@@ -262,6 +262,55 @@ function matchesMonthFilter(monthNum, filter) {
     return monthNum === Number(filter);
 }
 
+// Day-of-year window for daily rankings: window 10 = ±5 days around a centre MMDD in any year
+// (11 calendar days). Expansion uses a leap-year calendar so 29 Feb works; year wrap is via Date math.
+// Matches rwcwx/calc/day_window.py.
+const DAY_WINDOW_OPTIONS = ["all", "10", "30"];
+const DAY_WINDOW_RADIUS = { "10": 5, "30": 15 };
+const DAY_WINDOW_NAMES = { all: "All days", "10": "±5 days", "30": "±15 days" };
+const REF_LEAP = 2024; // only for expanding (month, day) ranges
+
+function pad2(n) { return String(n).padStart(2, "0"); }
+function formatMmdd(month, day) { return pad2(month) + pad2(day); }
+function parseMmdd(mmdd) {
+    if (!/^\d{4}$/.test(mmdd || "")) return null;
+    const month = Number(mmdd.slice(0, 2)), day = Number(mmdd.slice(2));
+    const dt = new Date(REF_LEAP, month - 1, day);
+    if (dt.getFullYear() !== REF_LEAP || dt.getMonth() !== month - 1 || dt.getDate() !== day) return null;
+    return [month, day];
+}
+function mmddToday(d = new Date()) { return formatMmdd(d.getMonth() + 1, d.getDate()); }
+function daysInMonth(month) {
+    return new Date(REF_LEAP, month, 0).getDate(); // month is 1-12; day 0 of next month
+}
+function mdSet(centreMonth, centreDay, radius) {
+    const centre = new Date(REF_LEAP, centreMonth - 1, centreDay);
+    const out = new Set();
+    for (let d = -radius; d <= radius; d++) {
+        const dt = new Date(centre);
+        dt.setDate(centre.getDate() + d);
+        out.add(formatMmdd(dt.getMonth() + 1, dt.getDate()));
+    }
+    return out;
+}
+function matchesDayWindow(month, day, centreMmdd, window) {
+    const radius = DAY_WINDOW_RADIUS[window];
+    const centre = parseMmdd(centreMmdd);
+    if (radius == null || !centre) return true;
+    return mdSet(centre[0], centre[1], radius).has(formatMmdd(month, day));
+}
+function formatCentreLabel(mmdd) {
+    const p = parseMmdd(mmdd);
+    if (!p) return mmdd;
+    return monthNames[p[0] - 1] + " " + p[1];
+}
+function formatWindowSuffix(window, centre) {
+    if (window === "all") return "";
+    const r = DAY_WINDOW_RADIUS[window];
+    return " around " + formatCentreLabel(centre) + " (±" + r + " days)";
+}
+
+
 function useRankingData(obs, dailyAggregation) {
     const url = "/api/var/all_periods/" + obs + "/" + dailyAggregation
         + "/?start=" + REPORT_YEAR_START + "0101&include_today=1";
@@ -680,7 +729,7 @@ function SpellRankingTable({ obs, dailyAggregation, dir, threshold, month, start
     </Box>;
 }
 
-function RankingTable({ obs, dailyAggregation, period, summary, threshold, month, order, limit }) {
+function RankingTable({ obs, dailyAggregation, period, summary, threshold, month, window = "all", centre, order, limit }) {
     const unit = useContext(UnitCtx);
     const obsObj = OBS.get(obs);
     const fmat = fmatForObs(obs, dailyAggregation);
@@ -689,9 +738,13 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
     const results = response?.result || {};
     const isSummaryPeriod = SUMMARY_PERIODS.includes(period);
     const byMonth = period === "daily" || period === "monthly";
+    const useDayWindow = period === "daily" && window !== "all";
     const allRecords = rankingRecords(results, response?.server, period, summary, threshold, waterYears)
         .filter((record) => Number.isFinite(record.value))
-        .filter((record) => !byMonth || matchesMonthFilter(record.date[1], month))
+        .filter((record) => {
+            if (useDayWindow) return matchesDayWindow(record.date[1], record.date[2], centre, window);
+            return !byMonth || matchesMonthFilter(record.date[1], month);
+        })
         .sort((a, b) => {
             const valueOrder = order === "highest" ? b.value - a.value : a.value - b.value;
             if (valueOrder !== 0) {
@@ -707,8 +760,10 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
     const currentKey = current?.date.join("-");
     const currentInList = current != null && allRecords.some((r) => r.date.join("-") === currentKey);
     const currentInTop = current != null && records.some((r) => r.date.join("-") === currentKey);
-    const currentMonthExcluded = byMonth && month !== "all" && today && !matchesMonthFilter(today[1], month);
-    const currentRanked = current != null && Number.isFinite(current.value) && !currentMonthExcluded;
+    const currentMonthExcluded = !useDayWindow && byMonth && month !== "all" && today && !matchesMonthFilter(today[1], month);
+    const currentWindowExcluded = useDayWindow && today && !matchesDayWindow(today[1], today[2], centre, window);
+    const currentExcluded = currentMonthExcluded || currentWindowExcluded;
+    const currentRanked = current != null && Number.isFinite(current.value) && !currentExcluded;
     const otherValues = allRecords.filter((r) => r.date.join("-") !== currentKey).map((r) => r.value);
     const currentRank = currentRanked ? rankOf(current.value, otherValues, order) : null;
     const currentOf = otherValues.length + 1;
@@ -739,7 +794,10 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
             of={currentOf}
             inTop={currentInTop}
         /> : <Text id="ranking-current" mt="3" color="gray.500">
-            {currentMonthExcluded
+            {currentWindowExcluded
+                ? CURRENT_LABEL[period] + " isn't in the " + formatCentreLabel(centre)
+                    + " ±" + DAY_WINDOW_RADIUS[window] + "-day window; choose All days or move the centre to see how it ranks."
+                : currentMonthExcluded
                 ? CURRENT_LABEL[period] + " isn't in " + formatMonthFilter(month) + "; choose All or "
                     + monthNames[today[1] - 1] + " to see how it ranks."
                 : "No data yet for " + CURRENT_LABEL[period].toLowerCase() + "."}
@@ -826,9 +884,19 @@ const RANKING_URL_STATE = {
         def: () => "0", valid: (v, s) => countThresholdsAny(s.obs).includes(v),
         use: (s) => SUMMARY_PERIODS.includes(s.period) && s.summary === "count",
     },
+    window: {
+        def: () => "all", valid: inList(DAY_WINDOW_OPTIONS),
+        use: (s) => s.period === "daily",
+    },
+    centre: {
+        def: () => mmddToday(), valid: (v) => parseMmdd(v) != null,
+        use: (s) => s.period === "daily" && s.window !== "all",
+    },
     month: {
         def: () => "all", valid: inList(monthOptions), toUrl: monthParam, fromUrl: monthFromParam,
-        use: (s) => s.period === "daily" || s.period === "monthly" || s.period === "rolling" || s.period === "spells",
+        // Day window replaces month/season for daily (mutual exclusive); other periods keep month.
+        use: (s) => (s.period === "daily" && s.window === "all")
+            || s.period === "monthly" || s.period === "rolling" || s.period === "spells",
     },
     dir: { def: () => "above", valid: inList(["above", "below"]), use: (s) => s.period === "spells" },
     spellThreshold: {
@@ -844,7 +912,7 @@ const RANKING_URL_STATE = {
 
 export default function RankingReport() {
     const [state, update] = useUrlState(RANKING_URL_STATE);
-    const { period, obs, dailyAggregation, summary, threshold, month, days, order, limit, dir, spellThreshold, startYear } = state;
+    const { period, obs, dailyAggregation, summary, threshold, month, window, centre, days, order, limit, dir, spellThreshold, startYear } = state;
     const dailyOptions = dailyAggregationOptions(obs);
     const monthlySummaryOptions = summaryOptions(obs);
 
@@ -870,7 +938,20 @@ export default function RankingReport() {
         // Water years exist to compare rain totals, so open them on Total.
         ...(nextPeriod === "wateryear" && nextPeriod !== period ? { summary: OBS.get(obs).summary } : {}),
     });
-    const setMonth = (value) => update({ month: value });
+    const setMonth = (value) => update({ month: value, window: "all" });
+    const setWindow = (value) => update({
+        window: value,
+        ...(value !== "all" ? { month: "all", centre: parseMmdd(centre) ? centre : mmddToday() } : {}),
+    });
+    const setCentreMonth = (m) => {
+        const max = daysInMonth(Number(m));
+        const day = Math.min(Number((parseMmdd(centre) || [1, 1])[1]), max);
+        update({ centre: formatMmdd(Number(m), day) });
+    };
+    const setCentreDay = (d) => {
+        const monthNum = (parseMmdd(centre) || [1, 1])[0];
+        update({ centre: formatMmdd(monthNum, Number(d)) });
+    };
     const setDailyAggregation = (value) => update({
         dailyAggregation: value,
         ...(period === "spells" ? { spellThreshold: spellDefaultThreshold(obs, value) } : {}),
@@ -895,7 +976,9 @@ export default function RankingReport() {
             + " of " + DAILY_AGGREGATION_NAMES[dailyAggregation]
         : ORDER_NAMES[order] + " " + limit + " " + PERIOD_NAMES[period] + " " + SUMMARY_NAMES[summary]
             + " of " + DAILY_AGGREGATION_NAMES[dailyAggregation];
-    const monthSuffix = !byMonth || month === "all" ? "" : " in " + formatMonthFilter(month);
+    const monthSuffix = period === "daily" && window !== "all"
+        ? formatWindowSuffix(window, centre)
+        : (!byMonth || month === "all" ? "" : " in " + formatMonthFilter(month));
     const dirNames = SPELL_DIR_NAMES[obs] || DEFAULT_SPELL_DIR_NAMES;
 
     return <Page name="reports" sub="ranking" title="Reports | rankings">
@@ -907,7 +990,24 @@ export default function RankingReport() {
 
         <Text fontWeight="bold">Period:</Text>
         <RadioButtonGroup name="period" value={period} options={periodOptions(obs)} optFormat={(value) => PERIOD_NAMES[value]} fn={handlePeriodChange} />
-        {byMonth && <>
+        {period === "daily" && <>
+            <Text mt="1" fontWeight="bold">Day window:</Text>
+            <RadioButtonGroup name="window" value={window} options={DAY_WINDOW_OPTIONS} optFormat={(v) => DAY_WINDOW_NAMES[v]} fn={setWindow} />
+            {window !== "all" && (() => {
+                const parsed = parseMmdd(centre) || [new Date().getMonth() + 1, new Date().getDate()];
+                const cMonth = parsed[0], cDay = parsed[1];
+                const dayOpts = Array.from({ length: daysInMonth(cMonth) }, (_, i) => String(i + 1));
+                return <>
+                    <Text mt="1" fontWeight="bold">Centre date:</Text>
+                    <RadioButtonGroup name="centre-month" value={String(cMonth)}
+                        options={Array.from({ length: 12 }, (_, i) => String(i + 1))}
+                        optFormat={(m) => monthNames[Number(m) - 1]} fn={setCentreMonth} />
+                    <RadioButtonGroup name="centre-day" value={String(cDay)}
+                        options={dayOpts} optFormat={(d) => d} fn={setCentreDay} />
+                </>;
+            })()}
+        </>}
+        {byMonth && (period !== "daily" || window === "all") && <>
             <Text mt="1" fontWeight="bold">Month / season:</Text>
             <RadioButtonGroup
                 name="month"
@@ -970,12 +1070,16 @@ export default function RankingReport() {
             summary={summary}
             threshold={threshold}
             month={month}
+            window={window}
+            centre={centre}
             order={order}
             limit={limit}
         />}
         <Text mt="3">
-            Daily rankings compare the selected daily series directly. Monthly rankings first summarize that same
-            daily series within each month. Rankings use records from {REPORT_YEAR_START} onward.
+            Daily rankings compare the selected daily series directly. A day window (±5 or ±15 days around a centre
+            date) keeps only calendar days near that date in every year (for example 10–20 October for a centre of
+            15 October); year-end wrap and 29 February are included when they fall in the window. Monthly rankings
+            first summarize that same daily series within each month. Rankings use records from {REPORT_YEAR_START} onward.
         </Text>
         <Text mt="2">
             Annual rankings use calendar years; water-year rankings (rainfall and wet hours only) use 1 October to 30 September,
