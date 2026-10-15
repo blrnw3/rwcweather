@@ -2,6 +2,7 @@ import { Box, Flex, Text } from '@chakra-ui/react';
 import useSWR from 'swr';
 import { fetcher } from './conf';
 import { formatObs } from '../format';
+import { BANNER_PHOTOS } from './bannerPhotos';
 
 // Stylised Emerald Lake Hills skyline: layered ridges with redwood silhouettes against a
 // dusk sky. Pure SVG (no photos), scales to any width; preserveAspectRatio slices on phones.
@@ -57,6 +58,18 @@ export function BannerArt() {
   </Box>;
 }
 
+// Photo slots on the right of the banner (like nw3). Empty list = SVG art only.
+function BannerPhotos() {
+  if (!BANNER_PHOTOS.length) {
+    return null;
+  }
+  return <Flex position="absolute" top="0" right="0" h="100%" zIndex="0" display={{ base: "none", md: "flex" }}>
+    {BANNER_PHOTOS.map((p, i) => <Box key={p.src} as="img" src={p.src} alt={p.alt || ""} h="100%" objectFit="cover"
+      w={{ md: "200px", xl: "260px" }} display={{ md: i < 2 ? "block" : "none", xl: "block" }}
+      borderLeft="3px solid" borderColor="pliny.800" />)}
+  </Flex>;
+}
+
 export function LiveStrip({ unit }) {
   const { data } = useSWR(`/api/web/dashboard/live`, fetcher, { refreshInterval: 60000, revalidateOnFocus: false });
   const res = data?.result;
@@ -65,9 +78,11 @@ export function LiveStrip({ unit }) {
   }
   const items = [
     ["Temp", formatObs(unit, res.now.temp, "temp")],
-    ["Rain today", formatObs(unit, res.today?.rain?.total, "rain")],
-    ["Wind", formatObs(unit, res.now.wind, "wind") + " " + formatObs(unit, res.now.wdir, "wdir")],
   ];
+  const rainToday = res.today?.rain?.total;
+  if (rainToday > 0) {
+    items.push(["Rain today", formatObs(unit, rainToday, "rain")]);
+  }
   return <Flex id="live-wx" gap={{ base: 3, md: 4 }} fontSize={{ base: "xs", md: "sm" }} color="pliny.50"
     px={{ base: 2, md: 3 }} py={2} wrap="wrap" whiteSpace="nowrap"
     title="Current conditions">
@@ -81,6 +96,7 @@ export function LiveStrip({ unit }) {
 export function BrandBanner({ unit }) {
   return <Box id="banner" position="relative" overflow="hidden" minH={{ base: "104px", md: "132px" }}>
     <BannerArt />
+    <BannerPhotos />
     <Flex position="relative" zIndex="1" h="100%" minH="inherit" px={{ base: 4, md: 7 }} py={{ base: 3, md: 4 }}
       direction={{ base: "column", md: "row" }} justify="space-between" align={{ base: "flex-start", md: "flex-end" }}
       gap={2}>
