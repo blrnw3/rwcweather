@@ -746,18 +746,13 @@ function PeriodRainSunRows({ summary, rainNormal, sunNormal, rainDaysExpected })
   </>;
 }
 
-function TempMeanRow({ summary, normMin, normMax, normAvg }) {
-  // Mean of daily mins / maxes / means, with signed ° departure vs elapsed-day climate normals.
+function TempMeanRow({ summary, normAvg }) {
+  // Low/High = period extremes (no normal). Avg = mean of daily means with signed °
+  // departure vs the mean of 1991-2020 daily normals over elapsed days.
   return <>
     <Box fontWeight="bold">Temperature</Box>
-    <Box title={"Extreme low " + formatObs(unit, summary?.temp_min?.min_val, "temp")}>
-      {formatObs(unit, summary?.temp_min?.avg, "temp")}
-      <ClimateAnom inline value={summary?.temp_min?.avg} normal={normMin} obs="temp" stat="avg" unit={unit} />
-    </Box>
-    <Box title={"Extreme high " + formatObs(unit, summary?.temp_max?.max_val, "temp")}>
-      {formatObs(unit, summary?.temp_max?.avg, "temp")}
-      <ClimateAnom inline value={summary?.temp_max?.avg} normal={normMax} obs="temp" stat="avg" unit={unit} />
-    </Box>
+    <Box>{formatObs(unit, summary?.temp_min?.min_val, "temp")}</Box>
+    <Box>{formatObs(unit, summary?.temp_max?.max_val, "temp")}</Box>
     <Box>
       {formatObs(unit, summary?.temp_avg?.avg, "temp")}
       <ClimateAnom inline value={summary?.temp_avg?.avg} normal={normAvg} obs="temp" stat="avg" unit={unit} />
@@ -771,8 +766,6 @@ function MonthSummaryCard(props) {
   const y = date?.[0], mo = date?.[1], d = date?.[2];
   const rainNormal = date ? periodToDateTotalNormal("rain", y, mo, 1, y, mo, d) : null;
   const sunNormal = date ? periodToDateTotalNormal("sun", y, mo, 1, y, mo, d) : null;
-  const normMin = date ? periodToDateTempNormal("min", y, mo, 1, y, mo, d) : null;
-  const normMax = date ? periodToDateTempNormal("max", y, mo, 1, y, mo, d) : null;
   const normAvg = date ? periodToDateTempNormal("avg", y, mo, 1, y, mo, d) : null;
   // No rain-day climate normal on site; omit expected-to-date anomaly.
   return <Box id="month-summary-card" width="460px" minHeight="250px" border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 4 }} my={2} mx={{ base: 0, md: 3 }} borderRadius="10px">
@@ -786,7 +779,7 @@ function MonthSummaryCard(props) {
       <Box fontWeight="bold">Low</Box>
       <Box fontWeight="bold">High</Box>
       <Box fontWeight="bold">Avg / total</Box>
-      <TempMeanRow summary={summary} normMin={normMin} normMax={normMax} normAvg={normAvg} />
+      <TempMeanRow summary={summary} normAvg={normAvg} />
       <Box fontWeight="bold">Humidity</Box>
       <Box>{formatObs(unit, summary?.["humi_min"]?.["min_val"], "humi")}</Box>
       <Box>{formatObs(unit, summary?.["humi_max"]?.["max_val"], "humi")}</Box>
@@ -819,8 +812,6 @@ function YearSummaryCard(props) {
   const y = date?.[0], mo = date?.[1], d = date?.[2];
   const rainNormal = date ? periodToDateTotalNormal("rain", y, 1, 1, y, mo, d) : null;
   const sunNormal = date ? periodToDateTotalNormal("sun", y, 1, 1, y, mo, d) : null;
-  const normMin = date ? periodToDateTempNormal("min", y, 1, 1, y, mo, d) : null;
-  const normMax = date ? periodToDateTempNormal("max", y, 1, 1, y, mo, d) : null;
   const normAvg = date ? periodToDateTempNormal("avg", y, 1, 1, y, mo, d) : null;
   return <Box id="year-summary-card" width="460px" minHeight="250px" border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 4 }} m={{ base: 0, md: 3 }} borderRadius="10px">
     <Text fontSize={{ base: "lg", md: "xl" }}>This year averages &amp; extremes</Text>
@@ -833,7 +824,7 @@ function YearSummaryCard(props) {
       <Box fontWeight="bold">Low</Box>
       <Box fontWeight="bold">High</Box>
       <Box fontWeight="bold">Avg / total</Box>
-      <TempMeanRow summary={summary} normMin={normMin} normMax={normMax} normAvg={normAvg} />
+      <TempMeanRow summary={summary} normAvg={normAvg} />
       <Box fontWeight="bold">Humidity</Box>
       <Box>{formatObs(unit, summary?.["humi_min"]?.["min_val"], "humi")}</Box>
       <Box>{formatObs(unit, summary?.["humi_max"]?.["max_val"], "humi")}</Box>
