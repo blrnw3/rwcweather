@@ -12,7 +12,10 @@ from sqlalchemy.orm import sessionmaker, Session
 from werkzeug.local import Local, release_local, LocalManager
 
 logger = logging.getLogger(__name__)
-logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+# Full SQL statement logging is off by default (it logs every query in prod). Opt in for debugging with
+# RWCWX_SQL_ECHO=1, which logs statements and parameters at INFO.
+SQL_ECHO = os.getenv("RWCWX_SQL_ECHO", "").strip().lower() in ("1", "true", "yes", "on")
+logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO if SQL_ECHO else logging.WARNING)
 
 
 def _install_pool_guards(engine: Engine) -> None:
