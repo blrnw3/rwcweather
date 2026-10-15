@@ -49,3 +49,23 @@ def test_departures_use_normals():
     series = [(d, n), (d2, n2 + 10)]
     deps = departures(series, "max")
     assert abs(deps[0][1]) < 1e-6 and abs(deps[1][1] - 10) < 1e-6
+    assert abs(deps[0][2] - n) < 1e-6 and abs(deps[1][2] - (n2 + 10)) < 1e-6
+
+
+def test_spell_includes_actual_temps():
+    # (date, dep, obs): heatwave days at 30°C (+6), then break, then 28°C (+6)
+    deps = [(date(2024, 7, i), 6.0, 30.0) for i in range(1, 4)]
+    deps += [(date(2024, 7, 4), 0.0, 24.0)]
+    deps += [(date(2024, 7, i), 6.0, 28.0) for i in range(5, 7)]
+    spells = find_anom_spells(deps, 5.0, "above")
+    assert spells[0]["length"] == 3
+    assert abs(spells[0]["mean_temp"] - 30.0) < 1e-6
+    assert abs(spells[0]["peak_temp"] - 30.0) < 1e-6
+    assert abs(spells[1]["mean_temp"] - 28.0) < 1e-6
+    # Cold snap: peak_temp is the coldest (min)
+    cold = [(date(2024, 1, i), -5.0, 2.0) for i in range(1, 3)]
+    cold += [(date(2024, 1, 3), -8.0, -1.0)]
+    spells = find_anom_spells(cold, 3.0, "below")
+    assert spells[0]["length"] == 3
+    assert abs(spells[0]["mean_temp"] - (2 + 2 + -1) / 3) < 1e-6
+    assert abs(spells[0]["peak_temp"] - (-1.0)) < 1e-6
