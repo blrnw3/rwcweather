@@ -69,3 +69,29 @@ def test_spell_includes_actual_temps():
     assert spells[0]["length"] == 3
     assert abs(spells[0]["mean_temp"] - (2 + 2 + -1) / 3) < 1e-6
     assert abs(spells[0]["peak_temp"] - (-1.0)) < 1e-6
+
+
+def test_length_tiebreak_mean_departure():
+    # Three equal-length heatwaves; larger mean departure ranks first.
+    spells = [
+        dict(start=date(2024, 7, 1), end=date(2024, 7, 3), length=3, mean=5.0, peak=6.0, cum=15.0, max=6.0, min=4.0),
+        dict(start=date(2023, 8, 1), end=date(2023, 8, 3), length=3, mean=8.0, peak=9.0, cum=24.0, max=9.0, min=7.0),
+        dict(start=date(2025, 6, 1), end=date(2025, 6, 3), length=3, mean=6.0, peak=7.0, cum=18.0, max=7.0, min=5.0),
+    ]
+    ranked = rank_anom_spells(spells, "length", "above", 10)
+    assert [s["mean"] for s in ranked] == [8.0, 6.0, 5.0]
+    # Cold snaps: more negative mean ranks higher when length ties.
+    cold = [
+        dict(start=date(2024, 1, 1), end=date(2024, 1, 4), length=4, mean=-3.0, peak=-4.0, cum=-12.0, max=-2.0, min=-4.0),
+        dict(start=date(2023, 2, 1), end=date(2023, 2, 4), length=4, mean=-7.0, peak=-9.0, cum=-28.0, max=-5.0, min=-9.0),
+        dict(start=date(2025, 12, 1), end=date(2025, 12, 4), length=4, mean=-5.0, peak=-6.0, cum=-20.0, max=-4.0, min=-6.0),
+    ]
+    ranked = rank_anom_spells(cold, "length", "below", 10)
+    assert [s["mean"] for s in ranked] == [-7.0, -5.0, -3.0]
+    # Longer spell still beats a shorter one with larger mean.
+    mixed = [
+        dict(start=date(2024, 7, 1), end=date(2024, 7, 3), length=3, mean=10.0, peak=11.0, cum=30.0, max=11.0, min=9.0),
+        dict(start=date(2023, 8, 1), end=date(2023, 8, 5), length=5, mean=4.0, peak=5.0, cum=20.0, max=5.0, min=3.0),
+    ]
+    ranked = rank_anom_spells(mixed, "length", "above", 10)
+    assert ranked[0]["length"] == 5 and ranked[1]["mean"] == 10.0
