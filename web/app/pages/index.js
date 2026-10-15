@@ -16,7 +16,7 @@ import { WiBarometer, WiDaySunny, WiHumidity, WiRain, WiThermometer } from "reac
 import useSWR from "swr";
 import { LatestChart, SummaryChart } from '../components/chart';
 import { YearChart } from '../components/yearChart';
-import { fetcher, fmatObsOptIcon, fmatTimeOpt, isTotalObs, OBS, RAIN_VIEW_NAMES, RAIN_VIEWS, SUN_VIEW_NAMES, SUN_VIEWS, WIND_SUMMARY_NAMES, WIND_SUMMARY_VIEWS, WIND_VIEW_NAMES, WIND_VIEWS } from '../components/conf';
+import { fetcher, fmatObsOptIcon, fmatTimeOpt, OBS, RAIN_VIEW_NAMES, RAIN_VIEWS, SUN_VIEW_NAMES, SUN_VIEWS, WIND_SUMMARY_NAMES, WIND_SUMMARY_VIEWS, WIND_VIEW_NAMES, WIND_VIEWS } from '../components/conf';
 import { Page, UnitCtx } from "../components/Page";
 import { SunRibbon, useSunDay } from '../components/sun';
 import { WetRibbon } from '../components/wet';
@@ -938,46 +938,54 @@ function ChartCardDaily(props) {
 
 
 function ChartCardYear(props) {
-  // Simplified year chart for the homepage: temp / rain / sun / wet hours, current year,
-  // cumulative toggle for totals. Reuses YearChart from /charts/year.
-  const obsOptions = ["temp", "rain", "sun", "wet"];
+  // Same variable buttons as the home 30-day chart. Rain and sun (hours) are
+  // always cumulative; everything else is daily. Reuses YearChart.
+  const obsOptions = ["temp", "rain", "sun", "humi", "dewpt", "aqi", "wind", "pres"];
+  const aggOpts = ["avg", "max", "min"];
   const CURRENT_YEAR = new Date().getFullYear();
   const [obs, setObs] = useState("temp");
-  const [cume, setCume] = useState(false);
+  const [aggType, setAggType] = useState("avg");
+  const [sunView, setSunView] = useState("sun");
+  const [rainView, setRainView] = useState("rain");
+  const [windView, setWindView] = useState("wind:max");
   const [today, setToday] = useState(null);
   useEffect(() => {
     const d = new Date();
     setToday([d.getFullYear(), d.getMonth() + 1, d.getDate()]);
   }, []);
-  const canCume = isTotalObs(obs);
-  const stat = OBS.get(obs)?.summary === "total" ? "total" : "avg";
-  const handleObs = (next) => {
-    setObs(next);
-    if (!isTotalObs(next)) {
-      setCume(false);
-    } else if (!isTotalObs(obs)) {
-      setCume(true);  // first switch onto a total → cumulative (matches /charts/year)
-    }
-  };
-  const moreHref = "/charts/year?var=" + obs
-    + (stat !== "avg" && stat !== "total" ? "&daily=" + stat : "")
-    + (canCume && cume ? "&mode=cumulative" : "");
+  const isSun = obs === "sun";
+  const isRain = obs === "rain";
+  const isWind = obs === "wind";
+  const [windObs, windAgg] = windView.split(":");
+  const chartObs = isSun ? sunView : isRain ? rainView : isWind ? windObs : obs;
+  const chartAgg = isSun ? (sunView === "sunpct" ? "avg" : "total")
+    : isRain ? OBS.get(rainView).summary
+    : isWind ? windAgg
+    : aggType;
+  // Only rainfall amount and sunshine hours are cumulative on the home year chart.
+  const cumulative = chartObs === "rain" || chartObs === "sun";
+  const moreHref = "/charts/year?var=" + chartObs
+    + (chartAgg !== "avg" && chartAgg !== "total" ? "&daily=" + chartAgg : "")
+    + (cumulative ? "&mode=cumulative" : "");
 
   return <Box id="home-year-chart-card" w={{ base: "98%", md: "96%", lg: "96%" }} border="2px solid #656382" bg="gray.100"
     p="2" my={2} mx={{ base: 0, md: 2, lg: 3, xl: 4 }} borderRadius="10px">
     <Flex wrap="wrap" justifyContent="space-between" alignItems="center">
-      <RadioButtonGroup name="yearObs" value={obs} options={obsOptions} optFormat={fmatObsOptIcon} fn={handleObs} ico={true} />
+      <RadioButtonGroup name="yearObs" value={obs} options={obsOptions} optFormat={fmatObsOptIcon} fn={setObs} ico={true} />
       <Box m={1}></Box>
-      {canCume && <RadioButtonGroup name="yearCume" value={cume ? "cumulative" : "daily"}
-        options={["cumulative", "daily"]}
-        optFormat={(v) => (v === "cumulative" ? "Cumulative" : "Daily")}
-        fn={(v) => setCume(v === "cumulative")} />}
+      {isSun
+        ? <RadioButtonGroup name="yearSunView" value={sunView} options={SUN_VIEWS} optFormat={(v) => SUN_VIEW_NAMES[v]} fn={setSunView} />
+        : isRain
+        ? <RadioButtonGroup name="yearRainView" value={rainView} options={RAIN_VIEWS} optFormat={(v) => RAIN_VIEW_NAMES[v]} fn={setRainView} />
+        : isWind
+        ? <RadioButtonGroup name="yearWindView" value={windView} options={WIND_SUMMARY_VIEWS} optFormat={(v) => WIND_SUMMARY_NAMES[v]} fn={setWindView} />
+        : <RadioButtonGroup name="yearAggType" value={aggType} options={aggOpts} optFormat={(c) => c} fn={setAggType} />}
       <Box m={1}></Box>
       <Text><Link href={moreHref} title="More year charts">More</Link></Text>
     </Flex>
     <Box m={1}>
-      <YearChart obs={obs} stat={stat} year={CURRENT_YEAR} waterYear={false}
-        cumulative={canCume && cume} showNormal={true} today={today}
+      <YearChart obs={chartObs} stat={chartAgg} year={CURRENT_YEAR} waterYear={false}
+        cumulative={cumulative} showNormal={true} today={today}
         spacing={[5, 5, 12, 3]} />
     </Box>
   </Box>
