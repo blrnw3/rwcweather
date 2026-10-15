@@ -290,7 +290,12 @@ function DayClimateExtremesCard(props) {
       return "–";
     }
     const yr = entry?.[key + "_yr"] ?? entry?.[key + "_at"]?.[0];
-    return <>{formatObs(unit, val, fmat)}{yr ? <Text as="span" fontSize="xs" color="gray.600"> ({yr})</Text> : null}<RecordDot status={flag} /></>;
+    // Keep value (+ year) and record dot on one line so the dot never wraps alone.
+    return <Text as="span" className="record-ext" whiteSpace="nowrap">
+      {formatObs(unit, val, fmat)}
+      {yr ? <Text as="span" fontSize="xs" color="gray.600"> ({yr})</Text> : null}
+      <RecordDot status={flag} />
+    </Text>;
   };
 
   const recYr = (entry, key) => entry?.[key + "_yr"] ?? entry?.[key + "_at"]?.[0];
