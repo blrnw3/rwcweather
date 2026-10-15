@@ -801,6 +801,10 @@ function YearSummaryCard(props) {
       <Box>{formatObs(unit, summary?.["aqi_avg"]?.["min_val"], "aqi")}</Box>
       <Box>{formatObs(unit, summary?.["aqi_avg"]?.["max_val"], "aqi")}</Box>
       <Box>{formatObs(unit, summary?.["aqi_avg"]?.["avg"], "aqi")}</Box>
+      <Box fontWeight="bold">Wind (day avg)</Box>
+      <Box>{formatObs(unit, summary?.["wind_avg"]?.["min_val"], "wind")}</Box>
+      <Box>{formatObs(unit, summary?.["wind_avg"]?.["max_val"], "wind")}</Box>
+      <Box>{formatObs(unit, summary?.["wind_avg"]?.["avg"], "wind")}</Box>
       <PeriodRainSunRows summary={summary} rainNormal={rainNormal} sunNormal={sunNormal} />
     </Grid>
   </Box>
