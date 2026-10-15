@@ -358,6 +358,43 @@ class WaterYearRainSummary:
         return stats
 
 
+class DayOfYearSummary:
+
+    def __init__(self, day: Optional[date] = None) -> None:
+        self.day: date = day or DateUtil.now().date()
+
+    @classmethod
+    def for_today(cls) -> DayOfYearSummary:
+        return DayOfYearSummary(None)
+
+    def stats(self) -> Dict[str, Dict]:
+        by_type = defaultdict(list)
+        for ae in AvgExtQ.all_for_day_of_year(self.day.month, self.day.day, exclude_date=self.day):
+            by_type[(ae.var, ae.type)].append(ae)
+        stats = {}
+        for (var, typ), aes in by_type.items():
+            s = ObsVar.multiday_summary(aes).as_dict
+            if isinstance(s.get("min_at"), date):
+                s["min_yr"] = s["min_at"].year
+                s["min_at"] = (s["min_at"].year, s["min_at"].month, s["min_at"].day)
+            if isinstance(s.get("max_at"), date):
+                s["max_yr"] = s["max_at"].year
+                s["max_at"] = (s["max_at"].year, s["max_at"].month, s["max_at"].day)
+            stats[f"{var}_{typ}"] = s
+        if ("sun", "total") in by_type:
+            from rwcwx.model import sun as sun_model
+            pct = sun_model.pct_days(by_type[("sun", "total")])
+            s = ObsVar.multiday_summary(pct).as_dict
+            if isinstance(s.get("min_at"), date):
+                s["min_yr"] = s["min_at"].year
+                s["min_at"] = (s["min_at"].year, s["min_at"].month, s["min_at"].day)
+            if isinstance(s.get("max_at"), date):
+                s["max_yr"] = s["max_at"].year
+                s["max_at"] = (s["max_at"].year, s["max_at"].month, s["max_at"].day)
+            stats[f"{sun_model.PCT_VAR}_{sun_model.PCT_TYPE}"] = s
+        return stats
+
+
 class AvgExtAggregator:
 
     @staticmethod

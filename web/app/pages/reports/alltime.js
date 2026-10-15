@@ -1,11 +1,11 @@
 import { Box, Flex, Grid, Heading, Spinner, Text } from "@chakra-ui/react";
 import { useContext } from "react";
 import useSWR from "swr";
-import { baseObs, defaultDailyStat, fetcher, fmatObsOpt, isTotalObs, OBS } from "../../components/conf";
+import { baseObs, defaultDailyStat, fetcher, fmatForObs, fmatObsOpt, isTotalObs, OBS } from "../../components/conf";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
 import {
-    COUNT_THRESHOLDS,
+    countThresholdsAny,
     CountThresholdSelector,
     DAILY_AGGREGATION_NAMES,
     dailyAggregationOptions,
@@ -83,6 +83,7 @@ function useMatrixData(obs, dailyAggregation, summary, threshold) {
 
 function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
     const obsObj = OBS.get(obs);
+    const fmat = fmatForObs(obs, dailyAggregation);
     const unit = useContext(UnitCtx);
     const { matrix, annual, currentYear, currentMonth, response, error, isValidating }
         = useMatrixData(obs, dailyAggregation, summary, threshold);
@@ -120,10 +121,10 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
                     const value = hasValue ? matrix.get(year).get(month) : null;
                     const formattedValue = summary === "count"
                         ? (value == null ? "-" : value.toString())
-                        : formatObs(unit, value, obsObj.fmat, false, false);
+                        : formatObs(unit, value, fmat, false, false);
                     const { bg, col } = isFuture
                         ? { bg: "gray.200", col: "black" }
-                        : styleForReportValue(value, obsObj.fmat, unit, summary, false, true);
+                        : styleForReportValue(value, fmat, unit, summary, false, true);
 
                     return <Box key={year + "-" + month}
                         className="cell"
@@ -146,10 +147,10 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
                     const isFuture = year > currentYear;
                     const formattedValue = isFuture ? "" : summary === "count"
                         ? (value == null ? "-" : value.toString())
-                        : formatObs(unit, value, obsObj.fmat, false, false);
+                        : formatObs(unit, value, fmat, false, false);
                     const { bg, col } = isFuture
                         ? { bg: "gray.200", col: "black" }
-                        : styleForReportValue(value, obsObj.fmat, unit, summary, true);
+                        : styleForReportValue(value, fmat, unit, summary, true);
 
                     return <Box key={year + "-annual"}
                         className="cell annual"
@@ -222,6 +223,7 @@ function allTimeStats(matrix, annual, currentYear, currentMonth) {
 
 function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
     const obsObj = OBS.get(obs);
+    const fmat = fmatForObs(obs, dailyAggregation);
     const unit = useContext(UnitCtx);
     const { matrix, annual, currentYear, currentMonth, response, error, isValidating }
         = useMatrixData(obs, dailyAggregation, summary, threshold);
@@ -249,7 +251,7 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
         if (summary === "count") {
             return key === "avg" ? value.toFixed(1) : value.toString();
         }
-        return formatObs(unit, value, obsObj.fmat, false, false);
+        return formatObs(unit, value, fmat, false, false);
     };
 
     return <Grid id="obs-alltime-summary"
@@ -272,7 +274,7 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
                 <Box minW="46px" py="2" fontWeight="bold" textAlign="center">{label}</Box>
                 {months.map((month) => {
                     const value = stats.byMonth[month]?.[key] ?? null;
-                    const { bg, col } = styleForReportValue(value, obsObj.fmat, unit, summary, false, true);
+                    const { bg, col } = styleForReportValue(value, fmat, unit, summary, false, true);
 
                     return <Box key={month + "-" + key}
                         className="cell"
@@ -290,7 +292,7 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
                 })}
                 {(() => {
                     const value = stats.annual?.[key] ?? null;
-                    const { bg, col } = styleForReportValue(value, obsObj.fmat, unit, summary, true);
+                    const { bg, col } = styleForReportValue(value, fmat, unit, summary, true);
 
                     return <Box key={key + "-annual"}
                         className="cell annual"
@@ -342,11 +344,11 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
 const ALLTIME_URL_STATE = {
     obs: { param: "var", def: () => "temp", valid: inList(DAILY_VALUE_OBS_STATES) },
     dailyAggregation: {
-        param: "daily", def: (s) => defaultDailyStat(s.obs, OBS.get(s.obs).summary), valid: (v, s) => dailyAggregationOptions(s.obs).includes(v),
+        param: "daily", def: (s) => s.obs === "wind" || s.obs === "gust" ? "max" : defaultDailyStat(s.obs, OBS.get(s.obs).summary), valid: (v, s) => dailyAggregationOptions(s.obs).includes(v),
     },
     summary: { def: (s) => OBS.get(s.obs).summary, valid: (v, s) => summaryOptions(s.obs).includes(v) },
     threshold: {
-        def: () => "0", valid: (v, s) => COUNT_THRESHOLDS[s.obs].includes(v), use: (s) => s.summary === "count",
+        def: () => "0", valid: (v, s) => countThresholdsAny(s.obs).includes(v), use: (s) => s.summary === "count",
     },
 };
 
@@ -357,9 +359,9 @@ export default function AllTimeReport() {
 
     // Switching variable resets the daily statistic and threshold; a Mean/Total
     // summary follows the new variable (Min/Max/Count are kept).
-    const handleObsChange = (nextObs) => update({
+    const handleObsChange = (nextObs, nextStat) => update({
         obs: nextObs,
-        dailyAggregation: defaultDailyStat(nextObs, OBS.get(nextObs).summary),
+        dailyAggregation: nextStat || (nextObs === "wind" ? "max" : defaultDailyStat(nextObs, OBS.get(nextObs).summary)),
         threshold: "0",
         // Totals (rain amount, wet hours) open on Total, as in the rankings; otherwise keep min/max/count.
         summary: isTotalObs(nextObs) || summary === "avg" || summary === "total" ? OBS.get(nextObs).summary : summary,
@@ -377,15 +379,17 @@ export default function AllTimeReport() {
 
         <Text fontWeight="bold">Variable:</Text>
         <RadioButtonGroup name="obs" value={baseObs(obs)} options={DAILY_VALUE_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
-        <SunViewToggle obs={obs} fn={handleObsChange} />
-        <Text mt="1" fontWeight="bold">Daily statistic:</Text>
-        <RadioButtonGroup
-            name="daily-aggregation"
-            value={dailyAggregation}
-            options={dailyOptions}
-            optFormat={(value) => DAILY_AGGREGATION_NAMES[value]}
-            fn={setDailyAggregation}
-        />
+        <SunViewToggle obs={obs} stat={dailyAggregation} fn={handleObsChange} />
+        {baseObs(obs) !== "wind" && dailyOptions.length > 1 && <>
+            <Text mt="1" fontWeight="bold">Daily statistic:</Text>
+            <RadioButtonGroup
+                name="daily-aggregation"
+                value={dailyAggregation}
+                options={dailyOptions}
+                optFormat={(value) => DAILY_AGGREGATION_NAMES[value]}
+                fn={setDailyAggregation}
+            />
+        </>}
         <Text mt="1" fontWeight="bold">Monthly and annual summary:</Text>
         <RadioButtonGroup name="summary" value={summary} options={monthlySummaryOptions} optFormat={(value) => SUMMARY_NAMES[value]} fn={setSummary} />
         {summary === "count" && <CountThresholdSelector obs={obs} value={threshold} fn={setThreshold} />}

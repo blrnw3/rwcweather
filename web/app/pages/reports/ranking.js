@@ -14,15 +14,20 @@ import {
 import NextLink from "next/link";
 import { useContext, useEffect } from "react";
 import useSWR from "swr";
-import { baseObs, defaultDailyStat, fetcher, fmatObsOpt, isTotalObs, OBS } from "../../components/conf";
+import { baseObs, defaultDailyStat, fetcher, fmatForObs, fmatObsOpt, isTotalObs, OBS } from "../../components/conf";
 import { ClimateNormalsLink } from "../../components/climate";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
 import {
-    COUNT_THRESHOLDS,
+    cToF,
+    countThresholdsAny,
     CountThresholdSelector,
     DAILY_AGGREGATION_NAMES,
     dailyAggregationOptions,
+    inHgToMb,
+    kphToMph,
+    mmToIn,
+    nearestThreshold,
     RadioButtonGroup,
     DAILY_VALUE_OBS_OPTIONS,
     DAILY_VALUE_OBS_STATES,
@@ -49,67 +54,148 @@ const PERIOD_NAMES = {
 const SUMMARY_PERIODS = ["monthly", "annual", "wateryear"];
 
 // Multi-day periods: N consecutive days, ranked server-side from the daily
-// table (see rwcwx/calc/rolling.py). Rain and sunshine totals, temperature means.
-const ROLLING_OBS = ["rain", "temp", "sun", "sunpct", "wet"];
-const ROLLING_DAYS = ["3", "7", "14", "30"];
-const MIN_COVERAGE = { 3: 3, 7: 7, 14: 13, 30: 27 };
+// table (see rwcwx/calc/rolling.py).
+const ROLLING_OBS = DAILY_VALUE_OBS_STATES;
+const ROLLING_DAYS = ["3", "5", "7", "14", "30"];
+const MIN_COVERAGE = { 3: 3, 5: 5, 7: 7, 14: 13, 30: 27 };
 
 // Spells: longest runs of consecutive days above (>=) or below (<) a threshold, ranked server-side
 // (see rwcwx/calc/spells.py). Thresholds are in inches, °F or hours, mirroring SPELL_VARS there.
 const SPELL_CONF = {
     rain: { total: ["0.01", "0.1", "0.25", "0.5", "1"] },
     wet: { total: ["1", "3", "6", "12"] },
+    wetrate: { avg: ["0.02", "0.05", "0.1", "0.2"] },
+    rain60: { max: ["0.05", "0.1", "0.25", "0.5"] },
+    rain10: { max: ["0.02", "0.05", "0.1", "0.2"] },
     temp: {
         max: ["40", "50", "60", "70", "80", "90", "100"],
         min: ["32", "40", "45", "50", "55", "60"],
         avg: ["40", "50", "60", "70", "80"],
     },
     sun: { total: ["0.1", "1", "4", "8", "10", "12"] },
+    sunpct: { avg: ["10", "25", "50", "75", "90"] },
+    humi: {
+        max: ["50", "60", "70", "80", "90", "95"],
+        min: ["20", "30", "40", "50", "60", "70"],
+        avg: ["30", "40", "50", "60", "70", "80", "90"],
+    },
+    dewpt: {
+        max: ["32", "40", "50", "55", "60", "65"],
+        min: ["25", "32", "40", "45", "50", "55"],
+        avg: ["32", "40", "45", "50", "55", "60"],
+    },
+    aqi: {
+        max: ["25", "50", "100", "150", "200"],
+        min: ["10", "25", "50", "100"],
+        avg: ["25", "50", "100", "150"],
+    },
+    wind: {
+        max: ["5", "10", "15", "20", "25"],
+        avg: ["2", "4", "6", "8", "10"],
+        min: ["1", "2", "5"],
+    },
+    gust: {
+        max: ["10", "15", "20", "25", "30", "40"],
+        avg: ["4", "6", "8", "10", "15"],
+        min: ["1", "2", "5"],
+    },
+    wdir: { avg: ["45", "90", "135", "180", "225", "270", "315"] },
+    pres: {
+        max: ["1005", "1010", "1015", "1020", "1025"],
+        min: ["1005", "1010", "1015", "1020", "1025"],
+        avg: ["1005", "1010", "1015", "1020", "1025"],
+    },
 };
-// Metric users get round Celsius thresholds. The API (and the URL) still take °F, so each is stored as its exact
-// °F equivalent (multiples of 5 °C are whole °F, e.g. 30 °C = 86 °F); mirrors SPELL_VARS in rwcwx/calc/spells.py.
-const cToF = (c) => String(c * 9 / 5 + 32);
-const SPELL_CONF_C = {
+// Metric users (uk & eu) get round Celsius and mm thresholds, stored as their °F / inch equivalents
+// to match SPELL_VARS in rwcwx/calc/spells.py.
+const SPELL_CONF_METRIC = {
+    rain: { total: ["0.01", ...[2, 5, 10, 25].map(mmToIn)] },
+    wetrate: { avg: [0.5, 1, 2, 5].map(mmToIn) },
+    rain60: { max: [1, 2, 5, 10].map(mmToIn) },
+    rain10: { max: [0.5, 1, 2, 5].map(mmToIn) },
     temp: {
         max: [10, 15, 20, 25, 30, 35, 40].map(cToF),
         min: [0, 5, 10, 15].map(cToF),
         avg: [5, 10, 15, 20, 25].map(cToF),
     },
+    dewpt: {
+        max: [0, 5, 10, 15, 20].map(cToF),
+        min: [-5, 0, 5, 10, 15].map(cToF),
+        avg: [0, 5, 10, 15, 20].map(cToF),
+    },
+};
+const SPELL_CONF_EU = {
+    wind: {
+        max: [10, 15, 20, 30, 40].map(kphToMph),
+        avg: [5, 10, 15, 20].map(kphToMph),
+        min: [2, 5, 10].map(kphToMph),
+    },
+    gust: {
+        max: [15, 25, 30, 40, 50, 60].map(kphToMph),
+        avg: [5, 10, 15, 20, 25].map(kphToMph),
+        min: [2, 5, 10].map(kphToMph),
+    },
+};
+const SPELL_CONF_US = {
+    pres: {
+        max: [29.7, 29.8, 29.9, 30.0, 30.1, 30.2].map(inHgToMb),
+        min: [29.7, 29.8, 29.9, 30.0, 30.1, 30.2].map(inHgToMb),
+        avg: [29.7, 29.8, 29.9, 30.0, 30.1, 30.2].map(inHgToMb),
+    },
 };
 const SPELL_OBS = Object.keys(SPELL_CONF);
 // Opening defaults: wet days for rain, warm days for temperatures, sunny days for sunshine.
-const SPELL_DEFAULTS = { rain: "0.01", wet: "1", max: "80", min: "50", avg: "60", sun: "10" };
+const SPELL_DEFAULTS = {
+    rain: "0.01", wet: "1", wetrate: "0.05", rain60: "0.1", rain10: "0.05",
+    max: "80", min: "50", avg: "60",
+    sun: "10", sunpct: "75",
+    humi: "70", dewpt: "50", aqi: "50", wind: "10", gust: "20", wdir: "180", pres: "1015",
+};
+const DEFAULT_SPELL_DIR_NAMES = { above: "Above (≥)", below: "Below (<)" };
 const SPELL_DIR_NAMES = {
     rain: { above: "Wet (≥)", below: "Dry (<)" },
     wet: { above: "Wet (≥)", below: "Mostly dry (<)" },
     temp: { above: "Above (≥)", below: "Below (<)" },
     sun: { above: "Sunny (≥)", below: "Dull (<)" },
+    sunpct: { above: "Sunny (≥)", below: "Dull (<)" },
 };
+const DEFAULT_SPELL_TITLE_WORDS = { above: "high", below: "low" };
 const SPELL_TITLE_WORDS = {
     rain: { above: "wet", below: "dry" },
     wet: { above: "wet", below: "mostly dry" },
     temp: { above: "warm", below: "cold" },
     sun: { above: "sunny", below: "dull" },
+    sunpct: { above: "sunny", below: "dull" },
+    humi: { above: "humid", below: "dry" },
+    wind: { above: "windy", below: "calm" },
+    gust: { above: "gusty", below: "calm" },
+    aqi: { above: "polluted", below: "clean" },
 };
 const SPELL_STATUS = { today: ", so far", pending: ", may continue today", yesterday: ", to yesterday" };
 const SPELL_START_YEARS = ["all", ...Array.from(Array(new Date().getFullYear() - 2021 + 1).keys()).map((i) => String(2021 + i))];
 
-// Options shown for the unit preference ("uk" = metric temperatures).
+// Options shown for the unit preference ("uk" / "eu" = metric temperatures & rainfall; "eu" = kph wind).
 function spellThresholds(obs, stat, unit = "us") {
-    return (unit === "uk" && SPELL_CONF_C[obs]?.[stat]) || SPELL_CONF[obs]?.[stat] || [];
-}
-
-// Every value the URL / API accepts: both unit systems' options.
-function spellThresholdsAny(obs, stat) {
-    return [...new Set([...spellThresholds(obs, stat, "us"), ...spellThresholds(obs, stat, "uk")])];
-}
-
-// Closest option for the current unit, so switching units keeps a similar threshold (e.g. 90 °F -> 30 °C).
-function nearestThreshold(value, options) {
-    if (!options.length || options.includes(value)) {
-        return value;
+    if (unit === "eu" && SPELL_CONF_EU[obs]?.[stat]) {
+        return SPELL_CONF_EU[obs][stat];
     }
-    return options.reduce((best, o) => Math.abs(Number(o) - Number(value)) < Math.abs(Number(best) - Number(value)) ? o : best);
+    if (unit !== "us" && SPELL_CONF_METRIC[obs]?.[stat]) {
+        return SPELL_CONF_METRIC[obs][stat];
+    }
+    if (unit === "us" && SPELL_CONF_US[obs]?.[stat]) {
+        return SPELL_CONF_US[obs][stat];
+    }
+    return SPELL_CONF[obs]?.[stat] || [];
+}
+
+// Every value the URL / API accepts: all unit systems' options.
+function spellThresholdsAny(obs, stat) {
+    return [...new Set([
+        ...spellThresholds(obs, stat, "us"),
+        ...spellThresholds(obs, stat, "uk"),
+        ...spellThresholds(obs, stat, "eu"),
+        ...(obs === "rain" ? [mmToIn(0.2)] : []),
+    ])];
 }
 
 function spellDefaultThreshold(obs, stat) {
@@ -119,16 +205,23 @@ function spellDefaultThreshold(obs, stat) {
 }
 
 // Thresholds are entered in °F / inches / hours; temperatures are stored (and formatted from) °C.
-function formatThreshold(unit, obs, value) {
+function formatThreshold(unit, obs, value, stat) {
     if (obs === "wet" || obs === "sun") {
         return value + " h";
     }
-    if (obs === "temp") {
-        // Whole degrees in the viewer's unit: 86 -> "30 °C" (metric) or "86 °F".
-        const f = Number(value);
-        return unit === "uk" ? Math.round((f - 32) * 5 / 9 * 10) / 10 + " °C" : f + " °F";
+    const num = Number(value);
+    if (obs === "rain" && (num === 0.01 || num === 0.0079) && unit !== "us") {
+        return "0.2 mm";
     }
-    return formatObs(unit, Number(value), OBS.get(obs).fmat);
+    if (obs === "temp" || obs === "dewpt") {
+        // Whole degrees in the viewer's unit: 86 -> "30 °C" (metric) or "86 °F".
+        return unit !== "us" ? Math.round((num - 32) * 5 / 9 * 10) / 10 + " °C" : num + " °F";
+    }
+    const fmat = fmatForObs(obs, stat);
+    const raw = formatObs(unit, num, fmat);
+    return unit === "us" && (fmat === "rain" || fmat === "wetrate" || fmat === "pres")
+        ? raw
+        : raw.replace(/\.0+(?=\s|$)/, "");
 }
 
 function periodOptions(obs) {
@@ -153,7 +246,22 @@ const ORDER_NAMES = {
 };
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const monthOptions = ["all", ...Array.from(Array(12).keys()).map((month) => (month + 1).toString())];
+const SEASON_NAMES = { spring: "Spring", summer: "Summer", autumn: "Autumn", winter: "Winter" };
+const SEASON_MONTHS = { spring: [3, 4, 5], summer: [6, 7, 8], autumn: [9, 10, 11], winter: [12, 1, 2] };
+const SEASON_OPTIONS = Object.keys(SEASON_NAMES);
+const monthOptions = ["all", ...SEASON_OPTIONS, ...Array.from(Array(12).keys()).map((month) => (month + 1).toString())];
+
+function formatMonthFilter(value) {
+    if (value === "all") return "All";
+    if (SEASON_NAMES[value]) return SEASON_NAMES[value];
+    return monthNames[Number(value) - 1];
+}
+
+function matchesMonthFilter(monthNum, filter) {
+    if (filter === "all") return true;
+    if (SEASON_MONTHS[filter]) return SEASON_MONTHS[filter].includes(monthNum);
+    return monthNum === Number(filter);
+}
 
 function useRankingData(obs, dailyAggregation) {
     const url = "/api/var/all_periods/" + obs + "/" + dailyAggregation
@@ -304,10 +412,19 @@ const CURRENT_LABEL = {
     wateryear: "This water year",
 };
 
+function formatPtile(rank, of) {
+    if (rank == null || !of || of <= 0) {
+        return null;
+    }
+    const p = Math.max(0, Math.min(100, 100 * (of - rank + 0.5) / of));
+    return p >= 10 ? String(Math.round(p)) : p.toPrecision(2);
+}
+
 function CurrentContext({ label, periodLabel, value, rank, of, inTop, soFar = true }) {
+    const ptile = formatPtile(rank, of);
     return <Text id="ranking-current" mt="3" p="2" bg="blue.50" borderLeftWidth="4px" borderColor="blue.400">
         <b>{label}{soFar ? " so far" : ""}</b> ({periodLabel}): <b>{value}</b>
-        {rank != null ? <>, rank <b>{rank}</b> of {of}{inTop ? " (in the list below)" : ""}</> : null}
+        {rank != null ? <>, rank <b>{rank}</b> of {of}{ptile != null ? ` (${ptile}%ile)` : ""}{inTop ? " (in the list below)" : ""}</> : null}
     </Text>;
 }
 
@@ -357,10 +474,12 @@ function DayLink({ date, children }) {
     </NextLink>;
 }
 
-function RollingRankingTable({ obs, dailyAggregation, days, order, limit }) {
+function RollingRankingTable({ obs, dailyAggregation, days, month, order, limit }) {
     const unit = useContext(UnitCtx);
     const obsObj = OBS.get(obs);
-    const url = "/api/var/rolling/" + obs + "/" + dailyAggregation + "/?days=" + days + "&order=" + order + "&limit=" + limit;
+    const fmat = fmatForObs(obs, dailyAggregation);
+    const url = "/api/var/rolling/" + obs + "/" + dailyAggregation + "/?days=" + days + "&order=" + order
+        + "&month=" + (month === "all" ? 0 : month) + "&limit=" + limit;
     const { data: response, error, isValidating } = useSWR(url, fetcher, { refreshInterval: 300000 });
 
     if (error || response?.error) {
@@ -377,17 +496,17 @@ function RollingRankingTable({ obs, dailyAggregation, days, order, limit }) {
     let previousValue = null;
     let displayedRank = 0;
 
-    return <Box mt="5" overflowX="auto">
+    return <Box mt="5" overflowX="auto" maxW="860px">
         {isValidating && <Text color="gray.500" fontSize="sm">Refreshing…</Text>}
         {current ? <CurrentContext
             label={"Latest " + days + " days"}
             periodLabel={formatSpan(current.start, current.end)}
-            value={formatObs(unit, current.val, obsObj.fmat)}
+            value={formatObs(unit, current.val, fmat)}
             rank={current.rank}
             of={current.of}
             inTop={currentInTop}
             soFar={today != null && current.end.join("-") === today.join("-")}
-        /> : <Text mt="3" color="gray.500">The latest {days} days don't have enough data to rank.</Text>}
+        /> : <Text mt="3" color="gray.500">The latest {days} days don&apos;t have enough data (or don&apos;t match the selected month/season) to rank.</Text>}
         <RecentLegend />
         <Table id="ranking-table" variant="simple" size="md">
             <Thead>
@@ -403,7 +522,7 @@ function RollingRankingTable({ obs, dailyAggregation, days, order, limit }) {
                         displayedRank = index + 1;
                         previousValue = record.val;
                     }
-                    const { bg, col } = styleForReportValue(record.val, obsObj.fmat, unit, isTotalObs(obs) ? "total" : null);
+                    const { bg, col } = styleForReportValue(record.val, fmat, unit, isTotalObs(obs) ? "total" : null);
                     const span = formatSpan(record.start, record.end);
                     const recent = recency(record.end, today);
                     const hl = recent ? RECENT_STYLE[recent] : {};
@@ -417,7 +536,7 @@ function RollingRankingTable({ obs, dailyAggregation, days, order, limit }) {
                                 {" "}({record.days} of {record.n} days with data)
                             </Text>}
                         </Td>
-                        <Td isNumeric backgroundColor={bg} color={col}>{formatObs(unit, record.val, obsObj.fmat)}</Td>
+                        <Td isNumeric backgroundColor={bg} color={col}>{formatObs(unit, record.val, fmat)}</Td>
                     </Tr>;
                 })}
                 {showCurrentRow && <Tr id="ranking-current-row" borderTopWidth="3px" borderTopStyle="dashed">
@@ -427,7 +546,7 @@ function RollingRankingTable({ obs, dailyAggregation, days, order, limit }) {
                             {" "}({current.days} of {current.n} days with data)
                         </Text>}
                     </Td>
-                    <Td isNumeric bg="blue.50">{formatObs(unit, current.val, obsObj.fmat)}</Td>
+                    <Td isNumeric bg="blue.50">{formatObs(unit, current.val, fmat)}</Td>
                 </Tr>}
             </Tbody>
         </Table>
@@ -438,8 +557,9 @@ function RollingRankingTable({ obs, dailyAggregation, days, order, limit }) {
 // Inside <Page>, so they can read the unit preference.
 function SpellTitle({ obs, dailyAggregation, dir, threshold, limit }) {
     const unit = useContext(UnitCtx);
-    return <>Longest {limit} {SPELL_TITLE_WORDS[obs][dir]} spells
-        ({DAILY_AGGREGATION_NAMES[dailyAggregation]} {dir === "above" ? "≥" : "<"} {formatThreshold(unit, obs, threshold)}) –</>;
+    const words = SPELL_TITLE_WORDS[obs] || DEFAULT_SPELL_TITLE_WORDS;
+    return <>Longest {limit} {words[dir]} spells
+        ({DAILY_AGGREGATION_NAMES[dailyAggregation]} {dir === "above" ? "≥" : "<"} {formatThreshold(unit, obs, threshold, dailyAggregation)}) –</>;
 }
 
 function SpellThresholdSelector({ obs, dailyAggregation, value, fn }) {
@@ -456,7 +576,7 @@ function SpellThresholdSelector({ obs, dailyAggregation, value, fn }) {
     return <>
         <Text mt="1" fontWeight="bold">Threshold:</Text>
         <RadioButtonGroup name="level" value={value} options={options}
-            optFormat={(v) => formatThreshold(unit, obs, v)} fn={fn} />
+            optFormat={(v) => formatThreshold(unit, obs, v, dailyAggregation)} fn={fn} />
     </>;
 }
 
@@ -471,7 +591,7 @@ function spanParts(record) {
 
 function SpellRankingTable({ obs, dailyAggregation, dir, threshold, month, startYear, limit }) {
     const unit = useContext(UnitCtx);
-    const obsObj = OBS.get(obs);
+    const fmat = fmatForObs(obs, dailyAggregation);
     const url = "/api/var/spells/" + obs + "/" + dailyAggregation + "/?dir=" + dir + "&threshold=" + threshold
         + "&month=" + (month === "all" ? 0 : month) + (startYear === "all" ? "" : "&start_year=" + startYear) + "&limit=" + limit;
     const { data: response, error, isValidating } = useSWR(url, fetcher, { refreshInterval: 300000 });
@@ -490,16 +610,17 @@ function SpellRankingTable({ obs, dailyAggregation, dir, threshold, month, start
     const isTotal = response.stat === "total";
     // e.g. dry spells (rain < 0.01 in) are all zero: the stats columns would say nothing.
     const showStats = records.some((r) => r.max !== 0) || (current && current.max !== 0);
-    const fmt = (v) => formatObs(unit, v, obsObj.fmat);
+    const fmt = (v) => formatObs(unit, v, fmat);
     const days = (n) => n + (n === 1 ? " day" : " days");
+    const curPtile = current ? formatPtile(current.rank, current.of) : null;
     let previousLength = null;
     let displayedRank = 0;
 
-    return <Box mt="5" overflowX="auto">
+    return <Box mt="5" overflowX="auto" maxW="860px">
         {isValidating && <Text color="gray.500" fontSize="sm">Refreshing…</Text>}
         {current ? <Text id="ranking-current" mt="3" p="2" bg="blue.50" borderLeftWidth="4px" borderColor="blue.400">
             <b>Current spell</b> ({formatSpan(current.start, current.end)}{SPELL_STATUS[current.status]}):
-            {" "}<b>{days(current.length)}</b>, rank <b>{current.rank}</b> of {current.of}{currentInTop ? " (in the list below)" : ""}
+            {" "}<b>{days(current.length)}</b>, rank <b>{current.rank}</b> of {current.of}{curPtile != null ? ` (${curPtile}%ile)` : ""}{currentInTop ? " (in the list below)" : ""}
         </Text> : <Text mt="3" color="gray.500">No spell matching this rule is running now.</Text>}
         <RecentLegend />
         <Table id="ranking-table" variant="simple" size="md">
@@ -563,6 +684,7 @@ function SpellRankingTable({ obs, dailyAggregation, dir, threshold, month, start
 function RankingTable({ obs, dailyAggregation, period, summary, threshold, month, order, limit }) {
     const unit = useContext(UnitCtx);
     const obsObj = OBS.get(obs);
+    const fmat = fmatForObs(obs, dailyAggregation);
     const { data: response, error, isValidating } = useRankingData(obs, dailyAggregation);
     const waterYears = useWaterYears(period === "wateryear" ? obs : null, summary, threshold);
     const results = response?.result || {};
@@ -570,7 +692,7 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
     const byMonth = period === "daily" || period === "monthly";
     const allRecords = rankingRecords(results, response?.server, period, summary, threshold, waterYears)
         .filter((record) => Number.isFinite(record.value))
-        .filter((record) => !byMonth || month === "all" || record.date[1] === Number(month))
+        .filter((record) => !byMonth || matchesMonthFilter(record.date[1], month))
         .sort((a, b) => {
             const valueOrder = order === "highest" ? b.value - a.value : a.value - b.value;
             if (valueOrder !== 0) {
@@ -586,14 +708,14 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
     const currentKey = current?.date.join("-");
     const currentInList = current != null && allRecords.some((r) => r.date.join("-") === currentKey);
     const currentInTop = current != null && records.some((r) => r.date.join("-") === currentKey);
-    const currentMonthExcluded = byMonth && month !== "all" && today && Number(month) !== today[1];
+    const currentMonthExcluded = byMonth && month !== "all" && today && !matchesMonthFilter(today[1], month);
     const currentRanked = current != null && Number.isFinite(current.value) && !currentMonthExcluded;
     const otherValues = allRecords.filter((r) => r.date.join("-") !== currentKey).map((r) => r.value);
     const currentRank = currentRanked ? rankOf(current.value, otherValues, order) : null;
     const currentOf = otherValues.length + 1;
     const fmtValue = (value) => summary === "count" && isSummaryPeriod
         ? value.toString()
-        : formatObs(unit, value, obsObj.fmat);
+        : formatObs(unit, value, fmat);
     const currentPeriodLabel = current
         ? (period === "wateryear" ? waterYearLabel(current.date[0]) : formatPeriod(period, current.date))
         : null;
@@ -608,7 +730,7 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
     let previousValue = null;
     let displayedRank = 0;
 
-    return <Box mt="5" overflowX="auto">
+    return <Box mt="5" overflowX="auto" maxW="860px">
         {isValidating && <Text color="gray.500" fontSize="sm">Refreshing…</Text>}
         {currentRanked ? <CurrentContext
             label={CURRENT_LABEL[period]}
@@ -619,7 +741,7 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
             inTop={currentInTop}
         /> : <Text id="ranking-current" mt="3" color="gray.500">
             {currentMonthExcluded
-                ? CURRENT_LABEL[period] + " isn't in " + monthNames[Number(month) - 1] + "; choose All months or "
+                ? CURRENT_LABEL[period] + " isn't in " + formatMonthFilter(month) + "; choose All or "
                     + monthNames[today[1] - 1] + " to see how it ranks."
                 : "No data yet for " + CURRENT_LABEL[period].toLowerCase() + "."}
         </Text>}
@@ -643,10 +765,10 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
                     }
                     const formattedValue = summary === "count" && isSummaryPeriod
                         ? record.value.toString()
-                        : formatObs(unit, record.value, obsObj.fmat);
+                        : formatObs(unit, record.value, fmat);
                     const selectedSummary = isSummaryPeriod ? summary : null;
                     const { bg, col } = styleForReportValue(
-                        record.value, obsObj.fmat, unit, selectedSummary, period === "annual" || period === "wateryear", isSummaryPeriod
+                        record.value, fmat, unit, selectedSummary, period === "annual" || period === "wateryear", isSummaryPeriod
                     );
 
                     const recent = recency(periodEnd(period, record.date), today);
@@ -674,9 +796,13 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
     </Box>;
 }
 
-const monthParam = (value) => value === "all" ? "all" : monthNames[Number(value) - 1].toLowerCase();
+const monthParam = (value) => value === "all" || SEASON_NAMES[value] ? value : monthNames[Number(value) - 1].toLowerCase();
 const monthFromParam = (value) => {
-    const index = monthNames.findIndex((name) => name.toLowerCase() === String(value).toLowerCase());
+    const low = String(value).toLowerCase();
+    if (SEASON_NAMES[low]) {
+        return low;
+    }
+    const index = monthNames.findIndex((name) => name.toLowerCase() === low);
     return index >= 0 ? (index + 1).toString() : value;
 };
 
@@ -698,12 +824,12 @@ const RANKING_URL_STATE = {
         use: (s) => SUMMARY_PERIODS.includes(s.period),
     },
     threshold: {
-        def: () => "0", valid: (v, s) => COUNT_THRESHOLDS[s.obs].includes(v),
+        def: () => "0", valid: (v, s) => countThresholdsAny(s.obs).includes(v),
         use: (s) => SUMMARY_PERIODS.includes(s.period) && s.summary === "count",
     },
     month: {
         def: () => "all", valid: inList(monthOptions), toUrl: monthParam, fromUrl: monthFromParam,
-        use: (s) => s.period === "daily" || s.period === "monthly" || s.period === "spells",
+        use: (s) => s.period === "daily" || s.period === "monthly" || s.period === "rolling" || s.period === "spells",
     },
     dir: { def: () => "above", valid: inList(["above", "below"]), use: (s) => s.period === "spells" },
     spellThreshold: {
@@ -723,20 +849,22 @@ export default function RankingReport() {
     const dailyOptions = dailyAggregationOptions(obs);
     const monthlySummaryOptions = summaryOptions(obs);
 
-    const handleObsChange = (nextObs) => update({
-        obs: nextObs,
-        dailyAggregation: defaultDailyStat(nextObs),
-        threshold: "0",
-        // Rain is mostly ranked by totals (wettest month / year / water year),
-        // so switching to rain selects Total; other summaries stay selectable.
-        summary: isTotalObs(nextObs) || summary === "avg" || summary === "total" ? OBS.get(nextObs).summary : summary,
-        // Water years are rain-only; other variables fall back to calendar years.
-        // Multi-day periods are rain/temperature only; others fall back to daily.
-        period: period === "wateryear" && !hasWaterYears(nextObs) ? "annual"
-            : period === "rolling" && !ROLLING_OBS.includes(nextObs) ? "daily"
-            : period === "spells" && !SPELL_OBS.includes(nextObs) ? "daily" : period,
-        spellThreshold: spellDefaultThreshold(nextObs, defaultDailyStat(nextObs)),
-    });
+    const handleObsChange = (nextObs, nextStat) => {
+        const nextDaily = nextStat || (nextObs === "wind" ? "max" : defaultDailyStat(nextObs));
+        update({
+            obs: nextObs,
+            dailyAggregation: nextDaily,
+            threshold: "0",
+            // Rain is mostly ranked by totals (wettest month / year / water year),
+            // so switching to rain selects Total; other summaries stay selectable.
+            summary: isTotalObs(nextObs) || summary === "avg" || summary === "total" ? OBS.get(nextObs).summary : summary,
+            // Water years are rain-only; other variables fall back to calendar years.
+            period: period === "wateryear" && !hasWaterYears(nextObs) ? "annual"
+                : period === "rolling" && !ROLLING_OBS.includes(nextObs) ? "daily"
+                : period === "spells" && !SPELL_OBS.includes(nextObs) ? "daily" : period,
+            spellThreshold: spellDefaultThreshold(nextObs, nextDaily),
+        });
+    };
 
     const handlePeriodChange = (nextPeriod) => update({
         period: nextPeriod,
@@ -758,7 +886,7 @@ export default function RankingReport() {
     const setLimit = (value) => update({ limit: value });
 
     const isSummaryPeriod = SUMMARY_PERIODS.includes(period);
-    const byMonth = period === "daily" || period === "monthly" || period === "spells";
+    const byMonth = period === "daily" || period === "monthly" || period === "rolling" || period === "spells";
     const rankingTitle = period === "spells"
         ? <SpellTitle obs={obs} dailyAggregation={dailyAggregation} dir={dir} threshold={spellThreshold} limit={limit} />
         : period === "daily"
@@ -768,7 +896,8 @@ export default function RankingReport() {
             + " of " + DAILY_AGGREGATION_NAMES[dailyAggregation]
         : ORDER_NAMES[order] + " " + limit + " " + PERIOD_NAMES[period] + " " + SUMMARY_NAMES[summary]
             + " of " + DAILY_AGGREGATION_NAMES[dailyAggregation];
-    const monthSuffix = !byMonth || month === "all" ? "" : " in " + monthNames[Number(month) - 1];
+    const monthSuffix = !byMonth || month === "all" ? "" : " in " + formatMonthFilter(month);
+    const dirNames = SPELL_DIR_NAMES[obs] || DEFAULT_SPELL_DIR_NAMES;
 
     return <Page name="reports" sub="ranking" title="Reports | rankings">
         <Heading as="h1" size="1">Reports: Rankings</Heading>
@@ -780,12 +909,12 @@ export default function RankingReport() {
         <Text fontWeight="bold">Period:</Text>
         <RadioButtonGroup name="period" value={period} options={periodOptions(obs)} optFormat={(value) => PERIOD_NAMES[value]} fn={handlePeriodChange} />
         {byMonth && <>
-            <Text mt="1" fontWeight="bold">Month:</Text>
+            <Text mt="1" fontWeight="bold">Month / season:</Text>
             <RadioButtonGroup
                 name="month"
                 value={month}
                 options={monthOptions}
-                optFormat={(value) => value === "all" ? "All months" : monthNames[Number(value) - 1]}
+                optFormat={formatMonthFilter}
                 fn={setMonth}
             />
         </>}
@@ -795,10 +924,12 @@ export default function RankingReport() {
         </>}
         <Text mt="1" fontWeight="bold">Variable:</Text>
         <RadioButtonGroup name="obs" value={baseObs(obs)} options={DAILY_VALUE_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
-        <SunViewToggle obs={obs} fn={handleObsChange} />
-        <Text mt="1" fontWeight="bold">Daily statistic:</Text>
-        <RadioButtonGroup name="daily-aggregation" value={dailyAggregation}
-            options={period === "spells" ? dailyOptions.filter((o) => spellThresholds(obs, o).length) : dailyOptions} optFormat={(value) => DAILY_AGGREGATION_NAMES[value]} fn={setDailyAggregation} />
+        <SunViewToggle obs={obs} stat={dailyAggregation} fn={handleObsChange} />
+        {baseObs(obs) !== "wind" && dailyOptions.length > 1 && <>
+            <Text mt="1" fontWeight="bold">Daily statistic:</Text>
+            <RadioButtonGroup name="daily-aggregation" value={dailyAggregation}
+                options={period === "spells" ? dailyOptions.filter((o) => spellThresholds(obs, o).length) : dailyOptions} optFormat={(value) => DAILY_AGGREGATION_NAMES[value]} fn={setDailyAggregation} />
+        </>}
         {isSummaryPeriod && <>
             <Text mt="1" fontWeight="bold">{PERIOD_NAMES[period]} summary:</Text>
             <RadioButtonGroup name="summary" value={summary} options={monthlySummaryOptions} optFormat={(value) => SUMMARY_NAMES[value]} fn={setSummary} />
@@ -806,7 +937,7 @@ export default function RankingReport() {
         </>}
         {period === "spells" ? <>
             <Text mt="1" fontWeight="bold">Spell:</Text>
-            <RadioButtonGroup name="dir" value={dir} options={["above", "below"]} optFormat={(value) => SPELL_DIR_NAMES[obs][value]} fn={setDir} />
+            <RadioButtonGroup name="dir" value={dir} options={["above", "below"]} optFormat={(value) => dirNames[value]} fn={setDir} />
             <SpellThresholdSelector obs={obs} dailyAggregation={dailyAggregation} value={spellThreshold} fn={setSpellThreshold} />
             <Text mt="1" fontWeight="bold">From:</Text>
             <RadioButtonGroup name="from" value={startYear} options={SPELL_START_YEARS}
@@ -830,6 +961,7 @@ export default function RankingReport() {
             obs={obs}
             dailyAggregation={dailyAggregation}
             days={days}
+            month={month}
             order={order}
             limit={limit}
         /> : <RankingTable
@@ -852,16 +984,17 @@ export default function RankingReport() {
             complete years: the current, still in-progress year and any partially recorded first year are left out.
         </Text>
         <Text mt="2">
-            Multi-day rankings (rainfall and temperature) use N consecutive days: the rain total, or the mean of the
-            chosen daily temperature. Listed periods never overlap, so one storm or heatwave appears only once. A
-            period needs data for at least 90% of its days ({MIN_COVERAGE[7]} of 7, {MIN_COVERAGE[14]} of 14,
-            {" "}{MIN_COVERAGE[30]} of 30); temperature periods only use complete days, so today is left out.
+            Multi-day rankings use N consecutive days: the total (rainfall, wet hours, sunshine), or the mean of the
+            chosen daily statistic. Listed periods never overlap, so one storm or heatwave appears only once. A
+            period needs data for at least 90% of its days ({MIN_COVERAGE[5]} of 5, {MIN_COVERAGE[7]} of 7, {MIN_COVERAGE[14]} of 14,
+            {" "}{MIN_COVERAGE[30]} of 30); means and sunshine totals only use complete days, so today is left out.
+            With a month or season selected, any period overlapping that month or season is included.
         </Text>
         <Text mt="2">
             Spells are runs of consecutive days on which the chosen daily value is at or above (≥), or below (&lt;),
             the threshold, ranked by length; ties list the most recent first. A day without data ends a spell. With a
-            month selected, only days in that month count, so spells are cut at the month&apos;s edges. Rain and wet-hour
-            spells include today once it qualifies; temperature and sunshine spells stop at yesterday.
+            month or season selected, any spell overlapping that month or season is included in full. Rain and wet-hour
+            spells include today once it qualifies; other variables stop at yesterday.
         </Text>
     </Page>;
 }

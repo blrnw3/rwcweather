@@ -45,6 +45,16 @@ class AvgExtQ:
         return q.all()
 
     @staticmethod
+    def all_for_day_of_year(month: int, day: int, exclude_date: date = None) -> List[AvgExt]:
+        q = (db.s.query(AvgExt)
+             .filter(func.month(AvgExt.d) == month)
+             .filter(func.day(AvgExt.d) == day)
+             .filter(AvgExt.period == "day"))
+        if exclude_date:
+            q = q.filter(AvgExt.d != exclude_date)
+        return q.order_by(AvgExt.d.desc()).all()
+
+    @staticmethod
     def all_for_year(year: int) -> List[AvgExt]:
         start_date, end_date = DateUtil.year_start_end_dates(year)
         q = db.s.query(AvgExt).filter(AvgExt.d >= start_date).filter(AvgExt.d <= end_date)

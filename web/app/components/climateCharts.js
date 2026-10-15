@@ -23,6 +23,7 @@ const TEMP_LOW = "#3377dd";
 const TEMP_HIGH = "#ff5511";
 const TEMP_MEAN = "#ff9933";
 const RAIN = "#2299dd";
+const SUN = "#d99b00";
 
 function isMobile() {
     return typeof window !== "undefined" && window.innerWidth < 768;
@@ -51,7 +52,7 @@ function tempScale(unit) {
     return { conv: convFunction(unit, "temp"), unitSymbol, precision };
 }
 
-/** Monthly normals: low-high temperature range columns plus rain columns (2nd axis). */
+/** Monthly normals: low-high temperature range columns, rain columns, and sunshine hours line. */
 export function MonthlyNormalsChart({ period }) {
     const unit = useContext(UnitCtx);
     const temp = tempScale(unit);
@@ -60,6 +61,7 @@ export function MonthlyNormalsChart({ period }) {
     const lows = monthlyNormals("temp", "min");
     const highs = monthlyNormals("temp", "max");
     const rain = monthlyNormals("rain", "total");
+    const sun = monthlyNormals("sun", "total");
     const hasTemp = lows != null && highs != null;
 
     const series = [];
@@ -89,6 +91,15 @@ export function MonthlyNormalsChart({ period }) {
             tooltip: { valueSuffix: " " + temp.unitSymbol, valueDecimals: temp.precision },
         });
     }
+    if (sun) {
+        series.push({
+            type: "line", name: "Sunshine", yAxis: 2, zIndex: 4, color: SUN,
+            lineWidth: 2,
+            marker: { symbol: "diamond", radius: 4 },
+            data: sun.map((v) => round(v, 0)),
+            tooltip: { valueSuffix: " h", valueDecimals: 0 },
+        });
+    }
     const base = COMMON();
     const options = {
         ...base,
@@ -104,6 +115,11 @@ export function MonthlyNormalsChart({ period }) {
                 title: { text: "Rainfall / " + rainFmt.unitSymbol, style: { fontSize: fontSize(13), color: RAIN } },
                 labels: { style: { color: RAIN } },
                 opposite: true, min: 0, visible: rain != null,
+            },
+            {
+                title: { text: "Sunshine / h", style: { fontSize: fontSize(13), color: SUN } },
+                labels: { style: { color: SUN } },
+                opposite: true, min: 0, visible: sun != null,
             },
         ],
         tooltip: { shared: true },

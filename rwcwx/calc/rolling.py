@@ -19,36 +19,86 @@ Rules:
 """
 import math
 from datetime import date, timedelta
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
-ROLLING_DAYS = (3, 7, 14, 30)
+ROLLING_DAYS = (3, 5, 7, 14, 30)
 MIN_COVERAGE = 0.9
+
+SEASONS: Dict[str, Set[int]] = {
+    "spring": {3, 4, 5},
+    "summer": {6, 7, 8},
+    "autumn": {9, 10, 11},
+    "fall": {9, 10, 11},
+    "winter": {12, 1, 2},
+}
 
 # variable -> {daily statistic -> how the N daily values are combined}
 ROLLING_VARS: Dict[str, Dict[str, str]] = {
     "rain": {"total": "sum"},
+    "wet": {"total": "sum"},
+    "wetrate": {"avg": "mean"},
+    "rain60": {"max": "mean"},
+    "rain10": {"max": "mean"},
     "temp": {"avg": "mean", "max": "mean", "min": "mean"},
     "sun": {"total": "sum"},
     "sunpct": {"avg": "mean"},
-    "wet": {"total": "sum"},
+    "humi": {"avg": "mean", "max": "mean", "min": "mean"},
+    "dewpt": {"avg": "mean", "max": "mean", "min": "mean"},
+    "aqi": {"avg": "mean", "max": "mean", "min": "mean"},
+    "wind": {"avg": "mean", "max": "mean", "min": "mean"},
+    "gust": {"avg": "mean", "max": "mean", "min": "mean"},
+    "wdir": {"avg": "mean", "max": "mean", "min": "mean"},
+    "pres": {"avg": "mean", "max": "mean", "min": "mean"},
 }
 
 
 PARTIAL_DAY_EXCLUDED = ("sun", "sunpct")
 
 
+def target_months(month: Union[int, str, None] = 0, season: Optional[str] = None) -> Optional[Set[int]]:
+    if season and season.lower() in SEASONS:
+        return SEASONS[season.lower()]
+    if isinstance(month, str):
+        m_low = month.lower()
+        if m_low in SEASONS:
+            return SEASONS[m_low]
+        if m_low in ("", "0", "all"):
+            return None
+        month = int(month)
+    if month and 1 <= int(month) <= 12:
+        return {int(month)}
+    return None
+
+
+def span_overlaps_months(start: date, end: date, months: Optional[Set[int]]) -> bool:
+    if not months:
+        return True
+    if start.month in months or end.month in months:
+        return True
+    cur = date(start.year, start.month, 1)
+    last = date(end.year, end.month, 1)
+    while cur <= last:
+        if cur.month in months:
+            return True
+        cur = date(cur.year + (1 if cur.month == 12 else 0), 1 if cur.month == 12 else cur.month + 1, 1)
+    return False
+
+
 def min_days_required(n: int) -> int:
     return math.ceil(n * MIN_COVERAGE - 1e-9)
 
 
-def rolling_windows(daily: Iterable[Tuple[date, float]], n: int, how: str, last_day: Optional[date] = None) -> List[dict]:
-    """All N-day windows meeting the coverage rule, keyed by their last day."""
+def rolling_windows(daily: Iterable[Tuple[date, float]], n: int, how: str,
+                    last_day: Optional[date] = None, month: Union[int, str, None] = 0,
+                    season: Optional[str] = None) -> List[dict]:
+    """All N-day windows meeting the coverage rule (and optional month/season overlap), keyed by their last day."""
     values = {d: v for d, v in daily if v is not None and (last_day is None or d <= last_day)}
     if not values:
         return []
     first, last = min(values), max(values)
     days = [first + timedelta(days=i) for i in range((last - first).days + 1)]
     need = min_days_required(n)
+    months = target_months(month, season)
 
     windows = []
     total, count = 0.0, 0
@@ -62,8 +112,11 @@ def rolling_windows(daily: Iterable[Tuple[date, float]], n: int, how: str, last_
                 total -= values[dropped]
                 count -= 1
         if i >= n - 1 and count >= need:
+            start_d = days[i - n + 1]
+            if months and not span_overlaps_months(start_d, d, months):
+                continue
             val = total if how == "sum" else total / count
-            windows.append(dict(start=days[i - n + 1], end=d, val=round(val, 4), days=count, n=n, idx=i))
+            windows.append(dict(start=start_d, end=d, val=round(val, 4), days=count, n=n, idx=i))
     return windows
 
 
@@ -105,25 +158,31 @@ def current_window_rank(windows: List[dict], order: str = "highest") -> Optional
 
 
 def rolling_ranking(daily: Iterable[Tuple[date, float]], var: str, typ: str, n: int,
-                    order: str = "highest", limit: int = 25, today: Optional[date] = None) -> List[dict]:
+                    order: str = "highest", limit: int = 25, today: Optional[date] = None,
+                    month: Union[int, str, None] = 0, season: Optional[str] = None) -> List[dict]:
     how = ROLLING_VARS[var][typ]
     last_day = None
     # Partial days skew means, and a part-day sunshine total would rank as a dull spell, so both stop at yesterday.
     if (how == "mean" or var in PARTIAL_DAY_EXCLUDED) and today is not None:
         last_day = today - timedelta(days=1)
-    picked = rank_non_overlapping(rolling_windows(daily, n, how, last_day), order, limit)
+    picked = rank_non_overlapping(rolling_windows(daily, n, how, last_day, month=month, season=season), order, limit)
     return _fmt_picked(picked)
 
 
 def rolling_ranking_with_current(daily: Iterable[Tuple[date, float]], var: str, typ: str, n: int,
-                                 order: str = "highest", limit: int = 25, today: Optional[date] = None):
+                                 order: str = "highest", limit: int = 25, today: Optional[date] = None,
+                                 month: Union[int, str, None] = 0, season: Optional[str] = None):
     """(top-N ranking, current-period context) from a single pass over the daily values."""
     how = ROLLING_VARS[var][typ]
     last_day = None
     if (how == "mean" or var in PARTIAL_DAY_EXCLUDED) and today is not None:
         last_day = today - timedelta(days=1)
-    windows = rolling_windows(daily, n, how, last_day)
-    return _fmt_picked(rank_non_overlapping(windows, order, limit)), current_window_rank(windows, order)
+    all_windows = rolling_windows(daily, n, how, last_day)
+    latest_end = all_windows[-1]["end"] if all_windows else None
+    months = target_months(month, season)
+    windows = [w for w in all_windows if span_overlaps_months(w["start"], w["end"], months)] if months else all_windows
+    current = current_window_rank(windows, order) if (windows and windows[-1]["end"] == latest_end) else None
+    return _fmt_picked(rank_non_overlapping(windows, order, limit)), current
 
 
 def _fmt_picked(picked: List[dict]) -> List[dict]:

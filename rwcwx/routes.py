@@ -8,9 +8,13 @@ from flask import request
 from rwcwx import logger
 
 from rwcwx.astronomy import get_all_times_rwc, getTimes
-from rwcwx.calc.avg_extreme import AvgExtAggregator, MonthSummary, DaySummary, YearSummary, WaterYearRainSummary
+from rwcwx.calc.avg_extreme import (
+    AvgExtAggregator, MonthSummary, DaySummary, YearSummary, WaterYearRainSummary, DayOfYearSummary,
+)
 from rwcwx.calc.spells import DIRECTIONS, SPELL_VARS, spell_ranking, supported as spells_supported
-from rwcwx.calc.rolling import ROLLING_DAYS, ROLLING_VARS, min_days_required, rolling_ranking_with_current
+from rwcwx.calc.rolling import (
+    ROLLING_DAYS, ROLLING_VARS, SEASONS, min_days_required, rolling_ranking_with_current,
+)
 from rwcwx.config import TZ
 from rwcwx.model.avgext import AvgExtQ
 from rwcwx.model.obs import ObsQ
@@ -119,6 +123,7 @@ def dashboard_summary():
             month=MonthSummary.for_this_month().stats(),
             year=YearSummary.for_this_year().stats(),
             water_year=WaterYearRainSummary.for_this_year().stats(),
+            day_of_year=DayOfYearSummary.for_today().stats(),
             astronomy=get_all_times_rwc(),
         )
     )
@@ -193,10 +198,23 @@ def var_all_periods(var: str, typ: str):
     return _wrap_result(AvgExtAggregator.all_summaries(_var_avg_exts_from_request(var, typ), var))
 
 
+def _parse_month_or_season(raw: str):
+    if raw is None or raw == "" or raw == "0" or raw.lower() == "all":
+        return 0
+    low = raw.lower()
+    if low in SEASONS:
+        return low
+    try:
+        m = int(raw)
+        return m if 0 <= m <= 12 else None
+    except ValueError:
+        return None
+
+
 def var_rolling(var: str, typ: str):
     """
     Non-overlapping N-day period rankings, e.g. /api/var/rolling/rain/total/?days=3
-    Query params: days (3, 7, 14 or 30), order (highest|lowest), limit (1-100).
+    Query params: days (3, 5, 7, 14 or 30), order (highest|lowest), month (0=all, 1-12 or season), limit (1-100).
     """
     try:
         days = int(request.args.get("days", "3"))
@@ -204,47 +222,56 @@ def var_rolling(var: str, typ: str):
     except ValueError:
         return {"error": "days and limit must be integers"}, 400
     order = request.args.get("order", "highest")
+    month = _parse_month_or_season(request.args.get("month", "0"))
+    season = request.args.get("season")
+    if season and season.lower() in SEASONS:
+        month = season.lower()
     if typ not in ROLLING_VARS.get(var, {}) or days not in ROLLING_DAYS \
-            or order not in ("highest", "lowest") or not 1 <= limit <= 100:
+            or order not in ("highest", "lowest") or month is None or not 1 <= limit <= 100:
         return {
             "error": "Unsupported rolling ranking",
             "supported": dict(vars={v: list(t) for v, t in ROLLING_VARS.items()}, days=list(ROLLING_DAYS),
-                              order=["highest", "lowest"], limit="1-100"),
+                              order=["highest", "lowest"], month="0-12 or season", limit="1-100"),
         }, 400
     now = DateUtil.now()
-    ranking, current = _rolling_cached(var, typ, days, order, limit, now.date(), int(now.timestamp() // 300))
+    ranking, current = _rolling_cached(var, typ, days, order, month, limit, now.date(), int(now.timestamp() // 300))
     return _wrap_result(
         ranking,
-        var=var, type=typ, days=days, order=order, min_days=min_days_required(days), current=current,
+        var=var, type=typ, days=days, order=order, month=month, min_days=min_days_required(days), current=current,
     )
 
 
 @lru_cache(maxsize=64)
-def _rolling_cached(var: str, typ: str, days: int, order: str, limit: int, today: date, _bucket: int) -> tuple:
+def _rolling_cached(var: str, typ: str, days: int, order: str, month, limit: int, today: date, _bucket: int) -> tuple:
     """Each ranking is computed at most once per 5 minutes per worker (the reports refresh every 5 minutes)."""
-    return rolling_ranking_with_current(_daily_values(var, typ), var, typ, days, order, limit, today)
+    return rolling_ranking_with_current(_daily_values(var, typ), var, typ, days, order, limit, today, month=month)
 
 
 def var_spells(var: str, typ: str):
     """
     Longest runs of consecutive days above/below a threshold, e.g. /api/var/spells/rain/total/?dir=below&threshold=0.01
-    Query params: dir (above|below), threshold (in, °F or hours; one of the supported values), month (0 = all, 1-12),
-    start_year, limit (1-100).
+    Query params: dir (above|below), threshold (in, °F or hours; one of the supported values),
+    month (0 = all, 1-12 or season), start_year, limit (1-100).
     """
     cfg = SPELL_VARS.get((var, typ))
     try:
         threshold = float(request.args.get("threshold", "nan"))
-        month = int(request.args.get("month", "0"))
         start_year = int(request.args["start_year"]) if request.args.get("start_year") else None
         limit = int(request.args.get("limit", "25"))
     except ValueError:
         threshold = None
+        start_year = None
+        limit = 0
+    month = _parse_month_or_season(request.args.get("month", "0"))
+    season = request.args.get("season")
+    if season and season.lower() in SEASONS:
+        month = season.lower()
     direction = request.args.get("dir", "above")
     if cfg is None or threshold is None or threshold not in cfg["thresholds"] or direction not in DIRECTIONS \
-            or not 0 <= month <= 12 or not 1 <= limit <= 100 or (start_year is not None and not 2000 <= start_year <= 2100):
+            or month is None or not 1 <= limit <= 100 or (start_year is not None and not 2000 <= start_year <= 2100):
         return {
             "error": "Unsupported spell ranking",
-            "supported": dict(vars=spells_supported(), dir=list(DIRECTIONS), month="0-12", limit="1-100"),
+            "supported": dict(vars=spells_supported(), dir=list(DIRECTIONS), month="0-12 or season", limit="1-100"),
         }, 400
     now = DateUtil.now()
     res = _spells_cached(var, typ, threshold, direction, month, start_year, limit, now.date(), int(now.timestamp() // 300))
@@ -260,6 +287,10 @@ def _spells_cached(var, typ, threshold, direction, month, start_year, limit, tod
 def _daily_values(var: str, typ: str):
     if (var, typ) == (sun_model.PCT_VAR, sun_model.PCT_TYPE):
         return sun_model.pct_daily_values(AvgExtQ.daily_values("sun", "total"))
+    if (var, typ) == (wet_rate.RATE_VAR, wet_rate.RATE_TYPE):
+        rain = dict(AvgExtQ.daily_values("rain", "total"))
+        return [(d, wet_rate.rate(rain.get(d), w)) for d, w in AvgExtQ.daily_values("wet", "total")
+                if rain.get(d) and wet_rate.rate(rain.get(d), w) is not None]
     return AvgExtQ.daily_values(var, typ)
 
 

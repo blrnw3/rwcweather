@@ -15,7 +15,7 @@ import { VscCircleFilled, VscDash } from "react-icons/vsc";
 import { WiBarometer, WiDaySunny, WiHumidity, WiRain, WiThermometer } from "react-icons/wi";
 import useSWR from "swr";
 import { LatestChart, SummaryChart } from '../components/chart';
-import { fetcher, fmatObsOptIcon, fmatTimeOpt, RAIN_VIEW_NAMES, RAIN_VIEWS, SUN_VIEW_NAMES, SUN_VIEWS } from '../components/conf';
+import { fetcher, fmatObsOptIcon, fmatTimeOpt, OBS, RAIN_VIEW_NAMES, RAIN_VIEWS, SUN_VIEW_NAMES, SUN_VIEWS, WIND_SUMMARY_NAMES, WIND_SUMMARY_VIEWS, WIND_VIEW_NAMES, WIND_VIEWS } from '../components/conf';
 import { Page, UnitCtx } from "../components/Page";
 import { SunRibbon, useSunDay } from '../components/sun';
 import { WetRibbon } from '../components/wet';
@@ -229,7 +229,94 @@ function YesterdayRange(props) {
   </Text>
 }
 
-// Today's normal low / high, interpolated daily between mid-month normals.
+function AboutHomeCard() {
+  return <Box id="about-home-card" width={{ base: "98%", md: "460px" }} minHeight="250px" border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 4 }} my={2} mx={{ base: 0, md: 3 }} borderRadius="10px">
+    <Text fontSize={{ base: "lg", md: "xl" }} mb="2">About RWC Weather</Text>
+    <Text fontSize="sm" mb="2">
+      RWC Weather is an amateur personal weather station in Redwood City, California, collecting data continuously since November 2020.
+    </Text>
+    <Text fontSize="sm" mb="2">
+      The station sits ~125 m (420 ft) above sea level in Emerald Lake Hills between Redwood City and Woodside. Towards the top of the canyon, it experiences milder winter nights than the valleys below, protection from westerly winds, and much less summer fog than the coast.
+    </Text>
+    <Text fontSize="sm" mb="2">
+      Powered by a wireless Davis VP2 with WeatherLink Live, Cumulus software, a Python Flask backend, and a Next.js / React frontend.
+    </Text>
+    <Text fontSize="sm">
+      <Link href="/about">More about the station &rarr;</Link>
+    </Text>
+  </Box>;
+}
+
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function DayClimateExtremesCard(props) {
+  const date = serverDate(props.dash, props.summary);
+  const doy = props.summary?.day_of_year;
+  const dateLabel = date ? MONTH_SHORT[date[1] - 1] + " " + date[2] : "today";
+  const normMin = date ? dailyNormal("temp", "min", ...date) : null;
+  const normMax = date ? dailyNormal("temp", "max", ...date) : null;
+  const normAvg = date ? dailyNormal("temp", "avg", ...date) : null;
+  const normSun = date ? dailyNormal("sun", "total", ...date) : null;
+  const normRain = date ? monthlyNormal("rain", "total", date[1]) : null;
+
+  const fmtExt = (entry, key, fmat) => {
+    const val = entry?.[key + "_val"];
+    if (val == null) {
+      return "–";
+    }
+    const yr = entry?.[key + "_yr"] ?? entry?.[key + "_at"]?.[0];
+    return <>{formatObs(unit, val, fmat)}{yr ? <Text as="span" fontSize="xs" color="gray.600"> ({yr})</Text> : null}</>;
+  };
+
+  return <Box id="day-climate-extremes-card" width={{ base: "98%", md: "460px" }} minHeight="250px" border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 4 }} my={2} mx={{ base: 0, md: 3 }} borderRadius="10px">
+    <Text fontSize={{ base: "lg", md: "xl" }}>Climate &amp; extremes for {dateLabel}</Text>
+    <Grid id="day-climate-extremes"
+      templateColumns="1.4fr repeat(3, 1fr)"
+      templateRows="28px auto"
+      rowGap="1.5"
+      fontSize="sm"
+      overflow="auto"
+      mt="1">
+      <Box></Box>
+      <Box fontWeight="bold">Normal</Box>
+      <Box fontWeight="bold">Record Low</Box>
+      <Box fontWeight="bold">Record High</Box>
+
+      <Box fontWeight="bold">Temp High</Box>
+      <Box>{formatObs(unit, normMax, "temp")}</Box>
+      <Box>{fmtExt(doy?.temp_max, "min", "temp")}</Box>
+      <Box>{fmtExt(doy?.temp_max, "max", "temp")}</Box>
+
+      <Box fontWeight="bold">Temp Low</Box>
+      <Box>{formatObs(unit, normMin, "temp")}</Box>
+      <Box>{fmtExt(doy?.temp_min, "min", "temp")}</Box>
+      <Box>{fmtExt(doy?.temp_min, "max", "temp")}</Box>
+
+      <Box fontWeight="bold">Temp Mean</Box>
+      <Box>{formatObs(unit, normAvg, "temp")}</Box>
+      <Box>{fmtExt(doy?.temp_avg, "min", "temp")}</Box>
+      <Box>{fmtExt(doy?.temp_avg, "max", "temp")}</Box>
+
+      <Box fontWeight="bold">Rainfall</Box>
+      <Box title="Monthly normal">{normRain != null ? formatObs(unit, normRain, "rain") + "/mo" : "–"}</Box>
+      <Box>–</Box>
+      <Box>{fmtExt(doy?.rain_total, "max", "rain")}</Box>
+
+      <Box fontWeight="bold">Sunshine</Box>
+      <Box>{formatObs(unit, normSun, "sun")}</Box>
+      <Box>{fmtExt(doy?.sun_total, "min", "sun")}</Box>
+      <Box>{fmtExt(doy?.sun_total, "max", "sun")}</Box>
+
+      <Box fontWeight="bold">Max Gust</Box>
+      <Box>–</Box>
+      <Box>–</Box>
+      <Box>{fmtExt(doy?.gust_max, "max", "gust")}</Box>
+    </Grid>
+    <Text fontSize="xs" color="gray.600" mt="2">
+      <Link href={CLIMATE_PAGE}>Climate normals</Link> &middot; Records since Nov 2020
+    </Text>
+  </Box>;
+}
 function todayTempNormals(date) {
   if (!date) {
     return null;
@@ -652,6 +739,7 @@ function YearSummaryCard(props) {
 function RadioButtonGroup(props) {
   let { getRootProps, getRadioProps } = useRadioGroup({
     name: props.name,
+    value: props.value,
     defaultValue: props.default,
     onChange: props.fn,
   })
@@ -670,51 +758,60 @@ function RadioButtonGroup(props) {
 }
 
 function ChartCardLatest(props) {
-  const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "dewpt"];
+  const obsOptions = ["temp", "rain", "humi", "dewpt", "aqi", "wind", "pres"];
   const hrsOptions = ["6", "12", "24", "72"];
 
   const [obs, setObs] = useState("temp");
+  const [windView, setWindView] = useState("wind");
   const [hrs, setHrs] = useState("6");
+  const chartObs = obs === "wind" ? windView : obs;
 
   return <Box w={{ base: "98%", md: "80%", lg: "47%" }} border="2px solid #656382" bg="gray.100"
     p="2" my={2} mx={{ base: 0, md: 2, lg: 3, xl: 4 }} borderRadius="10px">
     <Flex wrap="wrap" justifyContent="space-between" alignItems="center">
-      <RadioButtonGroup name="obs" options={obsOptions} optFormat={fmatObsOptIcon} default="temp" fn={setObs} ico={true} />
+      <RadioButtonGroup name="obs" value={obs} options={obsOptions} optFormat={fmatObsOptIcon} fn={setObs} ico={true} />
       <Box m={1}></Box>
-      <RadioButtonGroup name="hrs" options={hrsOptions} optFormat={fmatTimeOpt} default={"6"} fn={setHrs} />
+      {obs === "wind" && <>
+        <RadioButtonGroup name="windView" value={windView} options={WIND_VIEWS} optFormat={(v) => WIND_VIEW_NAMES[v]} fn={setWindView} />
+        <Box m={1}></Box>
+      </>}
+      <RadioButtonGroup name="hrs" value={hrs} options={hrsOptions} optFormat={fmatTimeOpt} fn={setHrs} />
       <Box m={1}></Box>
       <Text><Link href="/charts/latest" title="More charts">More</Link></Text>
     </Flex>
-    <LatestChart obs={obs} hrs={hrs} m={1} height="55%" spacing={[5, 5, 12, 3]} />
+    <LatestChart obs={chartObs} hrs={hrs} m={1} height="55%" spacing={[5, 5, 12, 3]} />
   </Box>
 }
 
 function ChartCardDaily(props) {
-  const obsOptions = ["temp", "wind", "humi", "pres", "aqi", "rain", "dewpt", "sun"];
-  // const periodOptions = ["30", "60"];
+  const obsOptions = ["temp", "rain", "sun", "humi", "dewpt", "aqi", "wind", "pres"];
   const aggOpts = ["avg", "max", "min"]
 
   const [obs, setObs] = useState("temp");
   const [aggType, setAggType] = useState("avg");
   const [sunView, setSunView] = useState("sun");  // sunshine as hours or % of possible (#24)
   const [rainView, setRainView] = useState("rain");  // rainfall as amount or wet hours
+  const [windView, setWindView] = useState("wind:max");  // wind summary sub-options
   const isSun = obs === "sun";
   const isRain = obs === "rain";
-  const chartObs = isSun ? sunView : isRain ? rainView : obs;
-  const chartAgg = isSun ? (sunView === "sunpct" ? "avg" : "total") : isRain ? "total" : aggType;
-  // const [period, setPeriod] = useState("7")
+  const isWind = obs === "wind";
+  const [windObs, windAgg] = windView.split(":");
+  const chartObs = isSun ? sunView : isRain ? rainView : isWind ? windObs : obs;
+  const chartAgg = isSun ? (sunView === "sunpct" ? "avg" : "total") : isRain ? OBS.get(rainView).summary : isWind ? windAgg : aggType;
   const period = "30";
 
   return <Box w={{ base: "98%", md: "80%", lg: "47%" }} border="2px solid #656382" bg="gray.100"
     p="2" my={2} mx={{ base: 0, md: 1, lg: 3, xl: 4 }} borderRadius="10px">
     <Flex wrap="wrap" justifyContent="space-between" alignItems="center">
-      <RadioButtonGroup name="obs" options={obsOptions} optFormat={fmatObsOptIcon} default="temp" fn={setObs} ico={true} />
+      <RadioButtonGroup name="obs" value={obs} options={obsOptions} optFormat={fmatObsOptIcon} fn={setObs} ico={true} />
       <Box m={1}></Box>
       {isSun
-        ? <RadioButtonGroup name="sunView" default={sunView} options={SUN_VIEWS} optFormat={(v) => SUN_VIEW_NAMES[v]} fn={setSunView} />
+        ? <RadioButtonGroup name="sunView" value={sunView} options={SUN_VIEWS} optFormat={(v) => SUN_VIEW_NAMES[v]} fn={setSunView} />
         : isRain
-        ? <RadioButtonGroup name="rainView" default={rainView} options={RAIN_VIEWS} optFormat={(v) => RAIN_VIEW_NAMES[v]} fn={setRainView} />
-        : <RadioButtonGroup name="aggType" default={aggType} options={aggOpts} optFormat={(c) => c} fn={setAggType} />}
+        ? <RadioButtonGroup name="rainView" value={rainView} options={RAIN_VIEWS} optFormat={(v) => RAIN_VIEW_NAMES[v]} fn={setRainView} />
+        : isWind
+        ? <RadioButtonGroup name="windView" value={windView} options={WIND_SUMMARY_VIEWS} optFormat={(v) => WIND_SUMMARY_NAMES[v]} fn={setWindView} />
+        : <RadioButtonGroup name="aggType" value={aggType} options={aggOpts} optFormat={(c) => c} fn={setAggType} />}
       <Box m={1}></Box>
       {/* <RadioButtonGroup name="period" options={periodOptions} optFormat={fmatDaysOpt} default={"30"} fn={setPeriod} /> */}
       <Text><Link href="/charts/summary" title="More charts">More</Link></Text>
@@ -786,6 +883,10 @@ function HomePage(props) {
     <Flex justify="center" wrap="wrap">
       <ChartCardLatest />
       <ChartCardDaily />
+    </Flex>
+    <Flex justify="center" wrap="wrap">
+      <AboutHomeCard />
+      <DayClimateExtremesCard dash={data} summary={summary} />
     </Flex>
     <Flex justify="center" wrap="wrap">
       <MonthSummaryCard summary={summary} />

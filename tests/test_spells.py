@@ -27,9 +27,12 @@ def test_missing_day_breaks_spell():
     assert [x["length"] for x in find_spells(data, 0.01, "below")] == [1, 1]
 
 
-def test_month_filter_and_start_year():
+def test_month_and_season_filter_and_start_year():
     data = series([0] * 70, date(2023, 12, 20))  # 20 Dec 2023 .. 27 Feb 2024
-    assert [x["length"] for x in find_spells(data, 0.01, "below", month=1)] == [31]
+    # Any spell overlapping the month/season is returned in full (not cut at month boundaries).
+    assert [x["length"] for x in find_spells(data, 0.01, "below", month=1)] == [70]
+    assert [x["length"] for x in find_spells(data, 0.01, "below", month="winter")] == [70]
+    assert find_spells(data, 0.01, "below", month="summer") == []
     assert find_spells(data, 0.01, "below", start_year=2024)[0]["start"] == date(2024, 1, 1)
 
 
@@ -73,3 +76,12 @@ def test_celsius_thresholds_accepted_as_fahrenheit():
     assert 95 in SPELL_VARS[("temp", "max")]["thresholds"]  # 35 °C
     assert {32, 41, 50, 59} <= set(SPELL_VARS[("temp", "min")]["thresholds"])
     assert abs(stored_threshold("temp", "max", 86) - 30) < 1e-9
+
+
+def test_metric_rain_thresholds_accepted_as_inches():
+    from rwcwx.calc.spells import SPELL_VARS
+    rain_thresholds = set(SPELL_VARS[("rain", "total")]["thresholds"])
+    for mm in (0.2, 2, 5, 10, 25):
+        inch_val = round(mm / 25.4, 4)
+        assert inch_val in rain_thresholds
+        assert stored_threshold("rain", "total", inch_val) == inch_val

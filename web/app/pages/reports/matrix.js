@@ -1,8 +1,8 @@
 import { Box, Flex, Grid, Heading, Spinner, Text, useRadioGroup } from "@chakra-ui/react";
 import { Fragment, useContext } from 'react';
 import useSWR from 'swr';
-import { baseObs, fetcher, fmatAggTypeOpt, fmatObsOpt, fmatYrOpt, isTotalObs, OBS } from '../../components/conf';
-import { REPORT_OBS_OPTIONS, SunViewToggle } from '../../components/report';
+import { baseObs, fetcher, fmatAggTypeOpt, fmatForObs, fmatObsOpt, fmatYrOpt, isTotalObs, OBS } from '../../components/conf';
+import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, MINUTE_OBS_STATES, SunViewToggle } from '../../components/report';
 import { daysInMonth } from "../../components/dateUtil";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
@@ -79,8 +79,8 @@ function matrixValue(unit, val, fmat) {
 
 function dayReportHref(year, month, day, obs) {
     const pad = (n) => String(n).padStart(2, "0");
-    const dayObs = baseObs(obs);
-    const v = REPORT_OBS_OPTIONS.includes(dayObs) && dayObs !== "temp" ? "&var=" + dayObs : "";
+    const dayObs = ["gust", "wdir"].includes(obs) ? obs : baseObs(obs);
+    const v = MINUTE_OBS_STATES.includes(dayObs) && dayObs !== "temp" ? "&var=" + dayObs : "";
     return "/reports/day?date=" + year + "-" + pad(month) + "-" + pad(day) + v;
 }
 
@@ -88,6 +88,7 @@ function DailyMatrix(props) {
     const obs = props.obs;
     const obsObj = OBS.get(obs);
     const agg = props.aggType;
+    const fmat = fmatForObs(obs, agg);
     const summary = useSummary(obs, agg, props.year);
     const res = summary?.daily || [];
     let serverDateParts = summary?.["server"]?.["date"] || [2000, 1, 1];
@@ -143,8 +144,8 @@ function DailyMatrix(props) {
                             hover = { border: "1px solid #999" };
                         }
                         else {
-                            v = matrixValue(unit, data.get(m)[d], obsObj.fmat);
-                            ({ bg, col } = getStyleForObsValue(data.get(m)[d], obsObj.fmat, unit));
+                            v = matrixValue(unit, data.get(m)[d], fmat);
+                            ({ bg, col } = getStyleForObsValue(data.get(m)[d], fmat, unit));
                             hover = { border: "1px solid " + col };
                         }
                         // Past days link to that day's report, keeping the variable where the daily report has it.
@@ -170,6 +171,7 @@ function MonthlyMatrix(props) {
     const obs = props.obs;
     const obsObj = OBS.get(obs);
     const agg = props.aggType;
+    const fmat = fmatForObs(obs, agg);
     const summary = useSummary(obs, agg, props.year);
     const res = summary?.monthly || [];
     let unit = useContext(UnitCtx);
@@ -209,8 +211,8 @@ function MonthlyMatrix(props) {
                     let bg = "gray.200";
                     let hover = {}
                     if (data.has(m)) {
-                        v = matrixValue(unit, data.get(m)[k], obsObj.fmat);
-                        ({ bg, col } = getStyleForObsValue(data.get(m)[k], obsObj.fmat, unit, "month", k));
+                        v = matrixValue(unit, data.get(m)[k], fmat);
+                        ({ bg, col } = getStyleForObsValue(data.get(m)[k], fmat, unit, "month", k));
                         hover = { border: "1px solid " + col };
                     }
                     return <Box key={m + "-" + k} className="cell"
@@ -243,12 +245,12 @@ function RainTotals(props) {
         serverDate={summary?.["server"]?.["date"]} unit={unit} obs={props.obs} />
 }
 
-const OBS_OPTIONS = ["temp", "wind", "humi", "pres", "aqi", "rain", "wdir", "dewpt", "gust", "sun"];
+const OBS_OPTIONS = DAILY_VALUE_OBS_OPTIONS;
 const aggOptionsFor = (obs) => isTotalObs(obs) ? ["total"] : (OBS.get(obs).dailyStats || ["max", "min", "avg"]);
 
 // Selections kept in the URL, e.g. /reports/matrix?var=rain&year=2023
 const MATRIX_URL_STATE = {
-    obs: { param: "var", def: () => "temp", valid: inList([...OBS_OPTIONS, "sunpct", "wet", "wetrate", "rain60", "rain10"]) },
+    obs: { param: "var", def: () => "temp", valid: inList(DAILY_VALUE_OBS_STATES) },
     aggType: { param: "daily", def: (s) => aggOptionsFor(s.obs)[0], valid: (v, s) => aggOptionsFor(s.obs).includes(v) },
     year: { def: () => yrEnd.toString(), valid: inList(years) },
 };
@@ -259,7 +261,10 @@ export default function Obs() {
     const obsOptions = OBS_OPTIONS;
 
     // Rain only has daily totals; other variables keep their statistic.
-    const handleObsChange = (x) => update({ obs: x, aggType: aggOptionsFor(x).includes(aggType) ? aggType : aggOptionsFor(x)[0] });
+    const handleObsChange = (x, nextAgg) => update({
+        obs: x,
+        aggType: nextAgg || (x === "wind" ? "max" : aggOptionsFor(x).includes(aggType) ? aggType : aggOptionsFor(x)[0]),
+    });
     const setAggType = (value) => update({ aggType: value });
     const setYear = (value) => update({ year: value });
 
@@ -273,8 +278,8 @@ export default function Obs() {
         <ClimateNormalsLink />
 
         <RadioButtonGroup name="obs" value={baseObs(obs)} options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
-        <SunViewToggle obs={obs} fn={handleObsChange} Group={RadioButtonGroup} />
-        <RadioButtonGroup name="agg" value={aggType} options={aggOpts} optFormat={fmatAggTypeOpt} fn={setAggType} />
+        <SunViewToggle obs={obs} stat={aggType} fn={handleObsChange} Group={RadioButtonGroup} />
+        {baseObs(obs) !== "wind" && aggOpts.length > 1 && <RadioButtonGroup name="agg" value={aggType} options={aggOpts} optFormat={fmatAggTypeOpt} fn={setAggType} />}
         <RadioButtonGroup name="yr" value={year} options={years} optFormat={fmatYrOpt} fn={setYear} />
         
         <DailyMatrix obs={obs} aggType={aggType} year={year} />
