@@ -309,8 +309,18 @@ class MonthSummary:
             from rwcwx.model import sun as sun_model
             pct = sun_model.pct_days(by_type[("sun", "total")])
             stats[f"{sun_model.PCT_VAR}_{sun_model.PCT_TYPE}"] = ObsVar.multiday_summary(pct).as_dict
+        _add_rain_days(stats, by_type)
         _add_rate(stats, by_type)
         return stats
+
+
+def _add_rain_days(stats: dict, by_type: dict) -> None:
+    """Count days with measurable rain (≥0.01 in) in the period."""
+    rains = by_type.get(("rain", "total"), [])
+    if not rains:
+        return
+    n = sum(1 for ae in rains if ae.val is not None and ae.val >= 0.01)
+    stats["rain_days"] = {"count": n, "of": len(rains)}
 
 
 def _add_rate(stats: dict, by_type: dict) -> None:
@@ -340,6 +350,11 @@ class YearSummary:
         stats = {}
         for (var, typ), aes in by_type.items():
             stats[f"{var}_{typ}"] = ObsVar.multiday_summary(aes).as_dict
+        if ("sun", "total") in by_type:
+            from rwcwx.model import sun as sun_model
+            pct = sun_model.pct_days(by_type[("sun", "total")])
+            stats[f"{sun_model.PCT_VAR}_{sun_model.PCT_TYPE}"] = ObsVar.multiday_summary(pct).as_dict
+        _add_rain_days(stats, by_type)
         _add_rate(stats, by_type)
         return stats
 

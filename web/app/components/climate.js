@@ -179,6 +179,51 @@ export function climateComparison(value, normal, obs, stat, unit) {
 }
 
 /** "(+1.2)" / "(85%)" on its own line under a value, in the cell's colour. */
+
+/**
+ * Mean of daily temperature normals (min/max/avg) from startDate through endDate inclusive.
+ * Used for in-progress month/year cards (elapsed days only).
+ */
+export function periodToDateTempNormal(stat, startYear, startMonth, startDay, endYear, endMonth, endDay) {
+    if (!hasClimate("temp", stat)) return null;
+    let sum = 0, n = 0;
+    let y = startYear, m = startMonth, d = startDay;
+    const end = Date.UTC(endYear, endMonth - 1, endDay);
+    while (Date.UTC(y, m - 1, d) <= end) {
+        const v = dailyNormal("temp", stat, y, m, d);
+        if (v != null) { sum += v; n += 1; }
+        d += 1;
+        if (d > daysInMonth(y, m)) { d = 1; m += 1; }
+        if (m > 12) { m = 1; y += 1; }
+    }
+    return n ? sum / n : null;
+}
+
+/**
+ * Sum of daily normals for a total (rain/sun) from start through end inclusive (pro-rata to-date).
+ */
+export function periodToDateTotalNormal(obs, startYear, startMonth, startDay, endYear, endMonth, endDay) {
+    if (!hasClimate(obs, "total")) return null;
+    let sum = 0;
+    let y = startYear, m = startMonth, d = startDay;
+    const end = Date.UTC(endYear, endMonth - 1, endDay);
+    while (Date.UTC(y, m - 1, d) <= end) {
+        const v = dailyNormal(obs, "total", y, m, d);
+        if (v != null) sum += v;
+        d += 1;
+        if (d > daysInMonth(y, m)) { d = 1; m += 1; }
+        if (m > 12) { m = 1; y += 1; }
+    }
+    return sum;
+}
+
+/** Signed % departure from normal, e.g. "+12%" / "-5%". Null if unknown. */
+export function signedPctDeparture(value, normal) {
+    if (value == null || normal == null || !(normal > 0) || Number.isNaN(value)) return null;
+    const pct = Math.round(((value / normal) - 1) * 100);
+    return (pct > 0 ? "+" : "") + pct + "%";
+}
+
 export function ClimateAnom({ value, normal, obs, stat, unit, inline = false }) {
     const text = climateComparison(value, normal, obs, stat, unit);
     if (text == null) {
