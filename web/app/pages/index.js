@@ -22,7 +22,9 @@ import { WetRibbon } from '../components/wet';
 import RadioCard from '../components/RadioCard';
 import { aqiStatus, formatObs, moonPhase, prettySecs, timeOf } from '../format';
 import {
-  CLIMATE_PAGE, ClimateAnom, dailyNormal, monthlyNormal, waterYearNormal, waterYearNormalToDate,
+  CLIMATE_PAGE, ClimateAnom, annualNormal, dailyNormal, monthlyNormal,
+  periodToDateTempNormal, periodToDateTotalNormal, signedPctDeparture,
+  waterYearNormal, waterYearNormalToDate,
 } from '../components/climate';
 import {
   RECORD, TIE, ON_TRACK,
@@ -703,9 +705,70 @@ function AstronomyHomeCard(props) {
   </HomeCard>
 }
 
+
+function SignedPctAnom({ value, normal }) {
+  const text = signedPctDeparture(value, normal);
+  if (text == null) return null;
+  return <Text as="span" className="climate-anom" display="inline" fontSize="sm" lineHeight="short" ml="1" fontWeight="normal"
+    title="Signed departure from the climate normal accumulated to date">({text})</Text>;
+}
+
+function PeriodRainSunRows({ summary, rainNormal, sunNormal, rainDaysExpected }) {
+  const rainTotal = summary?.rain_total?.total;
+  const sunTotal = summary?.sun_total?.total;
+  const sunPct = summary?.sunpct_avg?.avg;
+  const rainDays = summary?.rain_days;
+  return <>
+    <Box fontWeight="bold">Rainfall</Box>
+    <Box title="Driest day">{formatObs(unit, summary?.rain_total?.min_val, "rain")}</Box>
+    <Box title="Wettest day">{formatObs(unit, summary?.rain_total?.max_val, "rain")}</Box>
+    <Box title="Period total to date">
+      {formatObs(unit, rainTotal, "rain")}
+      <SignedPctAnom value={rainTotal} normal={rainNormal} />
+    </Box>
+    <Box fontWeight="bold">Sunshine</Box>
+    <Box title="Dullest day">{formatObs(unit, summary?.sun_total?.min_val, "sun")}</Box>
+    <Box title="Sunniest day">{formatObs(unit, summary?.sun_total?.max_val, "sun")}</Box>
+    <Box title="Period total hours to date">
+      {formatObs(unit, sunTotal, "sun")}
+      {sunPct != null && <Text as="span" fontSize="xs" color="gray.600"> ({Math.round(sunPct)}% of max)</Text>}
+      <SignedPctAnom value={sunTotal} normal={sunNormal} />
+    </Box>
+    <Box fontWeight="bold">Rain days</Box>
+    <Box>–</Box>
+    <Box>–</Box>
+    <Box title="Days with ≥0.01 in">
+      {rainDays?.count != null ? (rainDays.count + (rainDays.of != null ? " of " + rainDays.of : "")) : "–"}
+      {rainDaysExpected != null && rainDays?.count != null && (
+        <SignedPctAnom value={rainDays.count} normal={rainDaysExpected} />
+      )}
+    </Box>
+  </>;
+}
+
+function TempMeanRow({ summary, normAvg }) {
+  // Low/High = period extremes (no normal). Avg = mean of daily means with signed °
+  // departure vs the mean of 1991-2020 daily normals over elapsed days.
+  return <>
+    <Box fontWeight="bold">Temperature</Box>
+    <Box>{formatObs(unit, summary?.temp_min?.min_val, "temp")}</Box>
+    <Box>{formatObs(unit, summary?.temp_max?.max_val, "temp")}</Box>
+    <Box>
+      {formatObs(unit, summary?.temp_avg?.avg, "temp")}
+      <ClimateAnom inline value={summary?.temp_avg?.avg} normal={normAvg} obs="temp" stat="avg" unit={unit} />
+    </Box>
+  </>;
+}
+
 function MonthSummaryCard(props) {
   const summary = props.summary?.month;
-  return <Box width="460px" minHeight="250px" border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 4 }} my={2} mx={{ base: 0, md: 3 }} borderRadius="10px">
+  const date = serverDate(props.summary);
+  const y = date?.[0], mo = date?.[1], d = date?.[2];
+  const rainNormal = date ? periodToDateTotalNormal("rain", y, mo, 1, y, mo, d) : null;
+  const sunNormal = date ? periodToDateTotalNormal("sun", y, mo, 1, y, mo, d) : null;
+  const normAvg = date ? periodToDateTempNormal("avg", y, mo, 1, y, mo, d) : null;
+  // No rain-day climate normal on site; omit expected-to-date anomaly.
+  return <Box id="month-summary-card" width="460px" minHeight="250px" border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 4 }} my={2} mx={{ base: 0, md: 3 }} borderRadius="10px">
     <Text fontSize={{ base: "lg", md: "xl" }}>This month averages &amp; extremes</Text>
     <Grid id="monthly-summary" key="monthly-summary"
       templateColumns="1.5fr repeat(3, 1fr)"
@@ -715,11 +778,8 @@ function MonthSummaryCard(props) {
       <Box key="ms-base" id="ms-base"></Box>
       <Box fontWeight="bold">Low</Box>
       <Box fontWeight="bold">High</Box>
-      <Box fontWeight="bold">Avg</Box>
-      <Box fontWeight="bold">Temperature</Box>
-      <Box>{formatObs(unit, summary?.["temp_min"]?.["min_val"], "temp")}</Box>
-      <Box>{formatObs(unit, summary?.["temp_max"]?.["max_val"], "temp")}</Box>
-      <Box>{formatObs(unit, summary?.["temp_avg"]?.["avg"], "temp")}</Box>
+      <Box fontWeight="bold">Avg / total</Box>
+      <TempMeanRow summary={summary} normAvg={normAvg} />
       <Box fontWeight="bold">Humidity</Box>
       <Box>{formatObs(unit, summary?.["humi_min"]?.["min_val"], "humi")}</Box>
       <Box>{formatObs(unit, summary?.["humi_max"]?.["max_val"], "humi")}</Box>
@@ -740,13 +800,20 @@ function MonthSummaryCard(props) {
       <Box>{formatObs(unit, summary?.["wind_avg"]?.["min_val"], "wind")}</Box>
       <Box>{formatObs(unit, summary?.["wind_avg"]?.["max_val"], "wind")}</Box>
       <Box>{formatObs(unit, summary?.["wind_avg"]?.["avg"], "wind")}</Box>
+      <PeriodRainSunRows summary={summary} rainNormal={rainNormal} sunNormal={sunNormal} />
     </Grid>
   </Box>
 }
 
+
 function YearSummaryCard(props) {
   const summary = props.summary?.year;
-  return <Box width="460px" minHeight="250px" border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 4 }} m={{ base: 0, md: 3 }} borderRadius="10px">
+  const date = serverDate(props.summary);
+  const y = date?.[0], mo = date?.[1], d = date?.[2];
+  const rainNormal = date ? periodToDateTotalNormal("rain", y, 1, 1, y, mo, d) : null;
+  const sunNormal = date ? periodToDateTotalNormal("sun", y, 1, 1, y, mo, d) : null;
+  const normAvg = date ? periodToDateTempNormal("avg", y, 1, 1, y, mo, d) : null;
+  return <Box id="year-summary-card" width="460px" minHeight="250px" border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 4 }} m={{ base: 0, md: 3 }} borderRadius="10px">
     <Text fontSize={{ base: "lg", md: "xl" }}>This year averages &amp; extremes</Text>
     <Grid id="annual-summary" key="annual-summary"
       templateColumns="1.5fr repeat(3, 1fr)"
@@ -756,11 +823,8 @@ function YearSummaryCard(props) {
       <Box key="ms-base" id="ms-base"></Box>
       <Box fontWeight="bold">Low</Box>
       <Box fontWeight="bold">High</Box>
-      <Box fontWeight="bold">Avg</Box>
-      <Box fontWeight="bold">Temperature</Box>
-      <Box>{formatObs(unit, summary?.["temp_min"]?.["min_val"], "temp")}</Box>
-      <Box>{formatObs(unit, summary?.["temp_max"]?.["max_val"], "temp")}</Box>
-      <Box>{formatObs(unit, summary?.["temp_avg"]?.["avg"], "temp")}</Box>
+      <Box fontWeight="bold">Avg / total</Box>
+      <TempMeanRow summary={summary} normAvg={normAvg} />
       <Box fontWeight="bold">Humidity</Box>
       <Box>{formatObs(unit, summary?.["humi_min"]?.["min_val"], "humi")}</Box>
       <Box>{formatObs(unit, summary?.["humi_max"]?.["max_val"], "humi")}</Box>
@@ -781,9 +845,11 @@ function YearSummaryCard(props) {
       <Box>{formatObs(unit, summary?.["wind_avg"]?.["min_val"], "wind")}</Box>
       <Box>{formatObs(unit, summary?.["wind_avg"]?.["max_val"], "wind")}</Box>
       <Box>{formatObs(unit, summary?.["wind_avg"]?.["avg"], "wind")}</Box>
+      <PeriodRainSunRows summary={summary} rainNormal={rainNormal} sunNormal={sunNormal} />
     </Grid>
   </Box>
 }
+
 
 function RadioButtonGroup(props) {
   let { getRootProps, getRadioProps } = useRadioGroup({
