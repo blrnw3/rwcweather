@@ -33,7 +33,8 @@ def test_wind_direction_has_no_monthly_or_annual_summaries():
 @needs_avg_extreme
 def test_day_of_year_summary_cached_per_day():
     DayOfYearSummary._cache.clear()
-    with mock.patch.object(avg_extreme.AvgExtQ, "all_for_day_of_year", return_value=[]) as q:
+    with mock.patch.object(avg_extreme.AvgExtQ, "all_for_day_of_year", return_value=[]) as q, \
+            mock.patch.object(avg_extreme.AvgExtQ, "daily_values", return_value=[]):
         DayOfYearSummary(date(2026, 10, 14)).stats()
         DayOfYearSummary(date(2026, 10, 14)).stats()
         assert q.call_count == 1
