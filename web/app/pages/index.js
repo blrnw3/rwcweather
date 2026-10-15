@@ -24,6 +24,10 @@ import { aqiStatus, formatObs, moonPhase, prettySecs, timeOf } from '../format';
 import {
   CLIMATE_PAGE, ClimateAnom, dailyNormal, monthlyNormal, waterYearNormal, waterYearNormalToDate,
 } from '../components/climate';
+import {
+  RECORD, TIE, ON_TRACK,
+  hottestHigh, coldestLow, warmestLow, coldestHigh, localHourFromServer,
+} from '../lib/recordFlags';
 import React from 'react';
 
 let isLoading = true;
@@ -249,6 +253,23 @@ function AboutHomeCard() {
 
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+function RecordFlag({ status }) {
+  if (!status) return null;
+  const label = status === RECORD ? "record" : status === TIE ? "tie" : "on track";
+  const color = status === RECORD ? "red.600" : status === TIE ? "orange.600" : "blue.600";
+  const weight = status === ON_TRACK ? "normal" : "bold";
+  return <Text as="span" className={"record-flag record-flag-" + status}
+    ml="1" fontSize="xs" fontWeight={weight} color={color} textTransform="uppercase">{label}</Text>;
+}
+
+function rainFreqLabel(freq) {
+  if (!freq || freq.n == null || freq.n === 0 || freq.pct == null) return "–";
+  const sample = freq.unit === "days"
+    ? (freq.wet + " of " + freq.n + " days (±" + (freq.radius || 3) + "d)")
+    : (freq.wet + " of " + freq.n + " years");
+  return freq.pct + "% wet (" + sample + ")";
+}
+
 function DayClimateExtremesCard(props) {
   const date = serverDate(props.dash, props.summary);
   const doy = props.summary?.day_of_year;
@@ -257,15 +278,20 @@ function DayClimateExtremesCard(props) {
   const normMax = date ? dailyNormal("temp", "max", ...date) : null;
   const normAvg = date ? dailyNormal("temp", "avg", ...date) : null;
   const normSun = date ? dailyNormal("sun", "total", ...date) : null;
-  const normRain = date ? monthlyNormal("rain", "total", date[1]) : null;
+  const todayTemp = props.dash?.today?.temperature;
+  const hour = localHourFromServer(props.summary) ?? localHourFromServer(props.dash);
+  const flagHotMax = hottestHigh(todayTemp?.max_val, doy?.temp_max?.max_val);
+  const flagColdMin = coldestLow(todayTemp?.min_val, doy?.temp_min?.min_val);
+  const flagWarmMin = warmestLow(todayTemp?.min_val, doy?.temp_min?.max_val, hour);
+  const flagColdMax = coldestHigh(todayTemp?.max_val, doy?.temp_max?.min_val, hour);
 
-  const fmtExt = (entry, key, fmat) => {
+  const fmtExt = (entry, key, fmat, flag) => {
     const val = entry?.[key + "_val"];
     if (val == null) {
       return "–";
     }
     const yr = entry?.[key + "_yr"] ?? entry?.[key + "_at"]?.[0];
-    return <>{formatObs(unit, val, fmat)}{yr ? <Text as="span" fontSize="xs" color="gray.600"> ({yr})</Text> : null}</>;
+    return <>{formatObs(unit, val, fmat)}{yr ? <Text as="span" fontSize="xs" color="gray.600"> ({yr})</Text> : null}<RecordFlag status={flag} /></>;
   };
 
   return <Box id="day-climate-extremes-card" width={{ base: "98%", md: "460px" }} minHeight="250px" border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 4 }} my={2} mx={{ base: 0, md: 3 }} borderRadius="10px">
@@ -284,13 +310,13 @@ function DayClimateExtremesCard(props) {
 
       <Box fontWeight="bold">Temp High</Box>
       <Box>{formatObs(unit, normMax, "temp")}</Box>
-      <Box>{fmtExt(doy?.temp_max, "min", "temp")}</Box>
-      <Box>{fmtExt(doy?.temp_max, "max", "temp")}</Box>
+      <Box>{fmtExt(doy?.temp_max, "min", "temp", flagColdMax)}</Box>
+      <Box>{fmtExt(doy?.temp_max, "max", "temp", flagHotMax)}</Box>
 
       <Box fontWeight="bold">Temp Low</Box>
       <Box>{formatObs(unit, normMin, "temp")}</Box>
-      <Box>{fmtExt(doy?.temp_min, "min", "temp")}</Box>
-      <Box>{fmtExt(doy?.temp_min, "max", "temp")}</Box>
+      <Box>{fmtExt(doy?.temp_min, "min", "temp", flagColdMin)}</Box>
+      <Box>{fmtExt(doy?.temp_min, "max", "temp", flagWarmMin)}</Box>
 
       <Box fontWeight="bold">Temp Mean</Box>
       <Box>{formatObs(unit, normAvg, "temp")}</Box>
@@ -298,7 +324,7 @@ function DayClimateExtremesCard(props) {
       <Box>{fmtExt(doy?.temp_avg, "max", "temp")}</Box>
 
       <Box fontWeight="bold">Rainfall</Box>
-      <Box title="Monthly normal">{normRain != null ? formatObs(unit, normRain, "rain") + "/mo" : "–"}</Box>
+      <Box title="Share of past years with ≥0.01 in on this date">{rainFreqLabel(doy?.rain_freq)}</Box>
       <Box>–</Box>
       <Box>{fmtExt(doy?.rain_total, "max", "rain")}</Box>
 
@@ -314,6 +340,8 @@ function DayClimateExtremesCard(props) {
     </Grid>
     <Text fontSize="xs" color="gray.600" mt="2">
       <Link href={CLIMATE_PAGE}>Climate normals</Link> &middot; Records since Nov 2020
+      {" "}&middot; Rain normal is % of years with measurable rain (≥0.01 in) on this date
+      {" "}&middot; Record flags: hottest high / coldest low as soon as beaten; warmest low after ~10am; coldest high after ~6pm
     </Text>
   </Box>;
 }

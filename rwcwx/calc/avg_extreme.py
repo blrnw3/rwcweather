@@ -414,6 +414,10 @@ class DayOfYearSummary:
                 s["max_yr"] = s["max_at"].year
                 s["max_at"] = (s["max_at"].year, s["max_at"].month, s["max_at"].day)
             stats[f"{sun_model.PCT_VAR}_{sun_model.PCT_TYPE}"] = s
+        # Measurable-rain frequency for this calendar date (today excluded). Cached with the rest.
+        from rwcwx.calc.rain_freq import frequency_from_rows
+        rain_rows = AvgExtQ.daily_values("rain", "total")
+        stats["rain_freq"] = frequency_from_rows(rain_rows, self.day, exclude=self.day)
         return stats
 
 
