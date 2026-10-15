@@ -1,7 +1,7 @@
 """Heatwave / cold-snap spells: consecutive days where daily temp departs from the climate normal.
 
 Departure = observed − normal (°C). Heatwave: departure ≥ +level. Cold snap: departure ≤ −level.
-Levels are accepted in °F (3,5,8,10) or native °C (2,3,5,6); stored comparison is always °C.
+Levels are accepted in °F (3,5,8,10) or native °C (2,3,5,7,10); stored comparison is always °C.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from rwcwx.calc.rolling import span_overlaps_months, target_months
 DIRECTIONS = ("above", "below")
 # Display thresholds (°F) and metric °C options (accepted as °F equivalents via conversion).
 LEVELS_F = (3, 5, 8, 10)
-LEVELS_C = (2, 3, 5, 6)
+LEVELS_C = (2, 3, 5, 7, 10)
 # All accepted query levels in °F (exact), including C→F so the API stays in one unit.
 LEVELS = tuple(sorted(set(LEVELS_F) | {round(c * 9 / 5, 4) for c in LEVELS_C}))
 TYPES = ("max", "min", "avg")

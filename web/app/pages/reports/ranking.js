@@ -149,9 +149,11 @@ const SPELL_OBS = Object.keys(SPELL_CONF);
 // Heatwave / cold snap vs 1991-2020 daily climate normal (departure thresholds).
 // US: °F; metric: round °C stored as °F equivalents (matching backend LEVELS).
 const ANOM_LEVELS_F = ["3", "5", "8", "10"];
-const ANOM_LEVELS_C = [2, 3, 5, 6].map((c) => String(c * 9 / 5));
+// Metric UI: exact °C options, passed to the API as °F equivalents (c * 9/5).
+const ANOM_LEVELS_C_DEG = [2, 3, 5, 7, 10];
+const ANOM_LEVELS_C = ANOM_LEVELS_C_DEG.map((c) => String(c * 9 / 5));
 const ANOM_LEVELS_US = ANOM_LEVELS_F;
-const ANOM_LEVELS_METRIC = [...new Set([...ANOM_LEVELS_C, ...ANOM_LEVELS_F])].sort((a, b) => Number(a) - Number(b));
+const ANOM_LEVELS_METRIC = ANOM_LEVELS_C;
 const ANOM_ORDERS = ["length", "cum", "peak"];
 const ANOM_ORDER_NAMES = { length: "Longest", cum: "Most cumulative", peak: "Biggest peak" };
 const ANOM_DIR_NAMES = { above: "Heatwave (≥)", below: "Cold snap (≤ −)" };
@@ -166,7 +168,7 @@ function formatAnomLevel(unit, level) {
     const n = Number(level);
     if (unit === "us") return n + " °F";
     // Prefer whole °C when this level is a metric option
-    for (const c of [2, 3, 5, 6]) {
+    for (const c of ANOM_LEVELS_C_DEG) {
         if (Math.abs(n - c * 9 / 5) < 1e-6) return c + " °C";
     }
     return (n * 5 / 9).toFixed(1) + " °C";
