@@ -97,12 +97,14 @@ def _spell(run: List[Tuple], direction: str) -> dict:
 
 
 def _sort_key(order: str, direction: str):
-    # Extreme first; ties: most recent end date.
+    # Extreme first; further ties: most recent end date.
+    # Length ties: larger |mean departure| first (cold snaps: more negative mean ranks higher).
     if order == "cum":
         return (lambda s: (s["cum"] if direction == "above" else -s["cum"], s["end"]))
     if order == "peak":
         return (lambda s: (s["peak"] if direction == "above" else -s["peak"], s["end"]))
-    return (lambda s: (s["length"], s["end"]))
+    mean_key = (lambda s: s["mean"]) if direction == "above" else (lambda s: -s["mean"])
+    return (lambda s: (s["length"], mean_key(s), s["end"]))
 
 
 def rank_anom_spells(spells: List[dict], order: str, direction: str, limit: int) -> List[dict]:
