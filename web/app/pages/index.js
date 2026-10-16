@@ -881,7 +881,8 @@ function RadioButtonGroup(props) {
   </Flex>
 }
 
-function ChartCardLatest(props) {
+// Memoized: no props from HomePage, so the ~3-9s live poll doesn't redraw this chart.
+const ChartCardLatest = React.memo(function ChartCardLatest(props) {
   const obsOptions = ["temp", "rain", "humi", "dewpt", "aqi", "wind", "pres"];
   const hrsOptions = ["6", "12", "24", "72"];
 
@@ -905,9 +906,10 @@ function ChartCardLatest(props) {
     </Flex>
     <LatestChart obs={chartObs} hrs={hrs} m={1} height="55%" spacing={[5, 5, 12, 3]} />
   </Box>
-}
+});
 
-function ChartCardDaily(props) {
+// Memoized: no props from HomePage, so the ~3-9s live poll doesn't redraw this chart.
+const ChartCardDaily = React.memo(function ChartCardDaily(props) {
   const obsOptions = ["temp", "rain", "sun", "humi", "dewpt", "aqi", "wind", "pres"];
   const aggOpts = ["avg", "max", "min"]
 
@@ -942,10 +944,11 @@ function ChartCardDaily(props) {
     </Flex>
     <SummaryChart m={1} obs={chartObs} aggType={chartAgg} height="55%" chartType="column" period={period} spacing={[5, 5, 12, 3]} />
   </Box>
-}
+});
 
 
-function ChartCardYear(props) {
+// Memoized: no props from HomePage, so the ~3-9s live poll doesn't redraw this chart.
+const ChartCardYear = React.memo(function ChartCardYear(props) {
   // Same variable buttons as the home 30-day chart. Rain and sun (hours) are
   // always cumulative; everything else is daily. Reuses YearChart.
   const obsOptions = ["temp", "rain", "sun", "humi", "dewpt", "aqi", "wind", "pres"];
@@ -997,28 +1000,32 @@ function ChartCardYear(props) {
         spacing={[5, 5, 12, 3]} />
     </Box>
   </Box>
-}
+});
 
+// Webcam: preload each new frame off-screen and only swap it in once it has fully loaded (a failed or
+// half-uploaded frame keeps the previous one). The box reserves the image's aspect ratio, so a refresh can
+// never collapse the img and shrink the page (which yanked a reader scrolled to the bottom back up).
+const CAM_URL = "https://rwcweather.com/cumulus/skycam_large.jpg";
 const WebcamMemo = React.memo(function Webcam(props) {
-  const [ts, setTs] = useState(new Date().getTime());
+  const [src, setSrc] = useState(CAM_URL + "?" + new Date().getTime());
 
   useEffect(() => {
-    let interval = null;
-    // NB: we pass a fn to setTs because this is a fire-once effect and so when the fn is setup, the value of ts keeps its initial val
-    // see: https://stackoverflow.com/questions/54675523/state-inside-useeffect-refers-the-initial-state-always-with-react-hooks
-    // and: https://stackoverflow.com/questions/62806541/how-to-solve-the-react-hook-closure-issue for how to get the latest state val in a closure
-    interval = setInterval(() => {
-      if(document.visibilityState != "hidden") {
-        setTs((ts) => ts + 1);
-      }
+    let cancelled = false;
+    const interval = setInterval(() => {
+      if (document.visibilityState == "hidden") return;
+      const next = CAM_URL + "?" + new Date().getTime();
+      const img = new Image();
+      img.onload = () => { if (!cancelled && img.naturalWidth > 0) setSrc(next); };
+      img.src = next;
     }, 6000);
-    return () => clearInterval(interval);
+    return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
   return <Box mt={2}>
     <Box m="auto" width={{ base: "95%", md: "720px", lg: "1200px", xl: "1500px" }}
-      height={{ base: "auto", md: "407px", lg: "675px", xl: "844px" }}>
-      <img id="cam" src={"https://rwcweather.com/cumulus/skycam_large.jpg?" + ts} alt="rwc weather cam" />
+      style={{ aspectRatio: "1560 / 878" }} overflow="hidden">
+      <img id="cam" src={src} width="1560" height="878" alt="rwc weather cam"
+        style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
     </Box>
     <Text>Weather cam looking SE over the Emerald Hills canyon towards the southern SF peninsula.</Text>
   </Box>
