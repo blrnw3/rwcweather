@@ -203,11 +203,11 @@ function Footer(props) {
     </Box>
     <Flex m={3} gap={3} justify="center" align="flex-end">
       <Box>
-        <Box as="img" src="/img/weatherbox.webp" alt="The rwcweather station" h={{ base: "120px", md: "150px" }} w="auto" borderRadius="md" />
+        <Box as="img" src="/img/weatherbox.webp" alt="The rwcweather station" h={{ base: "44vw", md: "220px", lg: "260px" }} maxH="260px" w="auto" borderRadius="md" />
       </Box>
       <Box>
         <ChakraLink isExternal href="/img/pliny_frolic.jpg" variant="hidden">
-          <Box as="img" src="/img/pliny_frolic_sm.webp" alt="Pliny frolicking in the spring greenery" h={{ base: "120px", md: "150px" }} w="auto" borderRadius="md" />
+          <Box as="img" src="/img/pliny_frolic_sm.webp" alt="Pliny frolicking in the spring greenery" h={{ base: "44vw", md: "220px", lg: "260px" }} maxH="260px" w="auto" borderRadius="md" />
         </ChakraLink>
       </Box>
     </Flex>
