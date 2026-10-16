@@ -74,6 +74,10 @@ def test_window_frames_dst_change_days():
 
 # ---- HTTP endpoint ----
 
+needs_db = pytest.mark.skipif(bool(__import__("os").environ.get("RWC_TEST_NO_DB")),
+                              reason="importing the Flask app reflects tables (needs MySQL)")
+
+
 @pytest.fixture
 def client(monkeypatch):
     from rwcwx.main import app
@@ -95,6 +99,7 @@ BODY = dict(model_version="llmj2-test-abcd1234", rows=[dict(t="2026-01-05T17:00:
                                                             reason="Dense fog")])
 
 
+@needs_db
 def test_endpoint_disabled_without_token(client, monkeypatch):
     monkeypatch.delenv("RWC_INGEST_TOKEN", raising=False)
     r = client.post("/api/inferred/fog", json=BODY, headers={"Authorization": "Bearer anything"})
@@ -103,6 +108,7 @@ def test_endpoint_disabled_without_token(client, monkeypatch):
     assert client.post("/api/inferred/fog", json=BODY, headers={"Authorization": "Bearer "}).status_code == 503
 
 
+@needs_db
 @pytest.mark.parametrize("hdr", [None, "Bearer wrong", "bearer s3cret", "s3cret", "Basic s3cret"])
 def test_endpoint_rejects_bad_auth(client, monkeypatch, hdr):
     monkeypatch.setenv("RWC_INGEST_TOKEN", "s3cret")
@@ -110,6 +116,7 @@ def test_endpoint_rejects_bad_auth(client, monkeypatch, hdr):
     assert r.status_code == 401 and not client.calls
 
 
+@needs_db
 def test_endpoint_accepts_and_normalises(client, monkeypatch):
     monkeypatch.setenv("RWC_INGEST_TOKEN", "s3cret")
     body = dict(BODY, rows=[dict(t="2026-01-05T09:30:00-08:00", fog=False, confidence=0.95), BODY["rows"][0]])
@@ -121,6 +128,7 @@ def test_endpoint_accepts_and_normalises(client, monkeypatch):
     assert r.get_json()["counts"] == {"inserted": 2}
 
 
+@needs_db
 @pytest.mark.parametrize("bad", [
     dict(BODY, model_version=""),
     dict(BODY, source="manual"),                                   # clients can never write manual rows

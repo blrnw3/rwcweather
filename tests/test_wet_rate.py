@@ -10,6 +10,7 @@ def test_rate_is_blank_without_wet_hours():
     assert rate(0.2, 0) is None and rate(None, 2) is None and rate(0.2, 4) == 0.05
 
 
+@pytest.mark.skipif(bool(__import__("os").environ.get("RWC_TEST_NO_DB")), reason="period_rate imports avg_extreme (needs MySQL)")
 def test_days_and_period_use_total_rain_over_total_wet_hours():
     rain = [NS(d=date(2026, 1, i), val=v) for i, v in ((1, 0.5), (2, 0.1), (3, 0.0))]
     wet = [NS(d=date(2026, 1, i), val=v, cnt=1) for i, v in ((1, 5.0), (2, 0.5), (3, 0.0))]
