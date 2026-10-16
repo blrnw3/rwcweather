@@ -156,7 +156,7 @@ const OBS_FORMAT = {
       conv: {
       },
       precision: {
-        base: 1,
+        base: 0,
       },
       scale: {
         base: [0.5, 1, 1.5, 2, 3, 4, 5, 6],
