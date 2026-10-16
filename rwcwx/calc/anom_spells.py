@@ -28,8 +28,8 @@ def level_c(level_f: float) -> float:
 
 
 def departures(daily: Iterable[Tuple[date, Optional[float]]], typ: str
-               ) -> List[Tuple[date, float]]:
-    """(date, departure_C) for days with data and a known normal."""
+               ) -> List[Tuple[date, float, float]]:
+    """(date, departure_C, observed_C) for days with data and a known normal."""
     out = []
     for d, v in daily:
         if v is None:
@@ -37,27 +37,38 @@ def departures(daily: Iterable[Tuple[date, Optional[float]]], typ: str
         n = daily_temp_normal(typ, d)
         if n is None:
             continue
-        out.append((d, v - n))
+        out.append((d, v - n, v))
     return out
 
 
-def find_anom_spells(deps: Sequence[Tuple[date, float]], level_celsius: float, direction: str,
+def find_anom_spells(deps: Sequence[Tuple], level_celsius: float, direction: str,
                      month: Union[int, str, None] = 0, last_day: Optional[date] = None
                      ) -> List[dict]:
-    """Spells where departure meets the threshold; month/season overlap keeps spells whole."""
+    """Spells where departure meets the threshold; month/season overlap keeps spells whole.
+
+    Each deps entry is (date, departure_C) or (date, departure_C, observed_C). Observed
+    temps are included in the spell when provided (mean_temp / peak_temp).
+    """
     thresh = abs(level_celsius)
-    days = sorted((d, dep) for d, dep in deps if last_day is None or d <= last_day)
+    # Normalise to (date, dep, obs|None)
+    normed = []
+    for row in deps:
+        d, dep = row[0], row[1]
+        obs = row[2] if len(row) > 2 else None
+        if last_day is None or d <= last_day:
+            normed.append((d, dep, obs))
+    days = sorted(normed)
     spells, run = [], []
 
     def ok(dep: float) -> bool:
         return dep >= thresh - EPS if direction == "above" else dep <= -thresh + EPS
 
-    for d, dep in days:
+    for d, dep, obs in days:
         if run and (not ok(dep) or d != run[-1][0] + timedelta(days=1)):
             spells.append(_spell(run, direction))
             run = []
         if ok(dep):
-            run.append((d, dep))
+            run.append((d, dep, obs))
     if run:
         spells.append(_spell(run, direction))
     months = target_months(month)
@@ -66,11 +77,12 @@ def find_anom_spells(deps: Sequence[Tuple[date, float]], level_celsius: float, d
     return spells
 
 
-def _spell(run: List[Tuple[date, float]], direction: str) -> dict:
-    deps = [v for _, v in run]
+def _spell(run: List[Tuple], direction: str) -> dict:
+    deps = [row[1] for row in run]
+    obs = [row[2] for row in run if len(row) > 2 and row[2] is not None]
     cum = sum(deps)
     peak = max(deps) if direction == "above" else min(deps)
-    return dict(
+    out = dict(
         start=run[0][0], end=run[-1][0], length=len(run),
         mean=round(sum(deps) / len(deps), 4),
         peak=round(peak, 4),
@@ -78,15 +90,21 @@ def _spell(run: List[Tuple[date, float]], direction: str) -> dict:
         max=round(max(deps), 4),
         min=round(min(deps), 4),
     )
+    if obs:
+        out["mean_temp"] = round(sum(obs) / len(obs), 4)
+        out["peak_temp"] = round(max(obs) if direction == "above" else min(obs), 4)
+    return out
 
 
 def _sort_key(order: str, direction: str):
-    # Extreme first; ties: most recent end date.
+    # Extreme first; further ties: most recent end date.
+    # Length ties: larger |mean departure| first (cold snaps: more negative mean ranks higher).
     if order == "cum":
         return (lambda s: (s["cum"] if direction == "above" else -s["cum"], s["end"]))
     if order == "peak":
         return (lambda s: (s["peak"] if direction == "above" else -s["peak"], s["end"]))
-    return (lambda s: (s["length"], s["end"]))
+    mean_key = (lambda s: s["mean"]) if direction == "above" else (lambda s: -s["mean"])
+    return (lambda s: (s["length"], mean_key(s), s["end"]))
 
 
 def rank_anom_spells(spells: List[dict], order: str, direction: str, limit: int) -> List[dict]:
@@ -95,8 +113,13 @@ def rank_anom_spells(spells: List[dict], order: str, direction: str, limit: int)
 
 def _fmt(s: dict) -> dict:
     t = lambda d: (d.year, d.month, d.day)
-    return dict(start=t(s["start"]), end=t(s["end"]), length=s["length"],
-                mean=s["mean"], peak=s["peak"], cum=s["cum"], max=s["max"], min=s["min"])
+    out = dict(start=t(s["start"]), end=t(s["end"]), length=s["length"],
+               mean=s["mean"], peak=s["peak"], cum=s["cum"], max=s["max"], min=s["min"])
+    if "mean_temp" in s:
+        out["mean_temp"] = s["mean_temp"]
+    if "peak_temp" in s:
+        out["peak_temp"] = s["peak_temp"]
+    return out
 
 
 def anom_spell_ranking(daily: Iterable[Tuple[date, Optional[float]]], typ: str, level_f: float,
