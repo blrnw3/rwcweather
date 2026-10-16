@@ -76,6 +76,8 @@ const SPELL_CONF = {
     },
     sun: { total: ["0.1", "1", "4", "8", "10", "12"] },
     sunpct: { avg: ["10", "25", "50", "75", "90"] },
+    fog: { total: ["0.5", "1", "2", "3", "4"] },
+    fogday: { total: ["1"] },
     humi: {
         max: ["50", "60", "70", "80", "90", "95"],
         min: ["20", "30", "40", "50", "60", "70"],
@@ -188,7 +190,7 @@ function formatAnomDep(unit, depC) {
 const SPELL_DEFAULTS = {
     rain: "0.01", wet: "1", wetrate: "0.05", rain60: "0.1", rain10: "0.05",
     max: "80", min: "50", avg: "60",
-    sun: "10", sunpct: "75",
+    sun: "10", sunpct: "75", fog: "1", fogday: "1",
     humi: "70", dewpt: "50", aqi: "50", wind: "10", gust: "20", pres: "1015",
 };
 const DEFAULT_SPELL_DIR_NAMES = { above: "Above (≥)", below: "Below (<)" };
@@ -198,6 +200,8 @@ const SPELL_DIR_NAMES = {
     temp: { above: "Above (≥)", below: "Below (<)" },
     sun: { above: "Sunny (≥)", below: "Dull (<)" },
     sunpct: { above: "Sunny (≥)", below: "Dull (<)" },
+    fog: { above: "Foggy (≥)", below: "Clearer (<)" },
+    fogday: { above: "Fog days", below: "Fog-free days" },
 };
 const DEFAULT_SPELL_TITLE_WORDS = { above: "high", below: "low" };
 const SPELL_TITLE_WORDS = {
@@ -206,6 +210,8 @@ const SPELL_TITLE_WORDS = {
     temp: { above: "warm", below: "cold" },
     sun: { above: "sunny", below: "dull" },
     sunpct: { above: "sunny", below: "dull" },
+    fog: { above: "foggy", below: "fog-light" },
+    fogday: { above: "foggy", below: "fog-free" },
     humi: { above: "humid", below: "dry" },
     wind: { above: "windy", below: "calm" },
     gust: { above: "gusty", below: "calm" },
@@ -246,8 +252,11 @@ function spellDefaultThreshold(obs, stat) {
 
 // Thresholds are entered in °F / inches / hours; temperatures are stored (and formatted from) °C.
 function formatThreshold(unit, obs, value, stat) {
-    if (obs === "wet" || obs === "sun") {
+    if (obs === "wet" || obs === "sun" || obs === "fog") {
         return value + " h";
+    }
+    if (obs === "fogday") {
+        return "fog seen";
     }
     const num = Number(value);
     if (obs === "rain" && (num === 0.01 || num === 0.0079) && unit !== "us") {

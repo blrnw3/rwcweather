@@ -27,6 +27,7 @@ class Unit(Enum):
     mph = "mph"
     degs = "degrees"
     hours = "h"
+    days = "days"
 
 
 @dataclass
@@ -245,12 +246,27 @@ class Rain60(ObsVar):
     db_field = "rain60"
 
 
+class Fog(ObsVar):
+    """Webcam fog hours (rwcwx/fog): dawn (sun >= 5 deg) to 1 pm frames judged by the LLM client; avg_extreme
+    var='fog', type 'total'. Only daily totals exist."""
+    name = "fog hours"
+    unit = Unit.hours
+    db_field = "fog"
+
+
+class FogDay(ObsVar):
+    """1 if fog was seen that morning (>= 2 fog frames), else 0; totals over a period are fog days."""
+    name = "fog days"
+    unit = Unit.days
+    db_field = "fogday"
+
+
 class ObsVarGroup:
     ALL: Iterable[ObsVarT] = (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt)
 
 
 OBS_VAR_MAP = {o.db_field: o for o in (
-    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun, SunPct, Wet, WetRate, Rain10, Rain60)
+    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun, SunPct, Wet, WetRate, Rain10, Rain60, Fog, FogDay)
 )}
 
 

@@ -1,7 +1,7 @@
 import { FiWind } from "react-icons/fi";
 import { GiDew, GiLeafSwirl } from "react-icons/gi";
 import { RiHazeLine } from "react-icons/ri";
-import { WiBarometer, WiDaySunny, WiHumidity, WiRain, WiThermometer, WiWindDeg } from "react-icons/wi";
+import { WiBarometer, WiDaySunny, WiFog, WiHumidity, WiRain, WiThermometer, WiWindDeg } from "react-icons/wi";
 
 export const fetcher = url => fetch(process.env.NEXT_PUBLIC_API_HOST + url).then(res => res.json());
 
@@ -80,6 +80,21 @@ export const OBS = new Map([
         icon: <WiDaySunny />,
         dailyStats: ["avg"],
     }],
+    // Webcam fog (LLM judge, dawn to 1 pm, 30-min frames); daily totals only. Shown via the
+    // "Show sunshine as" toggle on report pages (not on the home page).
+    ["fog", {
+        name: "Fog hours",
+        summary: "total",
+        fmat: "fog",
+        icon: <WiFog />,
+    }],
+    // 1 if fog was seen that morning (at least 2 fog frames); period totals are fog days.
+    ["fogday", {
+        name: "Fog days",
+        summary: "total",
+        fmat: "fogday",
+        icon: <WiFog />,
+    }],
     // Derived from rain-gauge tips (30 min either side of a spell); shown via the "Show rainfall as"
     // toggle under the Rainfall button rather than as its own variable button.
     ["wet", {
@@ -115,7 +130,9 @@ export const OBS = new Map([
 
 // Alternative views of one variable (the button stays the base variable).
 export const SUN_VIEWS = ["sun", "sunpct"];
-export const SUN_VIEW_NAMES = { sun: "Hours", sunpct: "% of possible" };
+export const SUN_VIEW_NAMES = { sun: "Hours", sunpct: "% of possible", fog: "Fog hours", fogday: "Fog days" };
+// Report pages also offer the webcam fog views under Sunshine; the home page keeps SUN_VIEWS.
+export const REPORT_SUN_VIEWS = [...SUN_VIEWS, "fog", "fogday"];
 export const RAIN_VIEWS = ["rain", "wet", "wetrate", "rain60", "rain10"];
 export const RAIN_VIEW_NAMES = { rain: "Amount", wet: "Wet hours", wetrate: "Rate when wet", rain60: "Max 60-min", rain10: "Max 10-min" };
 export const WIND_VIEWS = ["wind", "gust", "wdir"];
@@ -131,7 +148,7 @@ export const WIND_SUMMARY_NAMES = {
 
 // Variable button -> its views and their labels (the toggle shown under the Variable buttons).
 export const VIEW_GROUPS = {
-    sun: { views: SUN_VIEWS, names: SUN_VIEW_NAMES, label: "Show sunshine as:" },
+    sun: { views: REPORT_SUN_VIEWS, names: SUN_VIEW_NAMES, label: "Show sunshine as:" },
     rain: { views: RAIN_VIEWS, names: RAIN_VIEW_NAMES, label: "Show rainfall as:" },
     wind: { views: WIND_VIEWS, names: WIND_VIEW_NAMES, summaryViews: WIND_SUMMARY_VIEWS, summaryNames: WIND_SUMMARY_NAMES, label: "Show wind as:" },
 };

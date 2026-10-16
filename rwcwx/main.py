@@ -13,6 +13,7 @@ from flask import Flask
 from flask.json import JSONEncoder
 
 import rwcwx.routes as r
+from rwcwx.fog import api as fog_api
 
 
 class CustomJSONEncoder(JSONEncoder):
@@ -78,3 +79,6 @@ app.add_url_rule("/api/sun/day/", view_func=r.sun_day)
 app.add_url_rule("/api/wet/day/<datestamp:d>", view_func=r.wet_day)
 app.add_url_rule("/api/wet/day/", view_func=r.wet_day)
 app.add_url_rule("/api/rain", view_func=r.rain_stats)
+
+# Ingest (bearer token from RWC_INGEST_TOKEN; disabled when unset)
+app.add_url_rule("/api/inferred/fog", view_func=fog_api.post_fog, methods=["POST"])

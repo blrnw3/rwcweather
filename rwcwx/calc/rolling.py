@@ -42,6 +42,8 @@ ROLLING_VARS: Dict[str, Dict[str, str]] = {
     "temp": {"avg": "mean", "max": "mean", "min": "mean"},
     "sun": {"total": "sum"},
     "sunpct": {"avg": "mean"},
+    "fog": {"total": "sum"},
+    "fogday": {"total": "sum"},
     "humi": {"avg": "mean", "max": "mean", "min": "mean"},
     "dewpt": {"avg": "mean", "max": "mean", "min": "mean"},
     "aqi": {"avg": "mean", "max": "mean", "min": "mean"},
@@ -51,7 +53,7 @@ ROLLING_VARS: Dict[str, Dict[str, str]] = {
 }
 
 
-PARTIAL_DAY_EXCLUDED = ("sun", "sunpct")
+PARTIAL_DAY_EXCLUDED = ("sun", "sunpct", "fog", "fogday")
 
 
 def target_months(month: Union[int, str, None] = 0, season: Optional[str] = None) -> Optional[Set[int]]:
