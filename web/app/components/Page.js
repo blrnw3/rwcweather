@@ -130,7 +130,7 @@ function Header(props) {
   const carry = useCarryHref();
   return <Box id="header" w="100%" bg="pliny.500">
     <BrandBanner unit={props.unit} />
-    <Flex w="100%" justify="space-between" align="flex-end" wrap="wrap" px={{ base: 2, md: 4 }} bg="pliny.800">
+    <Flex w="100%" justify="space-between" align="stretch" wrap="wrap" px={{ base: 2, md: 4 }} bg="pliny.800">
     <LiveStrip unit={props.unit} />
     <Flex id="nav" wrap="wrap" alignSelf="flex-end" ml="auto">
       {Array.from(NAV).map(([nav, subnavObj]) => {
@@ -196,6 +196,18 @@ function Footer(props) {
       >London NW3 weather</ChakraLink>
       </Text>
     </Box>
+    <Flex m={3} gap={3} justify="center" align="flex-end">
+      <Box as="figure" textAlign="center" fontSize="xs" color="gray.300">
+        <Box as="img" src="/img/weatherbox.webp" alt="The rwcweather station" h={{ base: "120px", md: "150px" }} w="auto" borderRadius="md" />
+        <Box as="figcaption" mt={1}>The station</Box>
+      </Box>
+      <Box as="figure" textAlign="center" fontSize="xs" color="gray.300">
+        <ChakraLink isExternal href="/img/pliny_frolic.jpg" variant="hidden">
+          <Box as="img" src="/img/pliny_frolic_sm.webp" alt="Pliny frolicking in the spring greenery" h={{ base: "120px", md: "150px" }} w="auto" borderRadius="md" />
+        </ChakraLink>
+        <Box as="figcaption" mt={1}>Pliny, outside</Box>
+      </Box>
+    </Flex>
     <Box m={3}>
       <ChakraLink variant="subtle" color="inherit" href="/about#contact">Contact / social</ChakraLink>
       <Text>Made in Redwood City, CA</Text>
