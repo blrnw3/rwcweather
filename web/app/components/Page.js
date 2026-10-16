@@ -195,24 +195,22 @@ function Footer(props) {
         href="http://nw3weather.co.uk"
       >London NW3 weather</ChakraLink>
       </Text>
+      <Box mt={3}>
+        <ChakraLink variant="subtle" color="inherit" href="/about#contact">Contact / social</ChakraLink>
+        <Text>Made in Redwood City, CA</Text>
+        <Text>&copy; rwcweather 2021-{new Date().getFullYear()}</Text>
+      </Box>
     </Box>
     <Flex m={3} gap={3} justify="center" align="flex-end">
-      <Box as="figure" textAlign="center" fontSize="xs" color="gray.300">
+      <Box>
         <Box as="img" src="/img/weatherbox.webp" alt="The rwcweather station" h={{ base: "120px", md: "150px" }} w="auto" borderRadius="md" />
-        <Box as="figcaption" mt={1}>The station</Box>
       </Box>
-      <Box as="figure" textAlign="center" fontSize="xs" color="gray.300">
+      <Box>
         <ChakraLink isExternal href="/img/pliny_frolic.jpg" variant="hidden">
           <Box as="img" src="/img/pliny_frolic_sm.webp" alt="Pliny frolicking in the spring greenery" h={{ base: "120px", md: "150px" }} w="auto" borderRadius="md" />
         </ChakraLink>
-        <Box as="figcaption" mt={1}>Pliny, outside</Box>
       </Box>
     </Flex>
-    <Box m={3}>
-      <ChakraLink variant="subtle" color="inherit" href="/about#contact">Contact / social</ChakraLink>
-      <Text>Made in Redwood City, CA</Text>
-      <Text>&copy; rwcweather 2021-{new Date().getFullYear()}</Text>
-    </Box>
   </Flex>
 }
 
