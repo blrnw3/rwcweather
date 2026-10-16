@@ -65,12 +65,12 @@ export function BrandBanner({ unit }) {
       gap={2}>
       <Box as="a" href="/" _hover={{ textDecoration: "none" }} textShadow="0 2px 6px rgba(0,0,0,0.45)">
         <Box lineHeight="1" fontSize={{ base: "4xl", md: "6xl" }} letterSpacing="-1px" color="pliny.50">
-          <Text as="span" fontWeight="black" color="yellow.300">rwc</Text>
+          <Text as="span" fontWeight="semibold" color="pliny.300">rwc</Text>
           <Text as="span" fontWeight="light" ml={1}>weather</Text>
         </Box>
         <Text mt={1} fontSize={{ base: "xs", md: "md" }} color="pliny.100" letterSpacing={{ base: "0.5px", md: "2px" }}
           textTransform="uppercase">
-          Emerald Lake Hills · Redwood City, CA · 420 ft
+          Emerald Hills · Redwood City, CA · 420 ft
         </Text>
       </Box>
     </Flex>
