@@ -8,9 +8,9 @@ import {
 } from '@chakra-ui/react';
 import { createContext, useEffect, useState } from 'react';
 import { IoSettingsOutline } from 'react-icons/io5';
-import { WiSunrise } from "react-icons/wi";
 import { useRouter } from 'next/router';
 import Layout from './Layout';
+import { BrandBanner, LiveStrip } from './BrandBanner';
 
 
 export const UnitCtx = createContext(null);
@@ -128,16 +128,11 @@ function SettingsModal(props) {
 
 function Header(props) {
   const carry = useCarryHref();
-  return <Flex id="header" w="100%" justify="space-between" bg="pliny.500" wrap="wrap" px="4">
-    <Box id="brand" fontSize={{base: "2xl", md: "3xl"}} pt="5" pb="2" pl={{base: 2, md: 3}} color="gray.100">
-      <ChakraLink href="/" variant="hidden" display="inline-flex" alignItems="center">
-        <Text as="span" className="home_ico" color="yellow" display="inline-flex" alignItems="center" lineHeight="1"><WiSunrise /></Text>
-        <Box as="span" paddingLeft="4" letterSpacing="1px" color="pliny.50">
-          <Text as="span" letterSpacing="0" fontWeight="extrabold" color="yellow">RWC</Text> Weather
-        </Box>
-      </ChakraLink>
-    </Box>
-    <Flex id="nav" wrap="wrap" alignSelf="flex-end">
+  return <Box id="header" w="100%" bg="pliny.500">
+    <BrandBanner unit={props.unit} />
+    <Flex w="100%" justify="space-between" align="stretch" wrap="wrap" px={{ base: 2, md: 4 }} bg="pliny.800">
+    <LiveStrip unit={props.unit} />
+    <Flex id="nav" wrap="wrap" alignSelf="flex-end" ml="auto">
       {Array.from(NAV).map(([nav, subnavObj]) => {
         if (typeof (subnavObj) === "string") {
           return <NavBarItem key={nav} name={nav} to={subnavObj} activePage={props.name} />
@@ -154,7 +149,8 @@ function Header(props) {
       })}
       <SettingsModal setUnit={props.setUnit} unit={props.unit} />
     </Flex>
-  </Flex>
+    </Flex>
+  </Box>
 }
 
 function SubHeader(props) {
@@ -199,12 +195,22 @@ function Footer(props) {
         href="http://nw3weather.co.uk"
       >London NW3 weather</ChakraLink>
       </Text>
+      <Box mt={3}>
+        <ChakraLink variant="subtle" color="inherit" href="/about#contact">Contact / social</ChakraLink>
+        <Text>Made in Redwood City, CA</Text>
+        <Text>&copy; rwcweather 2021-{new Date().getFullYear()}</Text>
+      </Box>
     </Box>
-    <Box m={3}>
-      <ChakraLink variant="subtle" color="inherit" href="/about#contact">Contact / social</ChakraLink>
-      <Text>Made in Redwood City, CA</Text>
-      <Text>&copy; rwcweather 2021-{new Date().getFullYear()}</Text>
-    </Box>
+    <Flex m={3} gap={3} justify="center" align="flex-end">
+      <Box>
+        <Box as="img" src="/img/weatherbox.webp" alt="The rwcweather station" h={{ base: "44vw", md: "220px", lg: "260px" }} maxH="260px" w="auto" borderRadius="md" />
+      </Box>
+      <Box>
+        <ChakraLink isExternal href="/img/pliny_frolic.jpg" variant="hidden">
+          <Box as="img" src="/img/pliny_frolic_sm.webp" alt="Pliny frolicking in the spring greenery" h={{ base: "44vw", md: "220px", lg: "260px" }} maxH="260px" w="auto" borderRadius="md" />
+        </ChakraLink>
+      </Box>
+    </Flex>
   </Flex>
 }
 
