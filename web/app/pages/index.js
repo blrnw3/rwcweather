@@ -1014,7 +1014,7 @@ const WebcamMemo = React.memo(function Webcam(props) {
     const interval = setInterval(() => {
       if (document.visibilityState == "hidden") return;
       const next = CAM_URL + "?" + new Date().getTime();
-      const img = new Image();
+      const img = new window.Image();
       img.onload = () => { if (!cancelled && img.naturalWidth > 0) setSrc(next); };
       img.src = next;
     }, 6000);
