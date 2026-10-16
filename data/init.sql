@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS `avg_extreme` (
   `d` date NOT NULL,
   `var` enum(
         'rain', 'temp', 'humi', 'pres', 'wind', 'gust', 'wdir', 'solr', 'wet', 'sun', 'feels', 'inhumi', 'intemp',
-        'night_temp', 'day_temp', 'day_wet', 'rain_rate', 'frost', 'pm2', 'dewpt', 'aqi', 'rain10', 'rain60'
+        'night_temp', 'day_temp', 'day_wet', 'rain_rate', 'frost', 'pm2', 'dewpt', 'aqi', 'rain10', 'rain60',
+        'fog'
    ) not null,
   `type` enum('avg', 'total', 'min', 'max') not null,
   `period` enum('day') not null default 'day',
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS `obs_inferred` (
   `source` varchar(24) NOT NULL DEFAULT 'live' COMMENT 'live, backfill, manual, or api:<name>; manual rows are never overwritten',
   `flags` varchar(64) DEFAULT NULL COMMENT 'comma list: missing, stale, ir, glitch, lowsun, ...',
   `model_version` varchar(32) DEFAULT NULL,
+  `note` varchar(255) DEFAULT NULL COMMENT 'classifier reason / free text, e.g. the fog judge''s reason',
   `t_mod` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'last modified',
   PRIMARY KEY (`kind`, `t`),
   KEY `t_key` (`t`),

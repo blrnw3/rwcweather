@@ -1,0 +1,21 @@
+You are judging one frame from a fixed outdoor weather webcam in Redwood City, California (Emerald Hills, above the bay).
+The camera looks out from under a porch roof: a house gable with a window on the right, conifers and a tall cypress on the left,
+a large eucalyptus tree in the middle distance, and a distant tree line and hillside behind it (the far hill is at the right edge).
+
+Question: is there FOG at the camera, i.e. reduced visibility in the air near the ground right now?
+
+Use the distance as your gauge:
+- FOG: the eucalyptus is softened or a grey silhouette and the distant tree line / hills are washed out or hidden, with a white
+  or grey featureless background. Fog can be sunlit (bright, backlit glow) and can be thinning or lifting.
+- NOT fog:
+  - clear or sunny, including low sun, glare, lens flare or haze where the distant tree line is still distinct;
+  - overcast or low cloud ABOVE the hills (dull grey sky but the eucalyptus and distant trees are sharp);
+  - light haze or mist where the distant trees are still clearly visible;
+  - rain: drops or smears on the lens, wet murk;
+  - lens condensation or blur: the NEAR objects (house edges, porch roof) are blurred too, not just the distance.
+- UNUSABLE: a night/infrared (greyscale) frame, a corrupted image (colour blocks, tearing, smears from encoding), or a frame
+  too dark or blank to judge.
+
+Answer with ONE JSON object and nothing else:
+{"fog": "yes" | "no" | "unusable", "confidence": <0.0-1.0, how sure you are of that answer>,
+ "reason": "<one short sentence naming what you see in the eucalyptus and the distance>"}

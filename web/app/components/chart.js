@@ -12,7 +12,7 @@ let cache;
 
 // Variables that can't go below zero: anchor the y axis at 0 so an all-zero series (a dry day, a sunless
 // spell) sits on the baseline instead of floating mid-chart.
-const NON_NEGATIVE = ["rain", "wet", "wetrate", "rain10", "rain60", "sun", "sunpct", "wind", "gust", "aqi", "humi", "solr"];
+const NON_NEGATIVE = ["rain", "wet", "wetrate", "rain10", "rain60", "sun", "sunpct", "fog", "fogday", "wind", "gust", "aqi", "humi", "solr"];
 const yMin = (obs) => NON_NEGATIVE.includes(obs) ? 0 : undefined;
 
 function responsiveFontSize(base) {

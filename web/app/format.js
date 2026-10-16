@@ -148,6 +148,44 @@ const OBS_FORMAT = {
         year: [150, 200, 250, 300, 350, 400, 450, 500],
       },
     },
+    // Webcam fog hours (dawn to 1 pm, 30-min frames): a foggy morning is ~1-5 h; ~10-20 fog days a year.
+    fog: {
+      units: {
+        base: "h",
+      },
+      conv: {
+      },
+      precision: {
+        base: 0,
+      },
+      scale: {
+        base: [0.5, 1, 1.5, 2, 3, 4, 5, 6],
+      },
+      periodScale: {
+        summaries: ["total"],
+        month: [1, 2, 4, 6, 9, 12, 16, 20],
+        year: [10, 15, 20, 30, 40, 50, 60, 80],
+      },
+    },
+    // Fog days: 1/0 per day, summed over periods.
+    fogday: {
+      units: {
+        base: "",
+      },
+      conv: {
+      },
+      precision: {
+        base: 0,
+      },
+      scale: {
+        base: [1, 1, 1, 1, 1, 1, 1, 1],
+      },
+      periodScale: {
+        summaries: ["total"],
+        month: [1, 2, 3, 4, 5, 6, 8, 10],
+        year: [4, 6, 8, 10, 12, 15, 18, 22],
+      },
+    },
     // Average rain rate when wet (rain / wet hours), per hour.
     wetrate: {
       units: {

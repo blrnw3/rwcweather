@@ -37,6 +37,8 @@ SPELL_VARS: Dict[Tuple[str, str], dict] = {
     ("temp", "avg"): dict(thresholds=(40, 50, 60, 70, 80), fahrenheit=True),
     ("sun", "total"): dict(thresholds=(0.1, 1, 4, 8, 10, 12), sum=True),
     ("sunpct", "avg"): dict(thresholds=(10, 25, 50, 75, 90)),
+    ("fog", "total"): dict(thresholds=(0.5, 1, 2, 3, 4), sum=True),
+    ("fogday", "total"): dict(thresholds=(1,), sum=True),
     ("humi", "max"): dict(thresholds=(50, 60, 70, 80, 90, 95)),
     ("humi", "min"): dict(thresholds=(20, 30, 40, 50, 60, 70)),
     ("humi", "avg"): dict(thresholds=(30, 40, 50, 60, 70, 80, 90)),

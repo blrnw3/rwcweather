@@ -25,6 +25,7 @@ from rwcwx.util import DateStampConverter, DateUtil
 from rwcwx.wet import rate as wet_rate
 from rwcwx.wet import intensity_store
 from rwcwx.wet import store as wet_store
+from rwcwx.fog import derive as fog_derive
 
 
 def todo():
@@ -335,6 +336,8 @@ def _anom_spells_cached(var, typ, level, direction, month, order, limit, today: 
 def _daily_values(var: str, typ: str):
     if (var, typ) == (sun_model.PCT_VAR, sun_model.PCT_TYPE):
         return sun_model.pct_daily_values(AvgExtQ.daily_values("sun", "total"))
+    if (var, typ) == (fog_derive.DAY_VAR, fog_derive.DAY_TYPE):
+        return fog_derive.fog_day_values(AvgExtQ.daily_values("fog", "total"))
     if (var, typ) == (wet_rate.RATE_VAR, wet_rate.RATE_TYPE):
         rain = dict(AvgExtQ.daily_values("rain", "total"))
         return [(d, wet_rate.rate(rain.get(d), w)) for d, w in AvgExtQ.daily_values("wet", "total")
@@ -412,6 +415,9 @@ def _var_avg_exts_from_request(var: str, typ: str) -> List[AvgExt]:
         if typ != wet_rate.RATE_TYPE:
             return []
         return wet_rate.rate_days(_var_avg_exts_from_request("rain", "total"), _var_avg_exts_from_request("wet", "total"))
+    if var == fog_derive.DAY_VAR:
+        # Derived per day from the stored fog hours: 1 if any fog that morning.
+        return fog_derive.fog_days(_var_avg_exts_from_request("fog", "total")) if typ == fog_derive.DAY_TYPE else []
     if var == sun_model.PCT_VAR:
         # Derived from the daily sunshine totals; only one daily statistic exists.
         return sun_model.pct_days(_var_avg_exts_from_request("sun", "total")) if typ == sun_model.PCT_TYPE else []
