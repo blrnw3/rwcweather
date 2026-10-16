@@ -41,6 +41,27 @@ def test_pixel_gate_ir_vs_grey_fog():
     assert fj.pixel_gate(jpeg(pink)) == "glitch"
 
 
+def test_unreadable_frame_is_corrupt_not_a_crash(monkeypatch):
+    assert fj.pixel_gate(b"not a jpeg") == "corrupt"
+    assert fj.pixel_gate(jpeg(np.full((200, 360, 3), 120))[:200]) in ("corrupt", "ir")   # truncated
+    rng = np.random.default_rng(1)
+
+    def good():                                                       # distinct frames that pass the gates
+        g = rng.integers(60, 200, (200, 360)).astype(np.float32)
+        return jpeg(np.stack([g + 6, g + 8, g + 14], -1))
+    frames = iter([b"\x00garbage"])
+    monkeypatch.setattr(fj, "fetch", lambda s, url: next(frames, None) or good())
+    calls = []
+    rows = fj.day_rows(date(2025, 12, 15), None, "https://x", lambda b: calls.append(1) or
+                       dict(answer="no", confidence=0.9, reason="ok"))
+    assert rows[0]["flags"] == "corrupt" and rows[0]["fog"] is None
+    assert rows[1]["fog"] is False and len(calls) == len(rows) - 1      # the run carried on, corrupt not judged
+
+
+def test_corrupt_flag_is_a_gate():
+    assert fj.rules.decide(True, 0.99, "corrupt", 0).value is None
+
+
 def test_window_and_urls():
     fr = fj.rules.window_frames(date(2025, 12, 15))
     assert fj.frame_url("https://x/sky_lg/", fr[0]) == "https://x/sky_lg/20251215_1600.jpg"
