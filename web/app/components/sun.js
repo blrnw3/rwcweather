@@ -83,3 +83,12 @@ export function SunLegend() {
         </Flex>)}
     </Flex>;
 }
+
+// Signed change in day length, e.g. "+1m 5s", "−2m 14s", "+45s" (U+2212 minus). null -> null.
+export function fmtDaylightDelta(secs) {
+    if (secs == null || isNaN(secs)) return null;
+    const s = Math.round(secs);
+    const sign = s > 0 ? "+" : s < 0 ? "−" : "±";
+    const a = Math.abs(s), m = Math.floor(a / 60), r = a % 60;
+    return sign + (m ? `${m}m ${r}s` : `${r}s`);
+}

@@ -18,7 +18,7 @@ import { LatestChart, SummaryChart } from '../components/chart';
 import { YearChart } from '../components/yearChart';
 import { fetcher, fmatObsOptIcon, fmatTimeOpt, OBS, RAIN_VIEW_NAMES, RAIN_VIEWS, SUN_VIEW_NAMES, SUN_VIEWS, WIND_SUMMARY_NAMES, WIND_SUMMARY_VIEWS, WIND_VIEW_NAMES, WIND_VIEWS } from '../components/conf';
 import { Page, UnitCtx } from "../components/Page";
-import { SunRibbon, useSunDay } from '../components/sun';
+import { SunRibbon, useSunDay, fmtDaylightDelta } from '../components/sun';
 import { WetRibbon } from '../components/wet';
 import RadioCard from '../components/RadioCard';
 import { aqiStatus, formatObs, moonPhase, prettySecs, timeOf } from '../format';
@@ -616,6 +616,9 @@ function SunshineHomeCard(props) {
     <Box my="2"><SunRibbon day={day} nowMs={now} height="16px" /></Box>
     <Text borderTop="1px solid #ccc">
       Daylight: <Text as="span" fontWeight="bold">{sun ? formatObs(unit, sun.daylight_h, "sun") : "–"}</Text>
+      {fmtDaylightDelta(sun?.daylight_change_s) && <Tooltip label="Change in day length vs yesterday">
+        <Text as="span" fontSize="sm" color="gray.600" whiteSpace="nowrap" className="sun-daylight-delta"> ({fmtDaylightDelta(sun.daylight_change_s)})</Text>
+      </Tooltip>}
     </Text>
     <Text>Monthly: <Text as="span" fontWeight="bold">{monthTotal != null ? formatObs(unit, monthTotal, "sun") : "–"}</Text>
       {monthPct != null && <Text as="span" fontSize="sm" color="gray.600" className="sun-month-pct"> ({Math.round(monthPct)}% of possible)</Text>}

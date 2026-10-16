@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 from rwcwx.astronomy import get_all_times_rwc
 from rwcwx.config import TZ
+from rwcwx.sun.daylight import daylight_change_s
 from rwcwx.models import db
 
 KIND = "sunny"
@@ -192,6 +193,7 @@ def dashboard_block(today: date, now_utc: Optional[datetime] = None) -> dict:
         today_h=hours,
         possible_so_far_h=round(possible, 2),
         daylight_h=times["daylight_h"],
+        daylight_change_s=daylight_change_s(today),
         pct_of_possible=round(100 * hours / possible) if hours is not None and possible > 0.25 else None,
         comment=tot["comment"] if tot else None,
         now=now_state(SunQ.latest(), now_utc),
