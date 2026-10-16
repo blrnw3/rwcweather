@@ -1,4 +1,5 @@
 import { Box, Flex, Text } from '@chakra-ui/react';
+import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import { fetcher } from './conf';
 import { formatObs } from '../format';
@@ -60,12 +61,18 @@ export function BannerArt() {
 
 // Photo slots on the right of the banner (like nw3). Empty list = SVG art only.
 function BannerPhotos() {
+  // Rotate daily; picked after mount so server and client render match.
+  const [start, setStart] = useState(0);
+  useEffect(() => {
+    setStart(Math.floor(Date.now() / 86400000) % Math.max(BANNER_PHOTOS.length, 1));
+  }, []);
   if (!BANNER_PHOTOS.length) {
     return null;
   }
+  const shown = [0, 1, 2].slice(0, BANNER_PHOTOS.length).map(i => BANNER_PHOTOS[(start + i) % BANNER_PHOTOS.length]);
   return <Flex position="absolute" top="0" right="0" h="100%" zIndex="0" display={{ base: "none", md: "flex" }}>
-    {BANNER_PHOTOS.map((p, i) => <Box key={p.src} as="img" src={p.src} alt={p.alt || ""} h="100%" objectFit="cover"
-      w={{ md: "200px", xl: "260px" }} display={{ md: i < 2 ? "block" : "none", xl: "block" }}
+    {shown.map((p, i) => <Box key={p.src} as="img" src={p.src} alt={p.alt || ""} title={p.alt} h="100%" objectFit="cover"
+      w={{ md: "200px", lg: "260px" }} display={{ md: i < 1 ? "block" : "none", lg: "block" }}
       borderLeft="3px solid" borderColor="pliny.800" />)}
   </Flex>;
 }
