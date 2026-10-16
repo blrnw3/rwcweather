@@ -1,0 +1,4 @@
+# Install as /etc/cron.d/camftp-cleanup (root-owned, mode 644). Runs as blrftp because the camera's FTP uploads
+# (camftp/<MachineName>/YYYY-MM-DD/001/jpg/HH/MM/SS*.jpg) are owned by blrftp with 755 dirs, so ben cannot delete them.
+# Keeps 30 minutes of camera snapshots; cam_archive.sh keeps the long-term archive in camdump/.
+* * * * * blrftp find /var/www/rwc/html/cumulus/camftp/ -type f -name "*.jpg" -mmin +30 -delete; find /var/www/rwc/html/cumulus/camftp/ -mindepth 2 -type d -empty -delete

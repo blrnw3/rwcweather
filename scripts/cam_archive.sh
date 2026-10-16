@@ -30,3 +30,7 @@ find "${DST_ARCHIVE}/sky_xl/" -mtime +2 -regex ".*[1245][0]\.jpg" -delete
 find "${DST_ARCHIVE}/sky_xl/" -mtime +7 -regex ".*30\.jpg" -delete
 find "${DST_ARCHIVE}/sky_xl/" -mtime +7 -regex ".*[13579]00.jpg" -delete
 find "${DST_ARCHIVE}/sky_lg/" -mtime +7 -regex ".*[1245][0]\.jpg" -delete
+
+# camera native FTP spool (camftp/<MachineName>/YYYY-MM-DD/001/jpg/HH/MM/SS*.jpg): keep 30 min
+find /var/www/rwc/html/cumulus/camftp/ -type f -name "*.jpg" -mmin +30 -delete
+find /var/www/rwc/html/cumulus/camftp/ -mindepth 2 -type d -empty -delete
