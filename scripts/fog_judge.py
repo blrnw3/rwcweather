@@ -81,9 +81,13 @@ def fetch(session: requests.Session, url: str) -> Optional[bytes]:
 
 
 def pixel_gate(data: bytes) -> Optional[str]:
-    """'ir' | 'glitch' | None. Fog itself is low-saturation, so IR is detected as *exactly* grey, not just dull."""
-    with Image.open(io.BytesIO(data)) as im:
-        a = np.asarray(im.convert("RGB").resize((192, 108), Image.BILINEAR), np.float32) / 255.
+    """'corrupt' | 'ir' | 'glitch' | None. Fog itself is low-saturation, so IR is detected as *exactly* grey, not just
+    dull. A frame Pillow can't decode (truncated / garbage bytes) is 'corrupt' so the run carries on."""
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            a = np.asarray(im.convert("RGB").resize((192, 108), Image.BILINEAR), np.float32) / 255.
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return "corrupt"
     R, G, B = a[..., 0], a[..., 1], a[..., 2]
     if np.abs(R - B).mean() + np.abs(R - G).mean() < IR_GREY:
         return "ir"

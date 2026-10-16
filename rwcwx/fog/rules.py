@@ -7,8 +7,8 @@ Rain veto: rain and fog don't really coexist here, so >= VETO_MIN_TIPS rain-gaug
   (prob, note) for audit and the row is flagged 'rain_veto'.
 Window: frames from sun elevation >= MIN_ELEV_DEG (dawn) to LAST_LOCAL_HOUR:00 local time (1 pm PT).
 Rollup: each judged frame stands for FRAME_MIN minutes. Daily fog hours = fog frames x FRAME_MIN / 60;
-  a fog day (derived at query time) is a day with fog hours > 0. Nothing is stored unless >= MIN_COVERAGE of the window's frames
-  were judged (gated frames don't count as judged).
+  a fog day (derived at query time) is a day with fog hours > 0. Nothing is stored unless >= MIN_COVERAGE of the
+  window's frames were judged (gated frames don't count as judged).
 """
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -24,7 +24,7 @@ LAST_LOCAL_HOUR = 13
 MIN_COVERAGE = 0.5
 
 KIND = "fog"
-GATE_FLAGS = ("ir", "glitch", "frozen", "lowsun", "missing", "unusable", "judge_err")
+GATE_FLAGS = ("ir", "glitch", "corrupt", "frozen", "lowsun", "missing", "unusable", "judge_err")
 VETO_FLAG = "rain_veto"
 NOTE_MAX = 255
 
