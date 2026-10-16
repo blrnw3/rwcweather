@@ -42,12 +42,18 @@ def test_e2_09_style_rainy_murk_is_vetoed():
     assert rules.decide(True, 0.95, None, rules.tips_near(T, tips)).value == 0
 
 
-def test_rollup_hours_fogday_and_coverage():
+def test_rollup_hours_and_coverage():
     fd = rules.rollup(date(2026, 1, 5), [1, 1, 1, 0, 0, None, 0, 0, 0, 0], expected=10)
-    assert (fd.fog_h, fd.fogday, fd.judged, fd.storable) == (1.5, 1, 9, True)
+    assert (fd.fog_h, fd.judged, fd.storable) == (1.5, 9, True)
     assert rules.rollup(date(2026, 1, 5), [1, 0, 0], expected=10).storable is False     # 30% coverage
-    one = rules.rollup(date(2026, 1, 5), [1] + [0] * 9, expected=10)
-    assert (one.fog_h, one.fogday) == (0.5, 0)            # a single fog frame is not a fog day
+
+
+def test_fog_days_derived_from_hours():
+    from types import SimpleNamespace as NS
+    from rwcwx.fog.derive import fog_day_values, fog_days
+    rows = [NS(d=date(2026, 1, 5), val=0.5, cnt=10, comment=None), NS(d=date(2026, 1, 6), val=0.0, cnt=10, comment=None)]
+    assert [x.val for x in fog_days(rows)] == [1, 0]
+    assert fog_day_values([(date(2026, 1, 5), 2.0), (date(2026, 1, 6), 0)]) == [(date(2026, 1, 5), 1), (date(2026, 1, 6), 0)]
 
 
 def test_window_frames_dawn_to_1pm_local_in_both_seasons():

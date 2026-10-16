@@ -100,7 +100,7 @@ class AvgExt(Base):
     d = Column(Date, primary_key=True)
     var = Column(Enum('rain', 'temp', 'humi', 'pres', 'wind', 'gust', 'wdir', 'solr', 'wet', 'sun', 'feels', 'inhumi',
                       'intemp', 'night_temp', 'day_temp', 'day_wet', 'rain_rate', 'frost', 'pm2', 'dewpt', 'aqi',
-                      'rain10', 'rain60', 'fog', 'fogday'),
+                      'rain10', 'rain60', 'fog'),
                  primary_key=True)
     type = Column(Enum('avg', 'total', 'min', 'max'), primary_key=True)
     period = Column(Enum("day"), primary_key=True)

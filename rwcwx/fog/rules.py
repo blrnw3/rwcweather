@@ -7,7 +7,7 @@ Rain veto: rain and fog don't really coexist here, so >= VETO_MIN_TIPS rain-gaug
   (prob, note) for audit and the row is flagged 'rain_veto'.
 Window: frames from sun elevation >= MIN_ELEV_DEG (dawn) to LAST_LOCAL_HOUR:00 local time (1 pm PT).
 Rollup: each judged frame stands for FRAME_MIN minutes. Daily fog hours = fog frames x FRAME_MIN / 60;
-  fogday = 1 if >= FOGDAY_MIN_FRAMES fog frames. Nothing is stored unless >= MIN_COVERAGE of the window's frames
+  a fog day (derived at query time) is a day with fog hours > 0. Nothing is stored unless >= MIN_COVERAGE of the window's frames
   were judged (gated frames don't count as judged).
 """
 from dataclasses import dataclass
@@ -21,7 +21,6 @@ TIP_IN = 0.01
 FRAME_MIN = 30
 MIN_ELEV_DEG = 5.0
 LAST_LOCAL_HOUR = 13
-FOGDAY_MIN_FRAMES = 2
 MIN_COVERAGE = 0.5
 
 KIND = "fog"
@@ -68,7 +67,6 @@ def decide(fog: Optional[bool], confidence: Optional[float], flags: Optional[str
 class FogDay:
     d: date
     fog_h: float
-    fogday: int
     fog_frames: int
     judged: int
     expected: int
@@ -90,7 +88,7 @@ def rollup(d: date, values: Iterable[Optional[int]], expected: int, frame_min: i
     vals = list(values)
     judged = [v for v in vals if v is not None]
     n_fog = sum(1 for v in judged if v == 1)
-    return FogDay(d=d, fog_h=round(n_fog * frame_min / 60.0, 2), fogday=int(n_fog >= FOGDAY_MIN_FRAMES),
+    return FogDay(d=d, fog_h=round(n_fog * frame_min / 60.0, 2),
                   fog_frames=n_fog, judged=len(judged), expected=max(expected, len(judged)))
 
 

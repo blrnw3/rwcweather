@@ -1,5 +1,5 @@
 """DB side of webcam fog: upsert judged frames into obs_inferred (kind='fog') with the rain veto applied here,
-then recompute the local day's avg_extreme var='fog' (hours) and var='fogday' (0/1), both type 'total'.
+then recompute the local day's avg_extreme var='fog' (hours, type 'total'). Fog days are derived from it at query time.
 
 Idempotent: rows upsert on (kind, t); rows with source='manual' are never overwritten; re-posting a day gives
 the same result. The veto is applied server-side so backfills and late-arriving rain data are handled the same way.
@@ -31,7 +31,7 @@ ON DUPLICATE KEY UPDATE
 
 UPSERT_AE = """
 INSERT INTO avg_extreme (d, var, type, period, val, at, cnt, t_mod, comment)
-VALUES (:d, :var, 'total', 'day', :val, NULL, :cnt, :t_mod, :comment)
+VALUES (:d, 'fog', 'total', 'day', :val, NULL, :cnt, :t_mod, :comment)
 ON DUPLICATE KEY UPDATE val = IF(overridden = 1, val, VALUES(val)), cnt = IF(overridden = 1, cnt, VALUES(cnt)),
   t_mod = VALUES(t_mod), comment = IF(overridden = 1, comment, VALUES(comment))
 """
@@ -90,7 +90,7 @@ def day_rows(d: date) -> List[dict]:
 
 
 def update_day(d: date, now_utc: Optional[datetime] = None) -> dict:
-    """Recompute and (if coverage allows) upsert the day's fog hours and fog-day flag. The veto is re-applied to
+    """Recompute and (if coverage allows) upsert the day's fog hours. The veto is re-applied to
     non-manual rows so rain data that arrived after the frames were posted still counts."""
     now_utc = now_utc or datetime.utcnow()
     frames = rules.window_frames(d)
@@ -106,9 +106,7 @@ def update_day(d: date, now_utc: Optional[datetime] = None) -> dict:
     fd = rules.rollup(d, [r["value"] for r in rows], expected=len(frames))
     if fd.storable:
         with db.connect() as conn:
-            conn.execute(text(UPSERT_AE), d=d, var="fog", val=fd.fog_h, cnt=fd.judged, t_mod=now_utc, comment=fd.comment)
-            conn.execute(text(UPSERT_AE), d=d, var="fogday", val=fd.fogday, cnt=fd.judged, t_mod=now_utc,
-                         comment=fd.comment)
-    return dict(d=d.isoformat(), fog_h=fd.fog_h, fogday=fd.fogday, judged=fd.judged, expected=fd.expected,
+            conn.execute(text(UPSERT_AE), d=d, val=fd.fog_h, cnt=fd.judged, t_mod=now_utc, comment=fd.comment)
+    return dict(d=d.isoformat(), fog_h=fd.fog_h, judged=fd.judged, expected=fd.expected,
                 stored=fd.storable)
 

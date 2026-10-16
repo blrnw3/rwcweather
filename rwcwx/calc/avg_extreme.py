@@ -255,7 +255,7 @@ class Fog(ObsVar):
 
 
 class FogDay(ObsVar):
-    """1 if fog was seen that morning (>= 2 fog frames), else 0; totals over a period are fog days."""
+    """Derived at query time (rwcwx/fog/derive.py): 1 if the day's fog hours > 0; totals over a period are fog days."""
     name = "fog days"
     unit = Unit.days
     db_field = "fogday"
