@@ -1,7 +1,7 @@
 import {
   Box, Button, Collapse,
   Flex, Grid, Heading, Link, Spinner, Text,
-  Tooltip,
+  Tooltip, Tab, TabList, TabPanel, TabPanels, Tabs,
   useDisclosure, useRadioGroup, Image
 } from '@chakra-ui/react';
 import { useContext, useEffect, useState } from 'react';
@@ -587,7 +587,7 @@ function WaterYearClimate({ total, date }) {
 
 // Webcam sunshine: today's hours so far, % of possible daylight so far, a "Sunny now" badge (only from a fresh,
 // classified minute) and today's minute ribbon.
-function SunshineHomeCard(props) {
+function SunPanel(props) {
   const dash = props.dash;
   const sun = dash?.sun;
   const { day, now } = useSunDay("", 120000);
@@ -604,7 +604,7 @@ function SunshineHomeCard(props) {
       {sunny ? "Sunny now" : "Not sunny"}
     </Text>;
   }
-  return <HomeCard changed={null}>
+  return <Box>
     <Text marginBottom="0.5em">
       <Tooltip label="Sunshine (from the webcam)">{icon}</Tooltip>
       <Text as="span" fontSize={{ base: "2xl", md: "3xl" }} paddingRight="2" paddingLeft="1">{hours}</Text>
@@ -623,7 +623,7 @@ function SunshineHomeCard(props) {
     <Text>Monthly: <Text as="span" fontWeight="bold">{monthTotal != null ? formatObs(unit, monthTotal, "sun") : "–"}</Text>
       {monthPct != null && <Text as="span" fontSize="sm" color="gray.600" className="sun-month-pct"> ({Math.round(monthPct)}% of possible)</Text>}
     </Text>
-  </HomeCard>
+  </Box>
 }
 
 function PressureHomeCard(props) {
@@ -694,13 +694,13 @@ function AirQualityHomeCard(props) {
   </HomeCard>
 }
 
-function AstronomyHomeCard(props) {
+function MoonPanel(props) {
   const astro = props.dash?.astronomy;
   let frac = formatObs(unit, astro?.fraction * 100, "humi")
   const icon = <Text as="span" color="black" className="home_ico_sml"><IoTelescopeOutline /></Text>
   let phase = moonPhase(astro?.phase) || ["", ""];
 
-  return <HomeCard changed={null}>
+  return <Box>
     <Text>
       {icon}
       <Text as="span" fontSize="2xl" paddingRight="1" paddingLeft="1">{frac} full &nbsp;<Tooltip label={phase[0]}>{phase[1]}</Tooltip></Text>
@@ -711,9 +711,28 @@ function AstronomyHomeCard(props) {
     <Text>
       Moon set: <Text as="span" fontWeight="bold">{timeOf(astro?.set)}</Text>
     </Text>
-  </HomeCard>
+  </Box>
 }
 
+
+// Sun (default) and Moon share one card as compact tabs (Chakra Tabs: arrow keys / Home / End, roving focus).
+function SunMoonHomeCard(props) {
+  const tabSx = { px: 2, py: 0.5, fontSize: "sm", borderRadius: "8", color: "gray.700",
+    _selected: { bg: "orange.200", color: "gray.900", fontWeight: "bold" }, _focusVisible: { boxShadow: "outline" } };
+  return <HomeCard changed={null}>
+    <Tabs size="sm" variant="unstyled" isLazy={false} className="sun-moon-tabs">
+      <TabList mb="1" gap="1" justifyContent="flex-end" aria-label="Sun or moon">
+        <Tab sx={tabSx}>Sun</Tab>
+        <Tab sx={tabSx}>Moon</Tab>
+      </TabList>
+      {/* Panels share one grid cell and the hidden one keeps its space, so switching tabs never changes the card height. */}
+      <TabPanels display="grid" sx={{ "& > [role=tabpanel]": { gridArea: "1 / 1" }, "& > [role=tabpanel][hidden]": { display: "block !important", visibility: "hidden" } }}>
+        <TabPanel p="0"><SunPanel dash={props.dash} summary={props.summary} /></TabPanel>
+        <TabPanel p="0"><MoonPanel dash={props.astroDash} /></TabPanel>
+      </TabPanels>
+    </Tabs>
+  </HomeCard>
+}
 
 function SignedPctAnom({ value, normal }) {
   const text = signedPctDeparture(value, normal);
@@ -1063,8 +1082,7 @@ function HomePage(props) {
       <PressureHomeCard dash={data} summary={summary} />
       <DewPtHomeCard dash={data} summary={summary} />
       <AirQualityHomeCard dash={data} summary={summary} />
-      <SunshineHomeCard dash={data} summary={summary} />
-      <AstronomyHomeCard dash={summary} summary={summary} />
+      <SunMoonHomeCard dash={data} summary={summary} astroDash={summary} />
     </Flex>
     <Flex justify="center" wrap="wrap">
       <ChartCardLatest />
