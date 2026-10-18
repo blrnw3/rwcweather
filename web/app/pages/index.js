@@ -179,6 +179,16 @@ function serverDate(...sources) {
   return null;
 }
 
+// Outside daylight: "twilight" between civil dawn and sunrise or sunset and civil dusk (sun 0° to -6°),
+// "dark" otherwise; null in daylight (or without astronomy times). Uses today's suncalc times from the summary.
+function nightPhase(astro, nowMs) {
+  if (!astro?.sunrise || !astro?.sunset || nowMs == null) return null;
+  if (nowMs >= astro.sunrise && nowMs <= astro.sunset) return null;
+  const dawn = astro.dawn, dusk = astro.dusk;
+  if ((dawn && nowMs >= dawn && nowMs < astro.sunrise) || (dusk && nowMs > astro.sunset && nowMs <= dusk)) return "twilight";
+  return "dark";
+}
+
 // Optional `normals` = { lo, hi } (DB units) adds a bracketed climate
 // comparison after each value, e.g. "Lo: 57.2 °F (+1.3) @ 07:18".
 function LoHiCardSection(props) {
@@ -589,16 +599,6 @@ function WaterYearClimate({ total, date }) {
 
 // Webcam sunshine: today's hours so far, % of possible daylight so far, a "Sunny now" badge (only from a fresh,
 // classified minute) and today's minute ribbon.
-// Outside daylight: "twilight" between civil dawn and sunrise or sunset and civil dusk (sun 0° to -6°),
-// "dark" otherwise; null in daylight (or without astronomy times). Uses today's suncalc times from the summary.
-function nightPhase(astro, nowMs) {
-  if (!astro?.sunrise || !astro?.sunset || nowMs == null) return null;
-  if (nowMs >= astro.sunrise && nowMs <= astro.sunset) return null;
-  const dawn = astro.dawn, dusk = astro.dusk;
-  if ((dawn && nowMs >= dawn && nowMs < astro.sunrise) || (dusk && nowMs > astro.sunset && nowMs <= dusk)) return "twilight";
-  return "dark";
-}
-
 function SunshineHomeCard(props) {
   const dash = props.dash;
   const sun = dash?.sun;
