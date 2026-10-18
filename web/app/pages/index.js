@@ -250,13 +250,14 @@ function AboutHomeCard() {
   return <Box id="about-home-card" width={{ base: "98%", md: "460px" }} minHeight="250px" border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 4 }} my={2} mx={{ base: 0, md: 3 }} borderRadius="10px">
     <Text fontSize={{ base: "lg", md: "xl" }} mb="2">About RWC Weather</Text>
     <Text fontSize="sm" mb="2">
-      RWC Weather is an amateur personal weather station in Redwood City, California, collecting data continuously since November 2020.
+      RWC Weather is an amateur-run personal weather station in Redwood City, California, collecting data continuously since November 2020.
     </Text>
     <Text fontSize="sm" mb="2">
-      The station sits ~125 m (420 ft) above sea level in Emerald Lake Hills between Redwood City and Woodside. Towards the top of the canyon, it experiences milder winter nights than the valleys below, protection from westerly winds, and much less summer fog than the coast.
+      The station sits ~125 m (420 ft) above sea level in Emerald Hills between Redwood City and Woodside. We experience generally milder nights than the valleys below, protection from westerly winds, and much less summer fog than the coast.
+     
     </Text>
     <Text fontSize="sm" mb="2">
-      Powered by a wireless Davis VP2 with WeatherLink Live, Cumulus software, a Python Flask backend, and a Next.js / React frontend.
+      Powered by a wireless Davis VP2 with WeatherLink Live runnning Cumulus software, a Python Flask backend, and a Next.js / React frontend.
     </Text>
     <Text fontSize="sm">
       <Link href="/about">More about the station &rarr;</Link>
