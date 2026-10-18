@@ -3,7 +3,7 @@ import Highcharts from "highcharts";
 import HighchartsReact from "highcharts-react-official";
 import { useContext } from "react";
 import useSWR from "swr";
-import { convFunction, unitAndPrecisionForObsType } from "../format";
+import { convFunction, toFixedObs, unitAndPrecisionForObsType } from "../format";
 import { dailyNormal, hasClimate } from "./climate";
 import { fetcher, fmatAggTypeOpt, fmatForObs, OBS } from "./conf";
 import { UnitCtx } from "./Page";
@@ -177,10 +177,10 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
                 const o = pts.find((p) => p.series.index === 0)?.y;
                 const n = pts.find((p) => p.series.index === 1)?.y;
                 let s = Highcharts.dateFormat("%a %e %b %Y", this.x);
-                pts.forEach((p) => { s += "<br/><span style=\"color:" + p.color + "\">●</span> " + p.series.name + ": <b>" + p.y.toFixed(prec) + " " + unitSymbol + "</b>"; });
+                pts.forEach((p) => { s += "<br/><span style=\"color:" + p.color + "\">●</span> " + p.series.name + ": <b>" + toFixedObs(fmat, p.y, prec) + " " + unitSymbol + "</b>"; });
                 if (o != null && n != null) {
                     const diff = o - n;
-                    s += "<br/>Anomaly: <b>" + (diff >= 0 ? "+" : "") + diff.toFixed(prec) + " " + unitSymbol + "</b>";
+                    s += "<br/>Anomaly: <b>" + (diff >= 0 ? "+" : "") + toFixedObs(fmat, diff, prec) + " " + unitSymbol + "</b>";
                     if (isTotal && n > 0) {
                         s += " (" + Math.round(100 * o / n) + "% of normal)";
                     }

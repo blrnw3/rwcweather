@@ -118,6 +118,8 @@ const OBS_FORMAT = {
       precision: {
         base: 1,
       },
+      // Totals of 100 h or more (months, years, cumulative) show as whole hours: 213 h, not 213.4 h.
+      wholeFrom: 100,
       scale: {
         base: [0.5, 2, 4, 6, 8, 10, 11, 12],
       },
@@ -325,6 +327,16 @@ export function moonPhase(phaseFraction) {
   return names[ Math.round(phaseFraction * 8) ];
 }
 
+// val (already unit-converted) as a fixed-precision string, dropping decimals at or above the
+// obsType's `wholeFrom` threshold (sunshine: 100 h). Shared by formatObs and chart tooltips.
+export function toFixedObs(obsType, val, precision) {
+  const from = OBS_FORMAT[obsType]?.wholeFrom;
+  if (from != null && precision > 0 && Math.abs(Number(val.toFixed(precision))) >= from) {
+    return val.toFixed(0);
+  }
+  return val.toFixed(precision);
+}
+
 export function formatObs(unitPref, val, obsType, signed = false, unit = true) {
   if(val == null) {
     return "-";
@@ -344,7 +356,7 @@ export function formatObs(unitPref, val, obsType, signed = false, unit = true) {
   let signStr = (signed && val >= 0) ? "+" : "";
   let finalUnitStr = unit ? (" " + unitStr) : "";
 
-  return signStr + val.toFixed(precision).toString() + finalUnitStr;
+  return signStr + toFixedObs(obsType, val, precision) + finalUnitStr;
 }
 
 export function convFunction(unitPref, obsType) {
