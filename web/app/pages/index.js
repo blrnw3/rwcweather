@@ -257,7 +257,7 @@ function AboutHomeCard() {
      
     </Text>
     <Text fontSize="sm" mb="2">
-      Powered by a wireless Davis VP2 with WeatherLink Live runnning Cumulus software, a Python Flask backend, and a Next.js / React frontend.
+      Powered by a wireless Davis VP2 with WeatherLink Live running Cumulus software, a Python Flask backend, and a Next.js / React frontend.
     </Text>
     <Text fontSize="sm">
       <Link href="/about">More about the station &rarr;</Link>
