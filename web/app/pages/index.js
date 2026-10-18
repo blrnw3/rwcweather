@@ -179,6 +179,16 @@ function serverDate(...sources) {
   return null;
 }
 
+// Outside daylight: "twilight" between civil dawn and sunrise or sunset and civil dusk (sun 0° to -6°),
+// "dark" otherwise; null in daylight (or without astronomy times). Uses today's suncalc times from the summary.
+function nightPhase(astro, nowMs) {
+  if (!astro?.sunrise || !astro?.sunset || nowMs == null) return null;
+  if (nowMs >= astro.sunrise && nowMs <= astro.sunset) return null;
+  const dawn = astro.dawn, dusk = astro.dusk;
+  if ((dawn && nowMs >= dawn && nowMs < astro.sunrise) || (dusk && nowMs > astro.sunset && nowMs <= dusk)) return "twilight";
+  return "dark";
+}
+
 // Optional `normals` = { lo, hi } (DB units) adds a bracketed climate
 // comparison after each value, e.g. "Lo: 57.2 °F (+1.3) @ 07:18".
 function LoHiCardSection(props) {
@@ -599,7 +609,18 @@ function SunshineHomeCard(props) {
   const monthTotal = props.summary?.["month"]?.["sun_total"]?.["total"];
   const monthPct = props.summary?.["month"]?.["sunpct_avg"]?.["avg"];
   let badge = null;
-  if (sun?.now) {
+  const astro = props.summary?.astronomy;
+  const nowMs = dash?.server?.epoch ? dash.server.epoch * 1000 : Date.now();
+  const night = nightPhase(astro, nowMs);
+  // From sunset onward today's sunshine is final, so drop "so far".
+  const dayOver = astro?.sunset != null && nowMs > astro.sunset;
+  if (night) {
+    const twi = night === "twilight";
+    badge = <Text as="span" ml="2" px="2" py="0.5" borderRadius="8" fontSize="sm" fontWeight="bold"
+      bg={twi ? "purple.200" : "blue.800"} color={twi ? "purple.900" : "blue.50"} className="sun-now-badge">
+      {twi ? "Twilight" : "Dark"}
+    </Text>;
+  } else if (sun?.now) {
     const sunny = sun.now.state === "sun";
     badge = <Text as="span" ml="2" px="2" py="0.5" borderRadius="8" fontSize="sm" fontWeight="bold"
       bg={sunny ? "yellow.300" : "gray.300"} color="gray.800" className="sun-now-badge">
@@ -613,7 +634,7 @@ function SunshineHomeCard(props) {
       {badge}
     </Text>
     <Text borderBottom="1px solid #ccc">
-      Today so far: <Text as="span" fontWeight="bold">{sun?.pct_of_possible != null ? sun.pct_of_possible + "%" : "–"}</Text> of {possible} possible
+      {dayOver ? "Today" : "Today so far"}: <Text as="span" fontWeight="bold">{sun?.pct_of_possible != null ? sun.pct_of_possible + "%" : "–"}</Text> of {possible} possible
     </Text>
     <Box my="2"><SunRibbon day={day} nowMs={now} height="16px" /></Box>
     <Text borderTop="1px solid #ccc">
