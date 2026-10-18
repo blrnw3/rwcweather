@@ -464,6 +464,7 @@ function RainHomeCard(props) {
   let now = formatObs(unit, dash?.["now"]?.["rain"], "rain");
   let rn10 = formatObs(unit, dash?.["rain_trend"]?.["m10"], "rain");
   let rnhr = formatObs(unit, dash?.["rain_trend"]?.["hr1"], "rain");
+  const show10m = dash?.["rain_trend"]?.["hr1"] > 0;
   let rn24 = formatObs(unit, dash?.["rain_trend"]?.["hr24"], "rain");
   let monthly = formatObs(unit, props.summary?.["month"]?.["rain_total"]?.["total"], "rain");
   let annual = formatObs(unit, props.summary?.["year"]?.["rain_total"]?.["total"], "rain");
@@ -482,8 +483,9 @@ function RainHomeCard(props) {
       <WetHoursInline wet={dash?.wet} rainToday={dash?.["now"]?.["rain"]} isOpen={wetDisc.isOpen} onToggle={wetDisc.onToggle} />
     </Text>
     <WetHoursDetails wet={dash?.wet} rainToday={dash?.["now"]?.["rain"]} isOpen={wetDisc.isOpen} nowMs={dash?.server?.epoch ? dash.server.epoch * 1000 : null} />
-    <Text>Last rain: <Text as="span" fontWeight="bold">{last}</Text> ago</Text>
-    <Text borderBottom="1px solid #ccc">Past 10m: <Text as="span" fontWeight="bold">{rn10}</Text></Text>
+    {/* "Past 10m" only matters while it's raining: show it only if there was rain in the past hour. */}
+    <Text borderBottom={show10m ? null : "1px solid #ccc"}>Last rain: <Text as="span" fontWeight="bold">{last}</Text> ago</Text>
+    {show10m && <Text borderBottom="1px solid #ccc" className="rain-past-10m">Past 10m: <Text as="span" fontWeight="bold">{rn10}</Text></Text>}
     <Text>Hourly: <Text as="span" fontWeight="bold">{rnhr}</Text></Text>
     <Text borderBottom="1px solid #ccc">Past 24hrs: <Text as="span" fontWeight="bold">{rn24}</Text></Text>
     <Text>
