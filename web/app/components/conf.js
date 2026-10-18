@@ -88,7 +88,7 @@ export const OBS = new Map([
         fmat: "fog",
         icon: <WiFog />,
     }],
-    // 1 if fog was seen that morning (at least 2 fog frames); period totals are fog days.
+    // 1 for any morning with recorded fog (fog hours > 0, derived from "fog" at query time); period totals are fog days.
     ["fogday", {
         name: "Fog days",
         summary: "total",
