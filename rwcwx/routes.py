@@ -396,6 +396,7 @@ def var_profile(var: str):
         month = int(request.args["month"]) if request.args.get("month") else None
     except ValueError:
         year = month = -1
+    var = day_profile.ALIASES.get(var, var)       # pm2 -> aqi
     if var not in day_profile.VARS or (year is not None and not 2000 <= year <= 2100) \
             or (month is not None and not 1 <= month <= 12):
         return {"error": "Unsupported profile", "supported": dict(vars=list(day_profile.VARS), year="YYYY", month="1-12")}, 400
