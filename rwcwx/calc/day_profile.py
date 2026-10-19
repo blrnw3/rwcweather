@@ -13,10 +13,11 @@ Values are in DB units (temperature, dew point °C; pressure hPa; wind, gust mph
 sun, wet and fog are % of observed/classified time.
 
 Per-bin sums and counts are computed per calendar month and cached: in-process for every month, and on disk (shared
-by uWSGI workers and across restarts) for finished months. Finished months are reused for DISK_TTL (so backfills
-show up within a month), the current month for CURRENT_TTL. Any period is then a sum over its months, so after the
-first request all-time, a year, every July, etc. cost no further queries. A cold all-time request runs one query
-per month (~70); `python -m rwcwx.calc.day_profile` warms every variable, e.g. after a deploy.
+by uWSGI workers and across restarts and reboots, see CACHE_DIR) for finished months. Finished months are reused for
+DISK_TTL (so backfills show up within a month), the current month for CURRENT_TTL. Any period is then a sum over its
+months, so after the first request all-time, a year, every July, etc. cost no further queries. A cold all-time
+request runs one query per month (~70); `python -m rwcwx.calc.day_profile` warms every variable. On prod that runs
+daily from cron and after each backend deploy via scripts/run_day_profile_warm.sh.
 """
 import json
 import os
@@ -180,7 +181,23 @@ def month_sums(conn, var: str, y: int, m: int, last: date) -> Sums:
 PAST_TTL = 7 * 24 * 3600         # in-process, finished months
 DISK_TTL = 30 * 24 * 3600        # on-disk, finished months (they only change if history is re-imported)
 CURRENT_TTL = 600
-CACHE_DIR = os.getenv("RWCWX_PROFILE_CACHE_DIR", os.path.join(tempfile.gettempdir(), "rwcwx_day_profile"))
+# <repo>/cache/day_profile (prod: /home/ben/rwcweather/cache/day_profile) survives reboots, unlike /tmp; the deploy
+# rsyncs only rwcwx/ and scripts, so it is never overwritten. Falls back to the temp dir if that is not writable.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _default_cache_dir() -> str:
+    d = os.path.join(_REPO_ROOT, "cache", "day_profile")
+    try:
+        os.makedirs(d, exist_ok=True)
+        if os.access(d, os.W_OK):
+            return d
+    except OSError:
+        pass
+    return os.path.join(tempfile.gettempdir(), "rwcwx_day_profile")
+
+
+CACHE_DIR = os.getenv("RWCWX_PROFILE_CACHE_DIR") or _default_cache_dir()
 _CACHE_VERSION = 1
 _cache: Dict[Tuple[str, int, int], Tuple[float, Sums]] = {}
 _lock = threading.Lock()
