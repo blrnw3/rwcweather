@@ -26,6 +26,7 @@ from rwcwx.wet import rate as wet_rate
 from rwcwx.wet import intensity_store
 from rwcwx.wet import store as wet_store
 from rwcwx.fog import derive as fog_derive
+from rwcwx.calc import day_profile
 
 
 def todo():
@@ -382,6 +383,25 @@ def rain_stats():
         rain_hr=rn_trends[0].rain - rn_trends[60].rain,
         rain_3hr=rn_trends[0].rain - rn_trends[180].rain,
     ))
+
+
+def var_profile(var: str):
+    """
+    Average value at each time of day (local Pacific time) in 5-minute bins, e.g. /api/var/profile/temp/?month=7
+    Query params: year (optional), month (optional, 1-12). Neither = all time; month alone = that month in every year.
+    sun, wet and fog are % of classified/observed time; see rwcwx.calc.day_profile.
+    """
+    try:
+        year = int(request.args["year"]) if request.args.get("year") else None
+        month = int(request.args["month"]) if request.args.get("month") else None
+    except ValueError:
+        year = month = -1
+    if var not in day_profile.VARS or (year is not None and not 2000 <= year <= 2100) \
+            or (month is not None and not 1 <= month <= 12):
+        return {"error": "Unsupported profile", "supported": dict(vars=list(day_profile.VARS), year="YYYY", month="1-12")}, 400
+    with db.engine.connect() as conn:
+        res = day_profile.profile(conn, var, year, month, DateUtil.now().date())
+    return _wrap_result(res)
 
 
 def _wrap_result(res, **extras) -> dict:

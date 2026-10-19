@@ -22,7 +22,8 @@ const NAV = new Map([
     ["annual", "/reports/matrix"],
     ["all-time", "/reports/alltime"],
     ["ranking", "/reports/ranking"],
-    ["climate", "/reports/climate"]
+    ["climate", "/reports/climate"],
+    ["daily profile", "/reports/profile"]
   ])],
   ["charts", new Map([
     ["latest", "/charts/latest"],

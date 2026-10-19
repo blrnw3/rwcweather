@@ -1,0 +1,197 @@
+"""Daily profile report (rwcwx.calc.day_profile): period ranges, DST runs, binning, caching, endpoint."""
+import os
+from datetime import date, datetime, timedelta
+
+import pytest
+
+from rwcwx.calc import day_profile as dp
+
+LAST = date(2026, 10, 15)
+
+
+# ---- period_days ----
+
+def test_all_time_is_one_range_per_year_clipped():
+    r = dp.period_days(None, None, dp.FIRST_DAY, LAST)
+    assert r[0] == (date(2020, 12, 21), date(2021, 1, 1))
+    assert r[-1] == (date(2026, 1, 1), date(2026, 10, 16))
+    assert len(r) == 7
+
+
+def test_month_every_year_skips_years_without_data():
+    r = dp.period_days(None, 7, dp.FIRST_DAY, LAST)
+    assert r[0] == (date(2021, 7, 1), date(2021, 8, 1))
+    assert len(r) == 6  # 2021..2026
+
+
+def test_specific_year_month_and_current_month_clipped():
+    assert dp.period_days(2025, 12, dp.FIRST_DAY, LAST) == [(date(2025, 12, 1), date(2026, 1, 1))]
+    assert dp.period_days(2026, 10, dp.FIRST_DAY, LAST) == [(date(2026, 10, 1), date(2026, 10, 16))]
+    assert dp.period_days(2026, 11, dp.FIRST_DAY, LAST) == []
+    assert dp.period_days(2019, None, dp.FIRST_DAY, LAST) == []
+
+
+# ---- runs (DST splitting) ----
+
+def _local_midnight(d):
+    return datetime(d.year, d.month, d.day, tzinfo=dp.TZ).astimezone(dp.UTC).replace(tzinfo=None)
+
+
+def test_runs_split_at_dst_and_tile_the_period():
+    rs = dp.runs([(date(2025, 1, 1), date(2026, 1, 1))])
+    assert [(r.d0, r.d1) for r in rs] == [(date(2025, 1, 1), date(2025, 3, 9)),
+                                          (date(2025, 3, 9), date(2025, 11, 2)),
+                                          (date(2025, 11, 2), date(2026, 1, 1))]
+    # consecutive runs meet exactly: nothing counted twice or skipped on change days
+    for a, b in zip(rs, rs[1:]):
+        assert a.en == b.st
+    assert rs[0].st == datetime(2025, 1, 1, 8) and rs[-1].en == datetime(2026, 1, 1, 8)
+    for r in rs:
+        assert r.st == _local_midnight(r.d0) and r.en == _local_midnight(r.d1)
+    # anchors are midnight at the run's offset: PST +8h, PDT +7h
+    assert [r.anchor.hour for r in rs] == [8, 7, 8]
+
+
+def test_runs_without_dst_change_is_single():
+    rs = dp.runs([(date(2025, 7, 1), date(2025, 8, 1))])
+    assert len(rs) == 1 and rs[0].anchor == datetime(2025, 7, 1, 7) and rs[0].en == datetime(2025, 8, 1, 7)
+
+
+# ---- sums / averages ----
+
+def test_add_and_averages():
+    acc = dp._empty()
+    dp._add(acc, [(0, 10.0, 2), (0, 2.0, 1), (dp.N_BINS, 3.0, 1), (-1, 5.0, 1), (5, None, 0), (None, 1, 1)])
+    avg, n = dp.averages(acc)
+    assert avg[0] == pytest.approx(15 / 4) and n[0] == 4  # bin N_BINS wraps to 0
+    assert avg[-1] == 5.0 and n[-1] == 1                   # negative bins wrap to the end of the day
+    assert avg[5] is None and n[5] == 0
+    assert len(avg) == dp.N_BINS == 288
+
+
+def test_query_shapes():
+    assert "FROM obs" in dp._query("temp") and "SUM(temp)" in dp._query("temp")
+    assert "LN(humi / 100)" in dp._query("dewpt")
+    assert "LAG(rain)" in dp._query("rain") and f"<= {dp.SPIKE_IN}" in dp._query("rain")
+    q = dp._query("sun")
+    assert "obs_inferred" in q and "k.k * 5 < i.minutes" in q and "LEAST(i.minutes, 5)" in q
+    with pytest.raises(ValueError):
+        dp._query("winddir")
+
+
+# ---- profile + caching with a fake connection ----
+
+class FakeConn:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, sql, params):
+        self.calls.append(params)
+        res = [(0, 2.0 * 30, 30), (144, 20.0 * 30, 30)]  # 00:00 bin avg 2, 12:00 bin avg 20
+
+        class R:
+            def fetchall(self_inner):
+                return res
+        return R()
+
+
+@pytest.fixture
+def fresh_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(dp, "CACHE_DIR", str(tmp_path))
+    dp.clear_cache()
+    yield tmp_path
+    dp.clear_cache()
+
+
+def test_profile_combines_months_and_caches(fresh_cache):
+    c = FakeConn()
+    res = dp.profile(c, "temp", None, 7, LAST)
+    assert res["days"] == 6 * 31 and res["start"] == "2021-07-01" and res["end"] == "2026-07-31"
+    assert res["avg"][0] == 2.0 and res["avg"][144] == 20.0 and res["avg"][1] is None
+    assert res["n"][0] == 6 * 30 and res["bin_min"] == 5
+    first = len(c.calls)
+    assert first == 6
+    dp.profile(c, "temp", 2025, 7, LAST)          # month already cached in-process
+    assert len(c.calls) == first
+    dp.clear_cache()
+    dp.profile(c, "temp", 2025, 7, LAST)          # past month comes back from the disk cache
+    assert len(c.calls) == first
+    assert any(p.name.endswith("temp-2025-07.json") for p in fresh_cache.iterdir())
+
+
+def test_current_month_not_disk_cached_and_expires(fresh_cache):
+    c = FakeConn()
+    t = [1000.0]
+    dp._cached_month(c, "sun", 2026, 10, LAST, now=lambda: t[0])
+    assert c.calls[-1]["kind"] == "sunny"
+    assert not list(fresh_cache.iterdir())
+    n = len(c.calls)
+    t[0] += dp.CURRENT_TTL - 1
+    dp._cached_month(c, "sun", 2026, 10, LAST, now=lambda: t[0])
+    assert len(c.calls) == n
+    t[0] += 2
+    dp._cached_month(c, "sun", 2026, 10, LAST, now=lambda: t[0])
+    assert len(c.calls) > n
+
+
+def test_profile_rejects_unknown_var():
+    with pytest.raises(ValueError):
+        dp.profile(FakeConn(), "solr", last=LAST)
+
+
+# ---- against MySQL (read-only) ----
+
+needs_db = pytest.mark.skipif(bool(os.environ.get("RWC_TEST_NO_DB")), reason="needs MySQL")
+
+
+@pytest.fixture
+def client():
+    from rwcwx.main import app
+    app.config["TESTING"] = True
+    return app.test_client()
+
+
+@needs_db
+def test_endpoint_validation(client):
+    assert client.get("/api/var/profile/solr/").status_code == 400
+    assert client.get("/api/var/profile/temp/?month=13").status_code == 400
+    assert client.get("/api/var/profile/temp/?year=abc").status_code == 400
+
+
+@needs_db
+def test_sql_matches_python_binning(fresh_cache):
+    """July 2025 temperature: SQL bins equal binning the raw rows in Python by Pacific time of day."""
+    from sqlalchemy import text
+    from rwcwx.main import app
+    from rwcwx.models import db
+    st, en = datetime(2025, 7, 1, 7), datetime(2025, 8, 1, 7)
+    with app.app_context(), db.engine.connect() as conn:
+        rows = conn.execute(text("SELECT t, temp FROM obs WHERE t >= :st AND t < :en AND temp IS NOT NULL"),
+                            dict(st=st, en=en)).fetchall()
+        if not rows:
+            pytest.skip("no obs for July 2025 in this DB")
+        res = dp.profile(conn, "temp", 2025, 7, LAST)
+    s, n = [0.0] * dp.N_BINS, [0] * dp.N_BINS
+    for t, v in rows:
+        loc = t.replace(tzinfo=dp.UTC).astimezone(dp.TZ)
+        b = (loc.hour * 60 + loc.minute) // dp.BIN_MIN
+        s[b] += float(v)
+        n[b] += 1
+    assert res["n"] == n
+    for i in range(dp.N_BINS):
+        if n[i]:
+            assert res["avg"][i] == pytest.approx(s[i] / n[i], abs=1e-3)
+
+
+@needs_db
+def test_dst_month_counts_each_row_once(fresh_cache):
+    from sqlalchemy import text
+    from rwcwx.main import app
+    from rwcwx.models import db
+    st, en = _local_midnight(date(2025, 11, 1)), _local_midnight(date(2025, 12, 1))
+    with app.app_context(), db.engine.connect() as conn:
+        cnt = conn.execute(text("SELECT COUNT(temp) FROM obs WHERE t >= :st AND t < :en"), dict(st=st, en=en)).scalar()
+        if not cnt:
+            pytest.skip("no obs for November 2025 in this DB")
+        res = dp.profile(conn, "temp", 2025, 11, LAST)
+    assert sum(res["n"]) == cnt
