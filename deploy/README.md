@@ -105,10 +105,12 @@ The backend deploy script:
    (`scripts/test_backend.sh`). Point `RWCWX_TEST_PYTHON` at a Python with pytest and the backend deps
    (e.g. your dev venv); `--skip-tests` bypasses this step.
 3. Confirms SSH access, the production virtualenv, and whether dependencies changed.
-3. Synchronizes the backend package, entrypoint, requirements, and uWSGI configuration without deleting remote files.
-4. Compiles and imports the uploaded application using the production runtime and environment.
-5. Gracefully reloads the `rwcwx` uWSGI master with `SIGHUP`; the service account owns that process, so deployment does not depend on interactive sudo access.
-6. Verifies the health endpoint, live-dashboard response shape, and a default two-second latency ceiling.
+4. Synchronizes the backend package, entrypoint, requirements, and uWSGI configuration without deleting remote files.
+5. Compiles and imports the uploaded application using the production runtime and environment.
+6. Gracefully reloads the `rwcwx` uWSGI master with `SIGHUP`; the service account owns that process, so deployment does not depend on interactive sudo access.
+7. Verifies the health endpoint, live-dashboard response shape, and a default two-second latency ceiling.
+8. Starts the Daily profile cache warm-up (`scripts/run_day_profile_warm.sh`) detached in the background, so the
+   deploy returns straight away; see below.
 
 Run the backend verification independently with:
 
@@ -148,6 +150,31 @@ Logs:
   `SAVE_LATEST_LOG_BACKUPS` environment variables. `--log-file -` logs to stderr only.
 - `~/rwcweather/log/save_latest.out`: the process's stdout and stderr, for anything printed before logging is set
   up (e.g. an import error) or by the interpreter itself.
+
+### Daily profile cache warm-up
+
+`/reports/profile` (`/api/var/profile/<var>/`) sums per-month results that are cached on disk in
+`~/rwcweather/cache/day_profile` (shared by the uWSGI workers; survives restarts and reboots; finished months are reused for
+30 days). A cold all-time request costs one query per month, so the cache is kept warm by
+`scripts/run_day_profile_warm.sh` (read-only on the DB; writes only the cache files):
+
+- daily from `ben`'s crontab at 10:30 UTC (03:30 PDT / 02:30 PST; the server's Debian cron runs in UTC and has no
+  `CRON_TZ`), see `deploy/crontab`. Most runs take about a second; when a month's files reach 30 days old it
+  rebuilds them (all 11 variables from cold: about 2.5 minutes on prod).
+- after every backend deploy, started detached by `deploy_backend.sh`.
+
+The wrapper holds a `flock` (so the deploy and cron runs never overlap), runs at `nice 15` / idle I/O priority with a
+20-minute `timeout`, and logs start, result and exit status to `~/rwcweather/log/day_profile_warm.log` (rotated at
+1 MB, one old copy). To install the cron entry as `ben` without touching the other lines (idempotent; no sudo):
+
+```sh
+crontab -l > ~/crontab.bak.$(date +%Y%m%d%H%M)
+grep -q run_day_profile_warm.sh <(crontab -l) || \
+  (crontab -l; echo '30 10 * * * /home/ben/rwcweather/scripts/run_day_profile_warm.sh') | crontab -
+```
+
+`deploy/crontab` is a reference copy of `ben`'s crontab (the live one also carries secrets and extra camera lines), so
+add entries this way rather than installing the file wholesale.
 
 ## Operations and troubleshooting
 

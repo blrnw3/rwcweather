@@ -195,3 +195,54 @@ def test_dst_month_counts_each_row_once(fresh_cache):
             pytest.skip("no obs for November 2025 in this DB")
         res = dp.profile(conn, "temp", 2025, 11, LAST)
     assert sum(res["n"]) == cnt
+
+
+# ---- cache dir + cron wrapper ----
+
+def test_default_cache_dir_in_repo_and_fallback(tmp_path, monkeypatch):
+    monkeypatch.setattr(dp, "_REPO_ROOT", str(tmp_path))
+    assert dp._default_cache_dir() == str(tmp_path / "cache" / "day_profile")
+    assert (tmp_path / "cache" / "day_profile").is_dir()
+    blocker = tmp_path / "ro"
+    blocker.write_text("not a dir")
+    monkeypatch.setattr(dp, "_REPO_ROOT", str(blocker))     # cache/ cannot be created under a file
+    assert dp._default_cache_dir().endswith("rwcwx_day_profile")
+
+
+def _run_wrapper(tmp_path, *args, extra_env=None):
+    import subprocess
+    root = tmp_path / "root"
+    (root / "venv" / "bin").mkdir(parents=True, exist_ok=True)
+    py = root / "venv" / "bin" / "python"
+    py.write_text('#!/bin/sh\necho "args=$* pp=$PYTHONPATH url=$MYSQL_URL pwd=$(pwd)"\n')
+    py.chmod(0o755)
+    env_file = tmp_path / "rwcwx.env"
+    env_file.write_text("MYSQL_URL=u:p@h:1/wx\n")
+    env = dict(os.environ, RWCWX_ROOT=str(root), RWCWX_ENV_FILE=str(env_file), RWCWX_VENV=str(root / "venv"),
+               LOG_DIR=str(tmp_path / "log"), PROFILE_WARM_LOCK=str(tmp_path / "warm.lock"), **(extra_env or {}))
+    script = os.path.join(os.path.dirname(__file__), "..", "scripts", "run_day_profile_warm.sh")
+    r = subprocess.run(["bash", script, *args], env=env, capture_output=True, text=True, timeout=30)
+    return r, tmp_path / "log" / "day_profile_warm.log"
+
+
+def test_warm_wrapper_runs_module_with_app_env_and_logs(tmp_path):
+    r, log = _run_wrapper(tmp_path)
+    assert r.returncode == 0, r.stderr
+    out = log.read_text()
+    root = tmp_path / "root"
+    assert f"args=-W ignore -m rwcwx.calc.day_profile pp={root} url=u:p@h:1/wx pwd={root}" in out
+    assert out.splitlines()[0].endswith(" start") and out.splitlines()[-1].endswith(" exit 0")
+
+
+def test_warm_wrapper_rotates_log_and_skips_when_locked(tmp_path):
+    import fcntl
+    (tmp_path / "log").mkdir()
+    big = tmp_path / "log" / "day_profile_warm.log"
+    big.write_text("x" * 1048577)
+    r, log = _run_wrapper(tmp_path)
+    assert r.returncode == 0 and (tmp_path / "log" / "day_profile_warm.log.1").stat().st_size == 1048577
+    assert log.stat().st_size < 1000
+    with open(tmp_path / "warm.lock", "w") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        r, log = _run_wrapper(tmp_path)
+    assert r.returncode == 0 and log.read_text().splitlines()[-1].endswith("still running; skipping")
