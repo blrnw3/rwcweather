@@ -16,6 +16,11 @@ DST_SM="$CUM/skycam_small.jpg"
 ITER=100000000
 FREQ=3
 
+# The camera's FTP JPEGs carry video-range luma (black ~16, JFIF-tagged as full range), so they look flat and
+# desaturated next to the Agent DVR-decoded stream the sunshine models were trained on. Expand luma 16-235 -> 0-255
+# and give chroma a small 1.05 boost (fitted on same-minute old/new frames, Oct 16 17:07 PT). Camera files only.
+CAM_FIX="lutyuv=y='clip((val-16)*255/219,0,255)':u='clip((val-128)*1.05+128,0,255)':v='clip((val-128)*1.05+128,0,255)'"
+
 # encode SRC -> DST via DST.tmp + rename. -f mjpeg because the temp name has no .jpg extension.
 encode() {
   local src="$1" dst="$2"; shift 2
@@ -45,8 +50,10 @@ for ((n=0;n<$ITER;n++))
 do
   IMG=$(pick || true)
   if [ -z "$IMG" ] || ! complete_jpeg "$IMG"; then sleep $FREQ; continue; fi
+  VF=()
+  case "$IMG" in "$CAMFTP"/*) VF=(-vf "$CAM_FIX") ;; esac
   # Re-encode the upload straight into a temp file (never in place).
-  encode "$IMG" "$DST" -q:v 3 || { sleep $FREQ; continue; }
+  encode "$IMG" "$DST" ${VF[@]+"${VF[@]}"} -q:v 3 || { sleep $FREQ; continue; }
   encode "$DST" "$DST_LG" -vf scale="1560:-1" || true
   encode "$DST" "$DST_SM" -vf scale="740:-1" || true
   sleep $FREQ
