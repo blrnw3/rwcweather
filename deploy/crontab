@@ -2,7 +2,7 @@
 * * * * * PYTHONPATH=/home/ben/rwcweather python3 /home/ben/rwcweather/rwcwx/job/get_external.py -o /home/ben/rwcweather/out_prod &>> /home/ben/rwcweather/log/external.log
 * * * * * /home/ben/cam_archive.sh > /dev/null 2>&1
 # Webcam sunshine classifier (obs_inferred kind='sunny'); flock/nice/ulimit inside the wrapper
-*/15 * * * * /home/ben/rwcweather/scripts/run_sun_classify.sh
+*/5 * * * * /home/ben/rwcweather/scripts/run_sun_classify.sh
 # Daily profile report cache warm-up (read-only on the DB). Server cron runs in UTC (no CRON_TZ in Debian cron):
 # 10:30 UTC = 03:30 PDT / 02:30 PST. flock/nice/timeout/log rotation inside the wrapper.
 30 10 * * * /home/ben/rwcweather/scripts/run_day_profile_warm.sh
