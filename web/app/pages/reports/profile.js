@@ -37,12 +37,19 @@ const VARS = new Map([
     ["fog", { name: "Fog (% of time)", pct: true, precision: 0, color: "#868e96", area: true,
         note: "Share of webcam-judged time with fog at the station. Fog is only judged on morning frames (about 6am–1pm), " +
             "in 30-minute snapshots." }],
-    ["pm2", { name: "PM2.5", fixedUnit: "µg/m³", precision: 1, color: "#8c6d1f" }],
+    ["aqi", { name: "Air quality (US AQI)", short: "AQI", lower: "air quality (US AQI)", fixedUnit: "AQI", precision: 0, color: "#8c6d1f", yMin: 0,
+        bands: true,
+        note: "US EPA AQI of each PM2.5 reading (as on the home page), averaged; shaded by AQI category." }],
 ]);
 const VAR_KEYS = Array.from(VARS.keys());
 
+// AQI categories, at the thresholds of aqiStatus() in format.js
+const AQI_BANDS = [[0, 50, "#00e400"], [50, 100, "#ffff00"], [100, 150, "#ff7e00"], [150, 200, "#ff0000"],
+    [200, 300, "#8f3f97"], [300, 500, "#7e0023"]].map(([from, to, color]) => ({ from, to, color: color + "22" }));
+
 const URL_STATE = {
-    v: { param: "var", def: () => "temp", valid: inList(VAR_KEYS) },
+    // pm2 was the old name of the AQI profile (raw PM2.5 µg/m³); old links open AQI
+    v: { param: "var", def: () => "temp", valid: inList(VAR_KEYS), fromUrl: (x) => x === "pm2" ? "aqi" : x },
     year: { def: () => "all", valid: inList(YEARS) },
     month: { def: () => "all", valid: inList(MONTH_OPTS) },
 };
@@ -90,8 +97,8 @@ export default function DayProfile() {
 
     return <Page name="reports" sub="daily profile" title="Reports | daily profile">
         <Heading as="h1" size="1">Reports: Daily profile</Heading>
-        <Heading as="h2" size="2">Average {cfg.name.toLowerCase()} through the day, {period}</Heading>
-        <Group name="var" value={v} options={VAR_KEYS} format={(k) => VARS.get(k).name.replace(" (% of time)", "")}
+        <Heading as="h2" size="2">Average {cfg.lower || cfg.name.toLowerCase()} through the day, {period}</Heading>
+        <Group name="var" value={v} options={VAR_KEYS} format={(k) => VARS.get(k).short || VARS.get(k).name.replace(" (% of time)", "")}
             onChange={(x) => update({ v: x })} />
         <Group name="year" value={year} options={YEARS} format={(y) => y === "all" ? "All years" : y}
             onChange={(x) => update({ year: x })} />
@@ -101,7 +108,8 @@ export default function DayProfile() {
             {!mounted || (!data && !error) ? <Spinner m="6" /> : error || !hasData
                 ? <Text m="6">No data for {period}.</Text>
                 : <DayProfileChart points={points} binMin={res.bin_min} name={cfg.name} unitSymbol={sc.unitSymbol}
-                    precision={sc.precision} color={cfg.color} area={cfg.area} yMin={cfg.pct || v === "rain" ? 0 : undefined}
+                    precision={sc.precision} color={cfg.color} area={cfg.area} yMin={cfg.pct || v === "rain" ? 0 : cfg.yMin}
+                    bands={cfg.bands ? AQI_BANDS : undefined}
                     yMax={cfg.yMax} title={`${cfg.name}, ${period}`} />}
         </Box>
         {res && <Text fontSize="sm" color="gray.600">
@@ -110,7 +118,7 @@ export default function DayProfile() {
         </Text>}
         {cfg.note && <Text mt="1" fontSize="sm" color="gray.600">{cfg.note}</Text>}
         <Text mt="3">
-            Description: the average {cfg.name.toLowerCase()} at each time of day, from every minute of data in the
+            Description: the average {cfg.lower || cfg.name.toLowerCase()} at each time of day, from every minute of data in the
             chosen period. Pick a year, a month (that month in every year), or both. Drag across the chart to zoom in.
         </Text>
     </Page>;

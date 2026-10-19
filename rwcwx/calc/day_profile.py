@@ -9,8 +9,8 @@ Runs meet at true local midnights, so every minute is counted once. DST is taken
 the two changeover days only the minutes before 02:00 land one hour out. Each run is one indexed range scan on obs.t (or obs_inferred.t) returning at most 288 rows; the per-run
 sums and counts are added up here.
 
-Values are in DB units (temperature, dew point °C; pressure hPa; wind, gust mph; rain in./h; pm2 µg/m³);
-sun, wet and fog are % of observed/classified time.
+Values are in DB units (temperature, dew point °C; pressure hPa; wind, gust mph; rain in./h; aqi US AQI, the mean of
+each PM2.5 reading's AQI); sun, wet and fog are % of observed/classified time.
 
 Per-bin sums and counts are computed per calendar month and cached: in-process for every month, and on disk (shared
 by uWSGI workers and across restarts) for finished months. Finished months are reused for DISK_TTL (so backfills
@@ -47,9 +47,33 @@ OBS_VARS: Dict[str, str] = {
     "pres": "pres",
     "wind": "wind",
     "gust": "gust",
-    "pm2": "pm2",
+    "aqi": "",          # filled in below: US AQI per reading
     "wet": "100 * wet",
 }
+
+
+def _aqi_sql(c: str) -> str:
+    """US EPA AQI of a PM2.5 concentration already truncated to 0.1 µg/m³ (column `c`), as the site computes it
+    (Obs.aqi, python-aqi): linear within the EPA breakpoints, rounded half-even to a whole number. Above the top
+    breakpoint (500.4) it is 500, where python-aqi would raise. Built from python-aqi's own breakpoints so they stay in
+    step. The slope is a DOUBLE literal so MySQL's ROUND is half-even like python-aqi's (DECIMAL ROUND is half-up)."""
+    from aqi.algos.epa import AQI
+    from aqi.constants import POLLUTANT_PM25
+    pw = AQI.piecewise
+    whens = " ".join(f"WHEN {c} <= {hi} THEN ROUND(({c} - {lo}) * {float((ahi - alo) / (hi - lo))!r}e0 + {alo})"
+                     for (lo, hi), (alo, ahi) in zip(pw["bp"][POLLUTANT_PM25], pw["aqi"]))
+    return f"(CASE WHEN {c} IS NULL THEN NULL {whens} ELSE {pw['aqi'][-1][1]} END)"
+
+
+# obs.pm2 is FLOAT (12.9 is stored as 12.8999996), so it goes through DECIMAL before truncating; done once per row in
+# a derived table rather than in each CASE branch
+_AQI_C = "TRUNCATE(CAST(pm2 AS DECIMAL(10, 3)), 1)"
+_AQI_FROM = f"(SELECT t, {_AQI_C} c FROM obs WHERE t >= :st AND t < :en AND pm2 >= 0) obs"
+OBS_VARS["aqi"] = _aqi_sql("c")
+_SOURCES: Dict[str, str] = {"dewpt": _DEWPT_FROM, "aqi": _AQI_FROM}
+# old name for the AQI profile (it showed raw PM2.5 µg/m³ before)
+ALIASES: Dict[str, str] = {"pm2": "aqi"}
+
 # classifier kinds in obs_inferred (value 1/0, NULL = unclassified), each row covering `minutes` minutes
 INFERRED_VARS: Dict[str, str] = {"sun": "sunny", "fog": "fog"}
 RAIN_VAR = "rain"
@@ -125,7 +149,7 @@ def _bin_sql(t_expr: str) -> str:
 def _query(var: str) -> str:
     if var in OBS_VARS:
         x = OBS_VARS[var]
-        src = _DEWPT_FROM if var == "dewpt" else "obs"
+        src = _SOURCES.get(var, "obs")
         return (f"SELECT {_bin_sql('t')} b, SUM({x}) s, COUNT({x}) n FROM {src} "
                 f"WHERE t >= :st AND t < :en GROUP BY b")
     if var == RAIN_VAR:
@@ -239,6 +263,7 @@ def clear_cache() -> None:
 
 def profile(conn, var: str, year: Optional[int] = None, month: Optional[int] = None,
             last: Optional[date] = None) -> dict:
+    var = ALIASES.get(var, var)
     if var not in VARS:
         raise ValueError(f"Unsupported variable {var}")
     last = last or datetime.now(TZ).date()

@@ -11,7 +11,7 @@ export function hhmm(mins) {
     return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
 }
 
-export function DayProfileChart({ points, binMin, name, unitSymbol, precision, color, area, yMin, yMax, title }) {
+export function DayProfileChart({ points, binMin, name, unitSymbol, precision, color, area, yMin, yMax, title, bands }) {
     const mobile = isMobile();
     const options = {
         credits: { href: null, text: "@rwcweather" },
@@ -25,7 +25,7 @@ export function DayProfileChart({ points, binMin, name, unitSymbol, precision, c
             title: { text: mobile ? null : "Time of day (Pacific)" },
         },
         yAxis: {
-            min: yMin, max: yMax, title: { text: mobile ? null : unitSymbol },
+            min: yMin, max: yMax, title: { text: mobile ? null : unitSymbol }, plotBands: bands,
             labels: { format: "{value}" + (mobile ? "" : ""), style: { fontSize: mobile ? "10px" : "12px" } },
         },
         tooltip: {

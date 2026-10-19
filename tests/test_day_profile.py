@@ -77,6 +77,8 @@ def test_query_shapes():
     assert "obs_inferred" in q and "k.k * 5 < i.minutes" in q and "LEAST(i.minutes, 5)" in q
     with pytest.raises(ValueError):
         dp._query("winddir")
+    assert "pm2" not in dp.VARS and "aqi" in dp.VARS and "TRUNCATE(CAST(pm2" in dp._query("aqi")
+    assert "pm2 >= 0" in dp._query("aqi")
 
 
 # ---- profile + caching with a fake connection ----
@@ -134,6 +136,19 @@ def test_current_month_not_disk_cached_and_expires(fresh_cache):
     assert len(c.calls) > n
 
 
+def test_pm2_is_an_alias_for_aqi(fresh_cache):
+    res = dp.profile(FakeConn(), "pm2", 2025, 7, LAST)
+    assert res["var"] == "aqi"
+    assert any(p.name.endswith("aqi-2025-07.json") for p in fresh_cache.iterdir())
+
+
+def test_warm_covers_aqi(fresh_cache):
+    c = FakeConn()
+    assert dp.warm(c, LAST, ["aqi"]) == 1
+    assert any(p.name.endswith("aqi-2025-07.json") for p in fresh_cache.iterdir())
+    assert "aqi" in dp.warm.__defaults__[1]
+
+
 def test_profile_rejects_unknown_var():
     with pytest.raises(ValueError):
         dp.profile(FakeConn(), "solr", last=LAST)
@@ -156,6 +171,41 @@ def test_endpoint_validation(client):
     assert client.get("/api/var/profile/solr/").status_code == 400
     assert client.get("/api/var/profile/temp/?month=13").status_code == 400
     assert client.get("/api/var/profile/temp/?year=abc").status_code == 400
+
+
+def _epa_aqi(pm):
+    """Exact US EPA PM2.5 AQI (truncate to 0.1, linear, round half-even), independent of python-aqi."""
+    from decimal import Decimal, ROUND_DOWN, ROUND_HALF_EVEN
+    c = Decimal(str(pm)).quantize(Decimal("0.1"), rounding=ROUND_DOWN)
+    table = [("0.0", "12.0", 0, 50), ("12.1", "35.4", 51, 100), ("35.5", "55.4", 101, 150), ("55.5", "150.4", 151, 200),
+             ("150.5", "250.4", 201, 300), ("250.5", "350.4", 301, 400), ("350.5", "500.4", 401, 500)]
+    for lo, hi, alo, ahi in table:
+        lo, hi = Decimal(lo), Decimal(hi)
+        if c <= hi:
+            return int(((ahi - alo) / (hi - lo) * (c - lo) + alo).quantize(Decimal("1"), rounding=ROUND_HALF_EVEN))
+    return 500
+
+
+@needs_db
+def test_aqi_sql_matches_epa():
+    """The SQL AQI on FLOAT pm2 values equals the EPA formula, including breakpoints, halves and the cap."""
+    from sqlalchemy import text
+    from rwcwx.main import app
+    from rwcwx.models import db
+    vals = [0, 0.05, 0.6, 0.7, 4.885, 11.4, 12.0, 12.05, 12.1, 12.9, 35.4, 35.45, 35.5, 55.4, 55.5, 100, 150.4,
+            150.5, 250.4, 250.5, 334.5, 350.5, 500.4, 600]
+    union = " UNION ALL ".join(f"SELECT CAST({v} AS FLOAT) pm2" for v in vals)
+    with app.app_context(), db.engine.connect() as conn:
+        got = conn.execute(text(f"SELECT pm2, {dp.OBS_VARS['aqi']} FROM (SELECT pm2, {dp._AQI_C} c FROM ({union}) u) x")).fetchall()
+    assert [int(a) for _, a in got] == [_epa_aqi(v) for v in vals]
+    with app.app_context(), db.engine.connect() as conn:
+        assert conn.execute(text(f"SELECT {dp._aqi_sql('NULL')}")).scalar() is None
+
+
+@needs_db
+def test_endpoint_accepts_pm2_alias(client):
+    r = client.get("/api/var/profile/pm2/?year=2025&month=7")
+    assert r.status_code == 200 and r.get_json()["result"]["var"] == "aqi"
 
 
 @needs_db
