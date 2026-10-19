@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Cron wrapper for rwcwx/job/sun_classify.py: single instance (flock), low priority, capped memory.
-#   */15 * * * * /home/ben/rwcweather/scripts/run_sun_classify.sh
+#   */5 * * * * /home/ben/rwcweather/scripts/run_sun_classify.sh
 # Extra args are passed through (e.g. --dry-run, -d 2026-10-09). Overridable: RWCWX_ROOT, RWCWX_ENV_FILE, RWCWX_VENV,
 # LOG_DIR, SUN_MEM_KB.
 set -euo pipefail

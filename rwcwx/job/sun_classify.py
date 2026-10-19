@@ -2,7 +2,7 @@
 Classify webcam frames as sunny / not sunny, write per-minute rows to obs_inferred (kind='sunny'), the daily total
 to avg_extreme and a health JSON.
 
-Run every 15 min from cron via scripts/run_sun_classify.sh (flock + nice + memory cap). Each run:
+Run every 5 min from cron via scripts/run_sun_classify.sh (flock + nice + memory cap). Each run:
   * lists the per-minute sky_lg frames for the local day (filenames are UTC YYYYMMDD_HHMM.jpg),
   * classifies only frames not already in the per-day cache (one frame in memory at a time),
   * re-applies the gates / low-sun rule R3 / median filter to the whole day (R3 needs later frames to settle the
