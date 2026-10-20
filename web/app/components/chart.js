@@ -11,10 +11,27 @@ import { UnitCtx } from "./Page";
 
 let cache;
 
-// Variables that can't go below zero: anchor the y axis at 0 so an all-zero series (a dry day, a sunless
-// spell) sits on the baseline instead of floating mid-chart.
-const NON_NEGATIVE = ["rain", "wet", "wetrate", "rain10", "rain60", "sun", "sunpct", "fog", "fogday", "wind", "gust", "aqi", "humi", "solr"];
-const yMin = (obs) => NON_NEGATIVE.includes(obs) ? 0 : undefined;
+// Y-axis scaling per variable. The axis always autoscales to the data; the lists below only decide
+// what happens at zero.
+//
+// IMPORTANT: "auto" must be expressed as null, never undefined. HighchartsReact updates the existing
+// chart in place (chart.update), and Highcharts' option merge skips undefined values, so `min: undefined`
+// leaves the previous variable's `min: 0` in force. That is what pinned temperature/pressure to a
+// zero-based axis after clicking through rain or sunshine (#83).
+//
+// Amounts and percentages of time: bars/areas measure "how much", so they start at a true 0 baseline.
+const ZERO_BASELINE = ["rain", "wet", "wetrate", "rain10", "rain60", "sun", "sunpct", "fog", "fogday", "solr"];
+// Can't go negative but are levels, not amounts: autoscale to the data, just never below 0.
+const ZERO_FLOOR = ["wind", "gust", "aqi", "humi"];
+
+export function yAxisScale(obs, values) {
+    if (ZERO_BASELINE.includes(obs)) {
+        // An all-zero series (a dry spell, a sunless day) would otherwise get a -0.5..0.5 axis; keep it on the baseline.
+        const allZero = !values.some((v) => Number.isFinite(v) && v !== 0);
+        return { min: 0, max: allZero ? 1 : null, floor: null };
+    }
+    return { min: null, max: null, floor: ZERO_FLOOR.includes(obs) ? 0 : null };
+}
 
 function responsiveFontSize(base) {
     let scale = 1;
@@ -107,7 +124,7 @@ export function LatestChart(props) {
     let isLoading = false;
     if (!latest) {
         // While a new range loads, keep showing the last points for this variable (cache holds [t, value] pairs).
-        temp = cache && cache.obs === obs ? cache.points : [[0, 0]];
+        temp = cache && cache.obs === obs ? cache.points : [];
         isLoading = true;
     } else {
         temp = latest.map(x => [x["t"], converter(x[obs])]).reverse();
@@ -145,7 +162,7 @@ export function LatestChart(props) {
             type: "datetime"
         },
         yAxis: {
-            min: yMin(obs),
+            ...yAxisScale(obs, temp.map(([, v]) => v)),
             title: {
                 text: obsName + " / " + unitSymbol,
                 style: {
@@ -201,7 +218,7 @@ export function SummaryChart(props) {
     let data;
     let isLoading = false;
     if (!latest) {
-        data = [[0, 0]];
+        data = [];
         isLoading = true;
     }
     else {
@@ -238,7 +255,7 @@ export function SummaryChart(props) {
             type: "datetime"
         },
         yAxis: {
-            min: yMin(obs),
+            ...yAxisScale(obs, data.map(([, v]) => v)),
             title: {
                 text: obsName + " / " + unitSymbol,
                 style: {
@@ -324,7 +341,7 @@ export function DailyChart({ observations, obs, dateLabel, isLoading, ...boxProp
             title: { text: "Local time" },
         },
         yAxis: {
-            min: yMin(obs),
+            ...yAxisScale(obs, data.map(([, v]) => v)),
             title: {
                 text: obsObj.name + " / " + unitSymbol,
                 style: { fontSize: responsiveFontSize(13) },
