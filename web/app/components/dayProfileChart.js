@@ -25,7 +25,7 @@ export function DayProfileChart({ points, binMin, name, unitSymbol, precision, c
             title: { text: mobile ? null : "Time of day (Pacific)" },
         },
         yAxis: {
-            min: yMin, max: yMax, title: { text: mobile ? null : unitSymbol }, plotBands: bands,
+            min: yMin ?? null, max: yMax ?? null, title: { text: mobile ? null : unitSymbol }, plotBands: bands,
             labels: { format: "{value}" + (mobile ? "" : ""), style: { fontSize: mobile ? "10px" : "12px" } },
         },
         tooltip: {
