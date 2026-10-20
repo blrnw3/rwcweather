@@ -1,6 +1,7 @@
 import { Box, Flex, Text, Tooltip } from "@chakra-ui/react";
 import useSWR from "swr";
 import { fetcher } from "./conf";
+import { LIVE_SWR, useLivePoll } from "./liveRefresh";
 import { fmtTime } from "./sun";
 
 // Today's wet spells on a midnight-to-midnight bar, styled like the sunshine ribbon (SunRibbon).
@@ -58,7 +59,9 @@ export function WetRibbon({ wet, nowMs, height = "16px" }) {
 
 // Stored wet minutes (obs.wet) for one local day: /api/wet/day/<YYYYMMDD>, same shape as the dashboard block.
 export function useWetDay(datestamp, refreshMs = 300000) {
-    const { data, error } = useSWR(datestamp ? "/api/wet/day/" + datestamp : null, fetcher, { refreshInterval: refreshMs });
+    const key = datestamp ? "/api/wet/day/" + datestamp : null;
+    const { data, error, revalidate } = useSWR(key, fetcher, LIVE_SWR);
+    useLivePoll(key, revalidate, refreshMs, { minAgeMs: 15000 });
     if (error) {
         return { error: true };
     }
