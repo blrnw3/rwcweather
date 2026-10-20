@@ -4,7 +4,7 @@ import {
   Tooltip,
   useDisclosure, useRadioGroup, Image
 } from '@chakra-ui/react';
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { IconContext } from "react-icons";
 import { GiDew } from "react-icons/gi";
 import { FiChevronDown, FiWind } from "react-icons/fi";
@@ -32,6 +32,7 @@ import {
   hottestHigh, coldestLow, warmestLow, coldestHigh, localHourFromServer,
 } from '../lib/recordFlags';
 import React from 'react';
+import { LIVE_SWR, useLivePoll } from '../components/liveRefresh';
 
 let isLoading = true;
 let errCount = 0;
@@ -42,7 +43,8 @@ let updateCount = 0;
 
 function useDashboard(props) {
   let updateInterval = updateCount < 10 ? 3000 : 9000;
-  const { data, error, isValidating } = useSWR(`/api/web/dashboard/live`, fetcher, { refreshInterval: updateInterval });
+  const { data, error, isValidating, revalidate } = useSWR(`/api/web/dashboard/live`, fetcher, LIVE_SWR);
+  useLivePoll(`/api/web/dashboard/live`, revalidate, updateInterval);
   isLoading = true;
   if (error || !data) {
     console.log(error);
@@ -92,7 +94,8 @@ function useDashboard(props) {
 // }
 
 function useSummary() {
-  const { data, error } = useSWR(`/api/web/dashboard/summary`, fetcher, { refreshInterval: 300000 })
+  const { data, error, revalidate } = useSWR(`/api/web/dashboard/summary`, fetcher, LIVE_SWR);
+  useLivePoll(`/api/web/dashboard/summary`, revalidate, 300000, { minAgeMs: 30000 });
   if (error || !data) {
     console.log(error);
     return error ? 0 : null;
@@ -1033,17 +1036,15 @@ const CAM_URL = "https://rwcweather.com/cumulus/skycam_large.jpg";
 const WebcamMemo = React.memo(function Webcam(props) {
   const [src, setSrc] = useState(CAM_URL + "?" + new Date().getTime());
 
-  useEffect(() => {
-    let cancelled = false;
-    const interval = setInterval(() => {
-      if (document.visibilityState == "hidden") return;
-      const next = CAM_URL + "?" + new Date().getTime();
-      const img = new window.Image();
-      img.onload = () => { if (!cancelled && img.naturalWidth > 0) setSrc(next); };
-      img.src = next;
-    }, 6000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, []);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+  // every 6 s while visible, and at once when the page is viewed again
+  useLivePoll("webcam", () => {
+    const next = CAM_URL + "?" + new Date().getTime();
+    const img = new window.Image();
+    img.onload = () => { if (mounted.current && img.naturalWidth > 0) setSrc(next); };
+    img.src = next;
+  }, 6000);
 
   return <Box mt={2}>
     <Box m="auto" width={{ base: "95%", md: "720px", lg: "1200px", xl: "1500px" }}

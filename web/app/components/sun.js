@@ -1,6 +1,7 @@
 import { Box, Flex, Text, Tooltip } from "@chakra-ui/react";
 import useSWR from "swr";
 import { fetcher } from "./conf";
+import { LIVE_SWR, useLivePoll } from "./liveRefresh";
 
 // Webcam sunshine: minute-level ribbon from sunrise to sunset, and the day's data hook.
 // Spells come from /api/sun/day/<YYYYMMDD> as [start, end) epoch ms with state sun | nosun | unknown.
@@ -17,7 +18,9 @@ const timeFmt = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-d
 export const fmtTime = (ms) => timeFmt.format(new Date(ms));
 
 export function useSunDay(datestamp, refreshMs = 300000) {
-    const { data, error } = useSWR("/api/sun/day/" + (datestamp || ""), fetcher, { refreshInterval: refreshMs });
+    const key = "/api/sun/day/" + (datestamp || "");
+    const { data, error, revalidate } = useSWR(key, fetcher, LIVE_SWR);
+    useLivePoll(key, revalidate, refreshMs, { minAgeMs: 15000 });
     if (error) {
         return { error: true };
     }

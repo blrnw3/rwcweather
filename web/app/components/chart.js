@@ -6,6 +6,7 @@ import useSWR from 'swr';
 import { convFunction, unitAndPrecisionForObsType } from '../format';
 import { daysInMonth } from './dateUtil';
 import { fetcher, fmatAggTypeOpt, fmatForObs, OBS } from './conf';
+import { LIVE_SWR, useLivePoll } from './liveRefresh';
 import { UnitCtx } from "./Page";
 
 let cache;
@@ -51,7 +52,9 @@ function responsiveheight(hgt) {
 }
 
 function useLatest(mins) {
-    const { data, error } = useSWR("/api/obs/latest?d=" + mins, fetcher, { refreshInterval: 60000 })
+    const key = "/api/obs/latest?d=" + mins;
+    const { data, error, revalidate } = useSWR(key, fetcher, LIVE_SWR);
+    useLivePoll(key, revalidate, 60000, { minAgeMs: 10000 });
     if (error || !data) {
         console.log(error);
         return error ? [0, 0] : [null, 0];
