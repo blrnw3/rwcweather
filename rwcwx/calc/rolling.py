@@ -50,6 +50,12 @@ ROLLING_VARS: Dict[str, Dict[str, str]] = {
     "wind": {"avg": "mean", "max": "mean", "min": "mean"},
     "gust": {"avg": "mean", "max": "mean", "min": "mean"},
     "pres": {"avg": "mean", "max": "mean", "min": "mean"},
+    # derived per day (rwcwx/calc/derived_daily.py): ranges average, ET0 adds up
+    "temprange": {"avg": "mean"},
+    "humirange": {"avg": "mean"},
+    "presrange": {"avg": "mean"},
+    "dewptrange": {"avg": "mean"},
+    "et0": {"total": "sum"},
 }
 
 
