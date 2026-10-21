@@ -24,13 +24,18 @@ const ZERO_BASELINE = ["rain", "wet", "wetrate", "rain10", "rain60", "sun", "sun
 // Can't go negative but are levels, not amounts: autoscale to the data, just never below 0.
 const ZERO_FLOOR = ["wind", "gust", "aqi", "humi"];
 
+// Percentages that cannot exceed 100: the axis may autoscale below that, but tick rounding must never take it past
+// 100% (humidity near saturation used to get a 0-120 axis).
+const PCT_CEILING = ["humi", "sunpct"];
+
 export function yAxisScale(obs, values) {
+    const ceiling = PCT_CEILING.includes(obs) ? 100 : null;
     if (ZERO_BASELINE.includes(obs)) {
         // An all-zero series (a dry spell, a sunless day) would otherwise get a -0.5..0.5 axis; keep it on the baseline.
         const allZero = !values.some((v) => Number.isFinite(v) && v !== 0);
-        return { min: 0, max: allZero ? 1 : null, floor: null };
+        return { min: 0, max: allZero ? 1 : null, floor: null, ceiling };
     }
-    return { min: null, max: null, floor: ZERO_FLOOR.includes(obs) ? 0 : null };
+    return { min: null, max: null, floor: ZERO_FLOOR.includes(obs) ? 0 : null, ceiling };
 }
 
 function responsiveFontSize(base) {
