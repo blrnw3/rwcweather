@@ -75,7 +75,7 @@ export function hasNormal(obs, stat) {
     return obs === "sunpct" ? hasClimate("sun", "total") && hasClimate("sun", "possible") : hasClimate(obs, stat);
 }
 
-function isMobile() {
+export function isMobile() {
     return typeof window !== "undefined" && window.innerWidth < 768;
 }
 const fontSize = (base) => Math.round(base * (isMobile() ? 0.75 : 1)) + "px";
@@ -136,11 +136,14 @@ export function buildSeries(rows, obs, stat, year, waterYear, cumulative, daySta
 
 const round = (v, p) => (v == null ? null : Number(v.toFixed(p)));
 
+export const STATS_MODES = ["off", "avg", "range"];
+
 export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, today, height, spacing,
-    showStats = false, allYears = false }) {
-    // Optional height / spacing override for embedded uses (e.g. homepage); defaults match /charts/year.
-    // showStats overlays the all-years avg (dashed) and lowest-highest band for each calendar day; allYears draws
-    // only those, on a reference leap year's calendar.
+    stats = "off", allYears = false }) {
+    // Optional height / spacing override (the /charts/year page passes a taller height); the defaults are the
+    // homepage's. stats overlays the all-years average for each calendar day ("avg": dashed line) or the average
+    // plus the lowest-highest band ("range"); allYears draws only those ("off" counts as "range"), on a reference
+    // leap year's calendar.
 
     const unit = useContext(UnitCtx);
     const fmat = fmatForObs(obs, stat);
@@ -149,7 +152,9 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
     if (allYears) {
         year = ALL_YEARS_REF;
     }
-    const statsOn = (showStats || allYears) && hasDayStats(obs);
+    const statsMode = allYears && stats === "off" ? "range" : stats;
+    const statsOn = statsMode !== "off" && hasDayStats(obs);
+    const rangeOn = statsOn && statsMode === "range";
     const { result, isLoading: obsLoading } = useYearDaily(obs, stat, year, waterYear, !allYears);
     const { byDay: dayStats, isLoading: statsLoading } = useDayStats(obs, stat, cumulative, waterYear, statsOn);
     const isLoading = obsLoading || statsLoading;
@@ -172,7 +177,7 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
     }] : [];
 
     const series = [];
-    if (statsOn) {
+    if (rangeOn) {
         // Behind everything: a light band from the lowest to the highest value on each calendar day, thin edges.
         series.push({
             id: "range", type: "arearange", name: "All-years lowest–highest", color, fillOpacity: allYears ? 0.22 : 0.12,
@@ -204,7 +209,7 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
             data: days.map((d) => [d.t, c(d.normal)]),
         });
     }
-    const yValues = days.flatMap((d) => [c(d.obs), c(d.normal), c(d.stats?.min), c(d.stats?.max)]);
+    const yValues = days.flatMap((d) => [c(d.obs), c(d.normal), c(d.stats?.avg), ...(rangeOn ? [c(d.stats?.min), c(d.stats?.max)] : [])]);
 
     const options = {
         credits: { href: null, text: "@rwcweather" },
@@ -266,7 +271,7 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
     return <Box id="year-chart">
         {/* Remount when the chart's shape changes (series type / count): updating a column chart in place
             into a line chart can throw "reading 'stacks'" inside Highcharts. */}
-        <HighchartsReact key={[obs, stat, year, waterYear, cumulative, normalOk, statsOn, allYears].join("|")} highcharts={Highcharts}
+        <HighchartsReact key={[obs, stat, year, waterYear, cumulative, normalOk, statsOn, rangeOn, allYears].join("|")} highcharts={Highcharts}
             options={options} immutable={true} />
     </Box>;
 }

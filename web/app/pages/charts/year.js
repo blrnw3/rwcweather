@@ -6,7 +6,7 @@ import RadioCard from "../../components/RadioCard";
 import { hasWaterYears } from "../../components/waterYear";
 import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, REPORT_YEAR_START, SunViewToggle } from "../../components/report";
 import { inList, useUrlState } from "../../components/urlState";
-import { hasDayStats, hasNormal, YearChart } from "../../components/yearChart";
+import { hasDayStats, hasNormal, isMobile, STATS_MODES, YearChart } from "../../components/yearChart";
 import { ClimateNormalsLink } from "../../components/climate";
 
 function RadioButtonGroup(props) {
@@ -41,9 +41,19 @@ const YEAR_URL_STATE = {
   year: { param: "year", def: (s) => years(s.period === "water")[0], valid: (v, s) => yearOptions(s.period === "water", s.obs).includes(v) },
   cume: { param: "mode", def: (s) => (canCume(s.obs) ? "cumulative" : "daily"), valid: (v, s) => v === "daily" || (v === "cumulative" && canCume(s.obs)) },
   normal: { param: "normal", def: () => "on", valid: inList(["on", "off"]), use: (s) => s.year !== "all" },
-  // all-years avg / min / max overlay on a single year (always shown for year=all)
-  stats: { param: "stats", def: () => "off", valid: inList(["on", "off"]), use: (s) => s.year !== "all" && hasDayStats(s.obs) },
+  // all-years overlay: off | avg (average only) | range (average + lowest-highest band). year=all has no "off" and
+  // defaults to range. Links from before the 3-way choice used stats=on, which means range.
+  stats: {
+    param: "stats", fromUrl: (v) => (v === "on" ? "range" : v),
+    def: (s) => (s.year === "all" ? "range" : "off"),
+    valid: (v, s) => (s.year === "all" ? ["avg", "range"] : STATS_MODES).includes(v),
+    use: (s) => hasDayStats(s.obs),
+  },
 };
+
+const STATS_NAMES = { off: "Off", avg: "Average", range: "Avg + range" };
+// Taller than the homepage's chart (460 / 360): 1.5x on desktop, and enough on a phone for the band to read.
+const chartHeight = () => (isMobile() ? 440 : 690);
 
 const PERIOD_NAMES = { calendar: "Calendar year", water: "Water year (Oct–Sep)" };
 
@@ -70,7 +80,7 @@ export default function YearCharts() {
   return (
     <Page name="charts" sub="year" title="Charts | year">
       <Heading as="h1" size="1" mt="0">Year Charts</Heading>
-      <Text mb="2">Every day of a year against the daily climate normal, and against the average, lowest and highest value for that day across all years. Rainfall and sunshine can be shown as running totals.</Text>
+      <Text mb="2">Every day of a year against the daily climate normal, and against the all-years average (optionally with the lowest and highest) for that day. Rainfall and sunshine can be shown as running totals.</Text>
 
       <Text mt="1" fontWeight="bold">Variable:</Text>
       <RadioButtonGroup name="obs" value={baseObs(obs)} options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
@@ -84,18 +94,21 @@ export default function YearCharts() {
       <RadioButtonGroup name="year" value={year} options={yearOptions(water, obs)} optFormat={(y) => (y === "all" ? "All" : water ? "WY" + y : y)} fn={(v) => update({ year: v })} />
       <Flex wrap="wrap" gap="4">
         {canCume(obs) && <RadioButtonGroup name="mode" value={cume} options={["cumulative", "daily"]} optFormat={(v) => (v === "cumulative" ? "Cumulative" : "Daily")} fn={(v) => update({ cume: v })} />}
-        {!all && hasDayStats(obs) && <RadioButtonGroup name="stats" value={stats} options={["on", "off"]} optFormat={(v) => (v === "on" ? "Show all-years avg/min/max" : "Hide all-years")} fn={(v) => update({ stats: v })} />}
+        {hasDayStats(obs) && <Flex align="center" wrap="wrap">
+          <Text fontWeight="bold" mr="2">All years:</Text>
+          <RadioButtonGroup name="stats" value={stats} options={all ? ["avg", "range"] : STATS_MODES} optFormat={(v) => STATS_NAMES[v]} fn={(v) => update({ stats: v })} />
+        </Flex>}
         {!all && hasNormal(obs, stat) && <RadioButtonGroup name="normal" value={normal} options={["on", "off"]} optFormat={(v) => (v === "on" ? "Show normal" : "Hide normal")} fn={(v) => update({ normal: v })} />}
       </Flex>
 
       <Box my={4} mx={{ base: 0, md: 4, xl: 6 }}>
         <YearChart obs={obs} stat={stat} year={all ? null : Number(year)} waterYear={water} cumulative={cume === "cumulative"}
-          showNormal={normal === "on"} showStats={stats === "on"} allYears={all} today={today} />
+          showNormal={normal === "on"} stats={stats} allYears={all} today={today} height={chartHeight()} />
       </Box>
-      {hasDayStats(obs) && (all || stats === "on") && <Text fontSize="sm" mb="1">
+      {hasDayStats(obs) && stats !== "off" && <Text fontSize="sm" mb="1">
         {cume === "cumulative"
-          ? "All years: the average, lowest and highest running total reached by each date, over every complete " + (water ? "water" : "calendar") + " year in the record (from Dec 2020; sunshine from Sep 2021), plus the current one so far."
-          : "All years: the average, lowest and highest " + (isTotalObs(obs) ? "daily total" : "daily " + fmatAggTypeOpt(stat).toLowerCase()) + " recorded on each calendar day since records began (Dec 2020; sunshine Sep 2021), excluding today. 29 February pools 28 Feb–1 Mar."}
+          ? "All years: the " + (stats === "range" ? "average, lowest and highest " : "average ") + "running total reached by each date, over every complete " + (water ? "water" : "calendar") + " year in the record (from Dec 2020; sunshine from Sep 2021), plus the current one so far."
+          : "All years: the " + (stats === "range" ? "average, lowest and highest " : "average ") + (isTotalObs(obs) ? "daily total" : "daily " + fmatAggTypeOpt(stat).toLowerCase()) + " recorded on each calendar day since records began (Dec 2020; sunshine Sep 2021), excluding today. 29 February pools 28 Feb–1 Mar."}
       </Text>}
       {all ? null : hasNormal(obs, stat)
         ? <><Text fontSize="sm">Daily normals are interpolated from the monthly normals (rainfall is spread evenly over each month's days; sunshine is smoothed between mid-months).</Text><ClimateNormalsLink mt="1" /></>
