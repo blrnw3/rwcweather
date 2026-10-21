@@ -191,7 +191,7 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
     if (!allYears) {
         series.push({
             id: "obs", type: columns ? "column" : "line",
-            name: (cumulative ? "Cumulative " + name.toLowerCase() : name),
+            name: (cumulative ? "Cumulative " + name.toLowerCase().replace("et0", "ET0") : name),
             color, lineWidth: 2, marker: { enabled: false }, zIndex: 2,
             pointPadding: 0, groupPadding: 0, borderWidth: 0,
             data: days.map((d) => [d.t, c(d.obs)]),
