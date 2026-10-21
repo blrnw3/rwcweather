@@ -98,7 +98,8 @@ function summaryQuery(period, year, month) {
 
 function useSummary(obs, agg, period, year, month) {
     const query = summaryQuery(period, year, month);
-    const { data, error } = useSWR("/api/var/daily/" + obs + "/" + agg + query, fetcher,
+    // obs null: no request (lets a chart call this hook unconditionally for an optional second series).
+    const { data, error } = useSWR(obs ? "/api/var/daily/" + obs + "/" + agg + query : null, fetcher,
         { refreshInterval: 300000, revalidateOnFocus: false })
     if (error || !data) {
         console.log(error);
@@ -108,28 +109,76 @@ function useSummary(obs, agg, period, year, month) {
     return [res, data["server"]];
 }
 
+// Wind is shown as speed and gust together: speed in the chart's own colour, gust in a lighter blue
+// drawn behind it (gust >= speed, so the speed line stays on top).
+export const GUST_COLOR = "#4f8fd6";
+export const GUST_FILL = "#a9c9ef";
+const LATEST_COLOR = {
+    linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
+    stops: [[0, "#ff5511"], [1, "#ff9933"]],
+};
+
 export function LatestChart(props) {
     let obs = props.obs;
     let hrs = props.hrs;
+    // "wind" plots speed + gust as two series; gust/wdir on their own are single series.
+    const withGust = obs === "wind";
 
     let unit = useContext(UnitCtx);
-    let obsName = OBS.get(obs).name;
+    let obsName = withGust ? "Wind speed & gust" : OBS.get(obs).name;
     let { unitSymbol, precision } = unitAndPrecisionForObsType(unit, OBS.get(obs).fmat);
+    let gustPrecision = unitAndPrecisionForObsType(unit, OBS.get("gust").fmat).precision;
     let duration = (hrs < 50) ? hrs + " hrs" : Math.round(hrs / 24) + " days";
     let converter = convFunction(unit, OBS.get(obs).fmat);
+    let gustConverter = convFunction(unit, OBS.get("gust").fmat);
 
     const [latest, offset] = useLatest(hrs * 60);
 
     let temp;
+    let gust = [];
     let isLoading = false;
     if (!latest) {
         // While a new range loads, keep showing the last points for this variable (cache holds [t, value] pairs).
         temp = cache && cache.obs === obs ? cache.points : [];
+        gust = cache && cache.obs === obs ? cache.gust : [];
         isLoading = true;
     } else {
         temp = latest.map(x => [x["t"], converter(x[obs])]).reverse();
-        cache = { obs, points: temp };
+        gust = withGust ? latest.map(x => [x["t"], gustConverter(x["gust"])]).reverse() : [];
+        cache = { obs, points: temp, gust };
     }
+
+    const series = withGust ? [{
+        id: "gust",
+        type: "line",
+        data: gust,
+        name: "Gust",
+        color: GUST_COLOR,
+        lineWidth: 1,
+        zIndex: 1,
+        tooltip: { valueDecimals: gustPrecision, valueSuffix: " " + unitSymbol },
+        connectNulls: false,
+    }, {
+        id: "wind",
+        type: "line",
+        data: temp,
+        name: "Speed",
+        color: LATEST_COLOR,
+        lineWidth: 2,
+        zIndex: 2,
+        tooltip: { valueDecimals: precision, valueSuffix: " " + unitSymbol },
+        connectNulls: false,
+    }] : [{
+        id: "main",
+        type: obs == "wdir" ? "scatter" : "line",
+        data: temp,
+        name: obs,
+        tooltip: {
+            valueDecimals: precision,
+        },
+        color: LATEST_COLOR,
+        connectNulls: false,
+    }];
 
     let options = {
         chart: {
@@ -143,7 +192,12 @@ export function LatestChart(props) {
             }
         },
         legend: {
-            enabled: false
+            enabled: withGust,
+            align: "right",
+            verticalAlign: "top",
+            floating: true,
+            y: 20,
+            itemStyle: { fontSize: responsiveFontSize(12) },
         },
         credits: {
             href: null,
@@ -158,40 +212,29 @@ export function LatestChart(props) {
         time: {
             timezoneOffset: -60 * offset
         },
+        tooltip: {
+            shared: withGust,
+        },
         xAxis: {
             type: "datetime"
         },
         yAxis: {
-            ...yAxisScale(obs, temp.map(([, v]) => v)),
+            ...yAxisScale(obs, temp.concat(gust).map(([, v]) => v)),
             title: {
-                text: obsName + " / " + unitSymbol,
+                text: (withGust ? "Wind" : obsName) + " / " + unitSymbol,
                 style: {
                     fontSize: responsiveFontSize(13)
                 }
             }
         },
-        series: [{
-            type: obs == "wdir" ? "scatter" : "line",
-            data: temp,
-            name: obs,
-            tooltip: {
-                valueDecimals: precision,
-                // pointFormat: obs == "wdir" ? "{point.y} &deg;" : undefined
-            },
-            color: {
-                linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
-                stops: [
-                    [0, "#ff5511"],
-                    [1, "#ff9933"],
-                ]
-            },
-            connectNulls: false,
-        }],
+        series,
     }
+    // oneToOne: series dropped from the options (gust, when leaving wind) are removed from the chart.
     return <Box mx={props.mx} my={props.my}>
         <HighchartsReact
             highcharts={Highcharts}
             options={options}
+            oneToOne={true}
         />
     </Box>
 }
@@ -213,8 +256,22 @@ export function SummaryChart(props) {
     let fmat = fmatForObs(obs, aggType);
     let { unitSymbol, precision } = unitAndPrecisionForObsType(unit, fmat);
     let converter = convFunction(unit, fmat);
+    // Home 30-day chart: wind speed and gust (same statistic) together; gust drawn behind in light blue.
+    const withGust = Boolean(props.withGust) && obs === "wind";
+    const gustFmat = fmatForObs("gust", aggType);
+    const gustPrecision = unitAndPrecisionForObsType(unit, gustFmat).precision;
+    const gustConverter = convFunction(unit, gustFmat);
+    if (withGust) {
+        obsName = "Wind speed & gust";
+    }
 
     const [latest, offset] = useSummary(obs, aggType, props.period, props.year, props.month);
+    const [latestGust] = useSummary(withGust ? "gust" : null, aggType, props.period, props.year, props.month);
+    const toPoints = (rows, conv) => rows.map(x => [
+        new Date(x["d"][0], x["d"][1] - 1, x["d"][2]).valueOf(),
+        conv(x["val"])
+    ]).reverse();
+    const gustData = withGust && latestGust ? toPoints(latestGust, gustConverter) : [];
     let data;
     let isLoading = false;
     if (!latest) {
@@ -222,11 +279,46 @@ export function SummaryChart(props) {
         isLoading = true;
     }
     else {
-        data = latest.map(x => [
-            new Date(x["d"][0], x["d"][1] - 1, x["d"][2]).valueOf(),
-            converter(x["val"])
-        ]).reverse();
+        data = toPoints(latest, converter);
     }
+    if (withGust && !latestGust) {
+        isLoading = true;
+    }
+    const mainColor = {
+        linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
+        stops: [
+            [0, "#00aa11"],
+            [1, "#33dd44"],
+        ]
+    };
+    const series = withGust ? [{
+        id: "gust",
+        data: gustData,
+        name: aggTypePretty + " gust",
+        color: GUST_FILL,
+        borderColor: GUST_COLOR,
+        zIndex: 1,
+        tooltip: { valueDecimals: gustPrecision, valueSuffix: " " + unitSymbol, xDateFormat: "%A, %b %e, %Y" },
+        connectNulls: false,
+    }, {
+        id: "wind",
+        data: data,
+        name: aggTypePretty + " speed",
+        color: mainColor,
+        zIndex: 2,
+        tooltip: { valueDecimals: precision, valueSuffix: " " + unitSymbol, xDateFormat: "%A, %b %e, %Y" },
+        connectNulls: false,
+    }] : [{
+        id: "main",
+        data: data,
+        name: aggType + " " + obsName,
+        tooltip: {
+            valueDecimals: precision,
+            xDateFormat: "%A, %b %e, %Y",
+        },
+        color: mainColor,
+        connectNulls: false,
+    }];
     const periodTitle = (props.year && props.year !== "recent")
         ? ((props.month && props.month !== "all" ? MONTH_NAMES[Number(props.month) - 1] + " " : "") + props.year)
         : ("Last " + props.period + " days");
@@ -238,7 +330,15 @@ export function SummaryChart(props) {
             backgroundColor: isLoading ? "#00000022" : "#fff"
         },
         legend: {
-            enabled: false
+            enabled: withGust,
+            align: "right",
+            verticalAlign: "top",
+            floating: true,
+            y: 20,
+            itemStyle: { fontSize: responsiveFontSize(12) },
+        },
+        tooltip: {
+            shared: withGust,
         },
         credits: {
             href: null,
@@ -255,35 +355,22 @@ export function SummaryChart(props) {
             type: "datetime"
         },
         yAxis: {
-            ...yAxisScale(obs, data.map(([, v]) => v)),
+            ...yAxisScale(obs, data.concat(gustData).map(([, v]) => v)),
             title: {
-                text: obsName + " / " + unitSymbol,
+                text: (withGust ? "Wind" : obsName) + " / " + unitSymbol,
                 style: {
                     fontSize: responsiveFontSize(13)
                 }
             }
         },
-        series: [{
-            data: data,
-            name: aggType + " " + obsName,
-            tooltip: {
-                valueDecimals: precision,
-                xDateFormat: "%A, %b %e, %Y",
-            },
-            color: {
-                linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
-                stops: [
-                    [0, "#00aa11"],
-                    [1, "#33dd44"],
-                ]
-            },
-            connectNulls: false,
-        }],
+        series,
         plotOptions: {
             column: {
                 groupPadding: 0,
                 pointPadding: 0,
-                threshold: null
+                threshold: null,
+                // Speed and gust share each day's slot, gust behind speed.
+                grouping: !withGust,
             },
             line: {
                 connectNulls: false,
@@ -294,6 +381,7 @@ export function SummaryChart(props) {
         <HighchartsReact
             highcharts={Highcharts}
             options={options}
+            oneToOne={true}
         />
     </Box>
 }
