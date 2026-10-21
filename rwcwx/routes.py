@@ -497,7 +497,8 @@ def _var_avg_exts_from_request(var: str, typ: str) -> List[AvgExt]:
         if not derived_daily.is_derived(var, typ):
             return []
         today = DateUtil.now().date()
-        return derived_daily.derive(var, _var_avg_exts_from_request, today, ratios=_et0_ratios(var, today))
+        days = derived_daily.derive(var, _var_avg_exts_from_request, today, ratios=_et0_ratios(var, today))
+        return sorted(days, key=lambda x: x.d, reverse=True)      # newest first, like the stored rows
     if var == wet_rate.RATE_VAR:
         # Derived per day from the rain and wet-hours totals; blank (left out) on days without wet hours.
         if typ != wet_rate.RATE_TYPE:

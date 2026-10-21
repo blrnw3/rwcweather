@@ -5,7 +5,7 @@ import { useContext } from 'react';
 import useSWR from 'swr';
 import { convFunction, unitAndPrecisionForObsType } from '../format';
 import { daysInMonth } from './dateUtil';
-import { fetcher, fmatAggTypeOpt, fmatForObs, OBS } from './conf';
+import { DERIVED_PARENT, fetcher, fmatAggTypeOpt, fmatForObs, OBS } from './conf';
 import { LIVE_SWR, useLivePoll } from './liveRefresh';
 import { UnitCtx } from "./Page";
 
@@ -350,7 +350,7 @@ export function SummaryChart(props) {
             text: "@rwcweather"
         },
         title: {
-            text: (isLoading ? "LOADING: " : "") + periodTitle + " " + aggTypePretty + " " + obsName
+            text: (isLoading ? "LOADING: " : "") + periodTitle + " " + (DERIVED_PARENT[obs] ? "" : aggTypePretty + " ") + obsName
                 + (!isLoading && !data.some(([, v]) => Number.isFinite(v)) ? " – no data in this period" : ""),
             style: {
                 fontSize: responsiveFontSize(18)
