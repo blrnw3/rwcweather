@@ -94,6 +94,15 @@ class Obs(Base):
         return f"<Obs:{self.t}>"
 
 
+# Daily sunshine totals the webcam could not cover are filled from the weather-API estimate (rwcwx.sun.api_estimate,
+# rwcwx.job.sun_api_backfill); their comment starts with this. Live and 30-min-snapshot webcam totals do not.
+API_ESTIMATE_PREFIX = "API estimate"
+
+
+def is_api_estimate(comment: Optional[str]) -> bool:
+    return bool(comment) and comment.startswith(API_ESTIMATE_PREFIX)
+
+
 class AvgExt(Base):
     __tablename__ = "avg_extreme"
 
@@ -125,7 +134,10 @@ class AvgExt(Base):
 
     @property
     def simple_dict_(self) -> dict:
-        return {k: v for k, v in self.dict_.items() if k in ("d", "at", "val", "at_hm")}
+        out = {k: v for k, v in self.dict_.items() if k in ("d", "at", "val", "at_hm")}
+        if self.var == "sun" and is_api_estimate(self.comment):
+            out["api_est"] = True     # not from the webcam: the reports mark these days
+        return out
 
     def __repr__(self):
         return f"<AvgExt:{self.d}-{self.var}-{self.type}-{self.period}>"
