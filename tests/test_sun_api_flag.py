@@ -5,8 +5,13 @@ from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rwcwx.model import sun as sun_model  # noqa: E402
-from rwcwx.models import AvgExt, is_api_estimate  # noqa: E402
+import pytest  # noqa: E402
+
+try:   # rwcwx.models reflects tables at import: skip without a DB (deploy pre-check, RWC_TEST_NO_DB=1)
+    from rwcwx.model import sun as sun_model  # noqa: E402
+    from rwcwx.models import AvgExt, is_api_estimate  # noqa: E402
+except Exception:  # pragma: no cover
+    pytest.skip("needs the dev DB (rwcwx.models reflects tables)", allow_module_level=True)
 
 API = "API estimate (api:hrrr+asos; calibrated vs webcam, CV MAE 0.9 h); webcam coverage 0%"
 BACKFILL = "estimated from 30-min snapshots; coverage 98%"
