@@ -16,7 +16,7 @@ import { WiBarometer, WiDaySunny, WiHumidity, WiRain, WiThermometer } from "reac
 import useSWR from "swr";
 import { LatestChart, SummaryChart } from '../components/chart';
 import { YearChart } from '../components/yearChart';
-import { fetcher, fmatObsOptIcon, fmatTimeOpt, OBS, RAIN_VIEW_NAMES, RAIN_VIEWS, SUN_VIEW_NAMES, SUN_VIEWS, WIND_SUMMARY_NAMES, WIND_SUMMARY_VIEWS, WIND_VIEW_NAMES, WIND_VIEWS } from '../components/conf';
+import { fetcher, fmatObsOptIcon, fmatTimeOpt, OBS, RAIN_VIEW_NAMES, RAIN_VIEWS, SUN_VIEW_NAMES, SUN_VIEWS, WIND_SUMMARY_NAMES, WIND_SUMMARY_VIEWS } from '../components/conf';
 import { Page, UnitCtx } from "../components/Page";
 import { SunRibbon, useSunDay, fmtDaylightDelta } from '../components/sun';
 import { WetRibbon } from '../components/wet';
@@ -914,19 +914,15 @@ const ChartCardLatest = React.memo(function ChartCardLatest(props) {
   const hrsOptions = ["6", "12", "24", "72"];
 
   const [obs, setObs] = useState("temp");
-  const [windView, setWindView] = useState("wind");
   const [hrs, setHrs] = useState("6");
-  const chartObs = obs === "wind" ? windView : obs;
+  // Wind plots speed and gust together (no direction on the home chart).
+  const chartObs = obs;
 
   return <Box w={{ base: "98%", md: "80%", lg: "47%" }} border="2px solid #656382" bg="gray.100"
     p="2" my={2} mx={{ base: 0, md: 2, lg: 3, xl: 4 }} borderRadius="10px">
     <Flex wrap="wrap" justifyContent="space-between" alignItems="center">
       <RadioButtonGroup name="obs" value={obs} options={obsOptions} optFormat={fmatObsOptIcon} fn={setObs} ico={true} />
       <Box m={1}></Box>
-      {obs === "wind" && <>
-        <RadioButtonGroup name="windView" value={windView} options={WIND_VIEWS} optFormat={(v) => WIND_VIEW_NAMES[v]} fn={setWindView} />
-        <Box m={1}></Box>
-      </>}
       <RadioButtonGroup name="hrs" value={hrs} options={hrsOptions} optFormat={fmatTimeOpt} fn={setHrs} />
       <Box m={1}></Box>
       <Text><Link href="/charts/latest" title="More charts">More</Link></Text>
@@ -934,6 +930,9 @@ const ChartCardLatest = React.memo(function ChartCardLatest(props) {
     <LatestChart obs={chartObs} hrs={hrs} m={1} height="55%" spacing={[5, 5, 12, 3]} />
   </Box>
 });
+
+// Home 30-day wind: daily max or average, each showing speed and gust together.
+const HOME_WIND_AGGS = ["max", "avg"];
 
 // Memoized: no props from HomePage, so the ~3-9s live poll doesn't redraw this chart.
 const ChartCardDaily = React.memo(function ChartCardDaily(props) {
@@ -944,12 +943,11 @@ const ChartCardDaily = React.memo(function ChartCardDaily(props) {
   const [aggType, setAggType] = useState("avg");
   const [sunView, setSunView] = useState("sun");  // sunshine as hours or % of possible (#24)
   const [rainView, setRainView] = useState("rain");  // rainfall as amount or wet hours
-  const [windView, setWindView] = useState("wind:max");  // wind summary sub-options
+  const [windAgg, setWindAgg] = useState("max");  // wind: daily max or avg, speed and gust together
   const isSun = obs === "sun";
   const isRain = obs === "rain";
   const isWind = obs === "wind";
-  const [windObs, windAgg] = windView.split(":");
-  const chartObs = isSun ? sunView : isRain ? rainView : isWind ? windObs : obs;
+  const chartObs = isSun ? sunView : isRain ? rainView : isWind ? "wind" : obs;
   const chartAgg = isSun ? (sunView === "sunpct" ? "avg" : "total") : isRain ? OBS.get(rainView).summary : isWind ? windAgg : aggType;
   const period = "30";
 
@@ -963,13 +961,13 @@ const ChartCardDaily = React.memo(function ChartCardDaily(props) {
         : isRain
         ? <RadioButtonGroup name="rainView" value={rainView} options={RAIN_VIEWS} optFormat={(v) => RAIN_VIEW_NAMES[v]} fn={setRainView} />
         : isWind
-        ? <RadioButtonGroup name="windView" value={windView} options={WIND_SUMMARY_VIEWS} optFormat={(v) => WIND_SUMMARY_NAMES[v]} fn={setWindView} />
+        ? <RadioButtonGroup name="windAgg" value={windAgg} options={HOME_WIND_AGGS} optFormat={(v) => v} fn={setWindAgg} />
         : <RadioButtonGroup name="aggType" value={aggType} options={aggOpts} optFormat={(c) => c} fn={setAggType} />}
       <Box m={1}></Box>
       {/* <RadioButtonGroup name="period" options={periodOptions} optFormat={fmatDaysOpt} default={"30"} fn={setPeriod} /> */}
       <Text><Link href="/charts/summary" title="More charts">More</Link></Text>
     </Flex>
-    <SummaryChart m={1} obs={chartObs} aggType={chartAgg} height="55%" chartType="column" period={period} spacing={[5, 5, 12, 3]} />
+    <SummaryChart m={1} obs={chartObs} aggType={chartAgg} withGust={isWind} height="55%" chartType="column" period={period} spacing={[5, 5, 12, 3]} />
   </Box>
 });
 
