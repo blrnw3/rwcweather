@@ -49,7 +49,7 @@ def test_unreadable_frame_is_corrupt_not_a_crash(monkeypatch):
     def good():                                                       # distinct frames that pass the gates
         g = rng.integers(60, 200, (200, 360)).astype(np.float32)
         return jpeg(np.stack([g + 6, g + 8, g + 14], -1))
-    frames = iter([b"\x00garbage"])
+    frames = iter([None, b"\x00garbage"])                           # pre-window frame, then the first in-window one
     monkeypatch.setattr(fj, "fetch", lambda s, url: next(frames, None) or good())
     calls = []
     rows = fj.day_rows(date(2025, 12, 15), None, "https://x", lambda b: calls.append(1) or
@@ -81,3 +81,37 @@ def test_no_default_secrets(monkeypatch):
         fj.post(None, [], "mv", "live")
     src = open(os.path.join(os.path.dirname(__file__), "..", "scripts", "fog_judge.py")).read().lower()
     assert "roboflow" not in src.replace("never uses roboflow", "")
+
+
+def test_frozen_gate_includes_frame_before_window(monkeypatch):
+    """A frozen run that spans midnight: the day's first frame equals the pre-window frame, so it is gated."""
+    rng = np.random.default_rng(1)
+    g = rng.integers(60, 200, (120, 200)).astype(np.float32)
+    frozen = jpeg(np.stack([g + 6, g + 8, g + 14], -1))
+    d = date(2026, 7, 20)
+    frames = fj.rules.window_frames(d)
+    fresh = {frames[-1]: jpeg(np.stack([g + 30, g + 8, g], -1))}   # camera back for the last frame
+    by_url = {fj.frame_url("B", t): fresh.get(t, frozen) for t in frames}
+    by_url[fj.frame_url("B", frames[0] - fj.timedelta(minutes=fj.rules.FRAME_MIN))] = frozen
+    calls = []
+    monkeypatch.setattr(fj, "fetch", lambda s, url: by_url.get(url))
+
+    def judge(data):
+        calls.append(data)
+        return dict(answer="no", confidence=0.9, reason="clear")
+    rows = fj.day_rows(d, None, "B", judge)
+    assert [r["flags"] for r in rows[:-1]] == ["frozen"] * (len(frames) - 1)
+    assert rows[-1]["flags"] is None and rows[-1]["fog"] is False and len(calls) == 1
+
+
+def test_first_frame_judged_when_no_frame_before(monkeypatch):
+    d = date(2026, 7, 20)
+    frames = fj.rules.window_frames(d)
+    rng = np.random.default_rng(2)
+    imgs = {}
+    for t in frames:
+        rg = rng.integers(60, 200, (60, 80))
+        imgs[fj.frame_url("B", t)] = jpeg(np.stack([rg, rg, rng.integers(0, 60, (60, 80))], -1))
+    monkeypatch.setattr(fj, "fetch", lambda s, url: imgs.get(url))
+    rows = fj.day_rows(d, None, "B", lambda data: dict(answer="no", confidence=0.9, reason="clear"))
+    assert all(r["flags"] is None for r in rows)
