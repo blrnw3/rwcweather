@@ -126,7 +126,48 @@ export const OBS = new Map([
         icon: <WiRain />,
         dailyStats: ["max"],
     }],
+    // Derived at query time from the daily max and min (rwcwx/calc/derived_daily.py); one value per day, periods
+    // average it. Offered as a "Range" daily-stat button of their parent variable (DERIVED_STATS).
+    ["temprange", {
+        name: "Temperature range",
+        summary: "avg",
+        fmat: "temprange",
+        icon: <WiThermometer />,
+        dailyStats: ["avg"],
+    }],
+    ["humirange", {
+        name: "Humidity range",
+        summary: "avg",
+        fmat: "humirange",
+        icon: <WiHumidity />,
+        dailyStats: ["avg"],
+    }],
+    ["presrange", {
+        name: "Pressure range",
+        summary: "avg",
+        fmat: "presrange",
+        icon: <WiBarometer />,
+        dailyStats: ["avg"],
+    }],
+    ["dewptrange", {
+        name: "Dew point range",
+        summary: "avg",
+        fmat: "temprange",
+        icon: <GiDew />,
+        dailyStats: ["avg"],
+    }],
+    // FAO-56 reference evapotranspiration (grass), derived per day; periods add it up. An "ET0" stat button of Temperature.
+    ["et0", {
+        name: "ET0 (reference evapotranspiration)",
+        shortName: "ET0",
+        summary: "total",
+        fmat: "et0",
+        icon: <GiLeafSwirl />,
+    }],
 ]);
+
+// Variables derived from other daily values; they have no minute observations and no climate normals.
+export const DERIVED_DAILY_OBS = ["temprange", "humirange", "presrange", "dewptrange", "et0"];
 
 // Alternative views of one variable (the button stays the base variable).
 export const SUN_VIEWS = ["sun", "sunpct"];
@@ -146,14 +187,40 @@ export const WIND_SUMMARY_NAMES = {
     "wdir:avg": "Avg direction",
 };
 
-// Variable button -> its views and their labels (the toggle shown under the Variable buttons).
+// Variable button -> its views and their labels (the unlabelled button row shown under the Variable buttons).
 export const VIEW_GROUPS = {
-    sun: { views: REPORT_SUN_VIEWS, names: SUN_VIEW_NAMES, label: "Show sunshine as:" },
-    rain: { views: RAIN_VIEWS, names: RAIN_VIEW_NAMES, label: "Show rainfall as:" },
-    wind: { views: WIND_VIEWS, names: WIND_VIEW_NAMES, summaryViews: WIND_SUMMARY_VIEWS, summaryNames: WIND_SUMMARY_NAMES, label: "Show wind as:" },
+    sun: { views: REPORT_SUN_VIEWS, names: SUN_VIEW_NAMES },
+    rain: { views: RAIN_VIEWS, names: RAIN_VIEW_NAMES },
+    wind: { views: WIND_VIEWS, names: WIND_VIEW_NAMES, summaryViews: WIND_SUMMARY_VIEWS, summaryNames: WIND_SUMMARY_NAMES },
 };
 
+// Derived daily variables offered as extra daily-stat buttons of their parent variable, after min/max/mean:
+// Temperature: ... | Range | ET0; Humidity, Dew point, Pressure: ... | Range. [stat key, variable]
+export const DERIVED_STATS = {
+    temp: [["range", "temprange"], ["et0", "et0"]],
+    humi: [["range", "humirange"]],
+    dewpt: [["range", "dewptrange"]],
+    pres: [["range", "presrange"]],
+};
+export const DERIVED_PARENT = Object.fromEntries(
+    Object.entries(DERIVED_STATS).flatMap(([parent, list]) => list.map(([, v]) => [v, parent])));
+
+// The stat button shown as selected: "range"/"et0" for a derived variable, else the daily stat itself.
+export function statButtonValue(obs, stat) {
+    const parent = DERIVED_PARENT[obs];
+    return parent ? DERIVED_STATS[parent].find(([, v]) => v === obs)[0] : stat;
+}
+
+// Old links that put the derived variable in the stat (var=temp&daily=range) -> the derived variable.
+export function derivedFromStat(obs, stat) {
+    const hit = (DERIVED_STATS[obs] || []).find(([k]) => k === stat);
+    return hit ? hit[1] : null;
+}
+
 export function baseObs(obs) {
+    if (DERIVED_PARENT[obs]) {
+        return DERIVED_PARENT[obs];
+    }
     for (const [base, g] of Object.entries(VIEW_GROUPS)) {
         if (g.views.includes(obs)) {
             return base;
@@ -199,7 +266,9 @@ const aggNames = {
     max: "Maximum",
     min: "Minimum",
     avg: "Average",
-    total: "Total"
+    total: "Total",
+    range: "Range",
+    et0: "ET0",
   }
 
   export function fmatAggTypeOpt(opt) {

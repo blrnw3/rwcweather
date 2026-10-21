@@ -5,7 +5,7 @@ import { useContext } from 'react';
 import useSWR from 'swr';
 import { convFunction, unitAndPrecisionForObsType } from '../format';
 import { daysInMonth } from './dateUtil';
-import { fetcher, fmatAggTypeOpt, fmatForObs, OBS } from './conf';
+import { DERIVED_PARENT, fetcher, fmatAggTypeOpt, fmatForObs, OBS } from './conf';
 import { LIVE_SWR, useLivePoll } from './liveRefresh';
 import { UnitCtx } from "./Page";
 
@@ -20,13 +20,13 @@ let cache;
 // zero-based axis after clicking through rain or sunshine (#83).
 //
 // Amounts and percentages of time: bars/areas measure "how much", so they start at a true 0 baseline.
-const ZERO_BASELINE = ["rain", "wet", "wetrate", "rain10", "rain60", "sun", "sunpct", "fog", "fogday", "solr"];
+const ZERO_BASELINE = ["rain", "wet", "wetrate", "rain10", "rain60", "sun", "sunpct", "fog", "fogday", "solr", "et0"];
 // Can't go negative but are levels, not amounts: autoscale to the data, just never below 0.
-const ZERO_FLOOR = ["wind", "gust", "aqi", "humi"];
+const ZERO_FLOOR = ["wind", "gust", "aqi", "humi", "temprange", "humirange", "presrange", "dewptrange"];
 
 // Percentages that cannot exceed 100: the axis may autoscale below that, but tick rounding must never take it past
 // 100% (humidity near saturation used to get a 0-120 axis).
-const PCT_CEILING = ["humi", "sunpct"];
+const PCT_CEILING = ["humi", "sunpct", "humirange"];
 
 export function yAxisScale(obs, values) {
     const ceiling = PCT_CEILING.includes(obs) ? 100 : null;
@@ -350,7 +350,7 @@ export function SummaryChart(props) {
             text: "@rwcweather"
         },
         title: {
-            text: (isLoading ? "LOADING: " : "") + periodTitle + " " + aggTypePretty + " " + obsName
+            text: (isLoading ? "LOADING: " : "") + periodTitle + " " + (DERIVED_PARENT[obs] ? "" : aggTypePretty + " ") + obsName
                 + (!isLoading && !data.some(([, v]) => Number.isFinite(v)) ? " – no data in this period" : ""),
             style: {
                 fontSize: responsiveFontSize(18)

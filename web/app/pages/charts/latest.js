@@ -1,4 +1,4 @@
-import { Flex, Heading, Text, useRadioGroup } from "@chakra-ui/react";
+import { Flex, Heading, useRadioGroup } from "@chakra-ui/react";
 import { LatestChart } from "../../components/chart";
 import { baseObs, fmatObsOpt, fmatTimeOpt, OBS } from '../../components/conf';
 import { Page } from "../../components/Page";
@@ -55,10 +55,7 @@ export default function Charts() {
       </Heading>
       
       <RadioButtonGroup name="obs" value={baseObs(obs)} options={obsOptions} optFormat={fmatObsOpt} fn={setObs} />
-      {baseObs(obs) === "wind" && <>
-        <Text mt="1" fontWeight="bold">Show wind as:</Text>
-        <RadioButtonGroup name="wind-view" value={obs} options={WIND_VIEWS} optFormat={(v) => WIND_VIEW_NAMES[v]} fn={setObs} />
-      </>}
+      {baseObs(obs) === "wind" && <RadioButtonGroup name="wind-view" value={obs} options={WIND_VIEWS} optFormat={(v) => WIND_VIEW_NAMES[v]} fn={setObs} />}
       <LatestChart obs={obs} hrs={hrs} my={4} mx={{base: 0, md: 4, xl: 6}} height="responsive" spacing={[20, 20, 25, 10]} />
       <RadioButtonGroup name="hrs" value={hrs} options={hrsOptions} optFormat={fmatTimeOpt} fn={setHrs} />
     </Page>

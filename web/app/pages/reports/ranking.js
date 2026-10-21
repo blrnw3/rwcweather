@@ -23,6 +23,7 @@ import {
     countThresholdsAny,
     CountThresholdSelector,
     DAILY_AGGREGATION_NAMES,
+    dailyAggName,
     dailyAggregationOptions,
     inHgToMb,
     kphToMph,
@@ -37,6 +38,8 @@ import {
     summaryKey,
     summaryOptions,
     styleForReportValue,
+    DerivedVarNote,
+    StatButtons,
     SunViewToggle,
 } from "../../components/report";
 import { formatObs } from "../../format";
@@ -1082,7 +1085,6 @@ const RANKING_URL_STATE = {
 export default function RankingReport() {
     const [state, update] = useUrlState(RANKING_URL_STATE);
     const { period, obs, dailyAggregation, summary, threshold, month, window, centre, days, order, limit, dir, spellThreshold, startYear, anomLevel, anomOrder } = state;
-    const dailyOptions = dailyAggregationOptions(obs);
     const monthlySummaryOptions = summaryOptions(obs);
 
     const handleObsChange = (nextObs, nextStat) => {
@@ -1145,12 +1147,12 @@ export default function RankingReport() {
         : period === "anom"
         ? <AnomTitle dailyAggregation={dailyAggregation} dir={dir} level={anomLevel} limit={limit} order={anomOrder} />
         : period === "daily"
-        ? ORDER_NAMES[order] + " " + limit + " " + DAILY_AGGREGATION_NAMES[dailyAggregation]
+        ? ORDER_NAMES[order] + " " + limit + " " + dailyAggName(obs, dailyAggregation)
         : period === "rolling"
         ? ORDER_NAMES[order] + " " + limit + " " + days + "-day " + (isTotalObs(obs) ? "totals" : "means")
-            + " of " + DAILY_AGGREGATION_NAMES[dailyAggregation]
+            + " of " + dailyAggName(obs, dailyAggregation)
         : ORDER_NAMES[order] + " " + limit + " " + PERIOD_NAMES[period] + " " + SUMMARY_NAMES[summary]
-            + " of " + DAILY_AGGREGATION_NAMES[dailyAggregation];
+            + " of " + dailyAggName(obs, dailyAggregation);
     const monthSuffix = period === "daily" && window !== "all"
         ? formatWindowSuffix(window, centre)
         : (!byMonth || month === "all" ? "" : " in " + formatMonthFilter(month));
@@ -1199,11 +1201,10 @@ export default function RankingReport() {
         <Text mt="1" fontWeight="bold">Variable:</Text>
         <RadioButtonGroup name="obs" value={baseObs(obs)} options={DAILY_VALUE_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
         <SunViewToggle obs={obs} stat={dailyAggregation} fn={handleObsChange} multiDay={period !== "daily"} />
-        {baseObs(obs) !== "wind" && dailyOptions.length > 1 && <>
-            <Text mt="1" fontWeight="bold">Daily statistic:</Text>
-            <RadioButtonGroup name="daily-aggregation" value={dailyAggregation}
-                options={period === "spells" ? dailyOptions.filter((o) => spellThresholds(obs, o).length) : dailyOptions} optFormat={(value) => DAILY_AGGREGATION_NAMES[value]} fn={setDailyAggregation} />
-        </>}
+        <StatButtons name="daily-aggregation" label="Daily statistic:" obs={obs} stat={dailyAggregation}
+            options={(o) => period === "spells" ? dailyAggregationOptions(o).filter((s) => spellThresholds(o, s).length) : dailyAggregationOptions(o)}
+            optFormat={(value) => DAILY_AGGREGATION_NAMES[value]} fn={setDailyAggregation} onObs={handleObsChange}
+            allowObs={(v) => period === "spells" ? SPELL_OBS.includes(v) : period === "rolling" ? ROLLING_OBS.includes(v) : true} />
         {isSummaryPeriod && <>
             <Text mt="1" fontWeight="bold">{PERIOD_NAMES[period]} summary:</Text>
             <RadioButtonGroup name="summary" value={summary} options={monthlySummaryOptions} optFormat={(value) => SUMMARY_NAMES[value]} fn={setSummary} />
@@ -1292,5 +1293,6 @@ export default function RankingReport() {
             month or season selected, any spell overlapping that month or season is included in full. Rain and wet-hour
             spells include today once it qualifies; other variables stop at yesterday.
         </Text>
+      <DerivedVarNote obs={obs} mt="3" />
     </Page>;
 }

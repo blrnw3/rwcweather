@@ -6,7 +6,7 @@ import { useContext } from "react";
 import useSWR from "swr";
 import { convFunction, toFixedObs, unitAndPrecisionForObsType } from "../format";
 import { dailyNormal, hasClimate } from "./climate";
-import { fetcher, fmatAggTypeOpt, fmatForObs, OBS } from "./conf";
+import { dailyStatsFor, fetcher, fmatAggTypeOpt, fmatForObs, OBS } from "./conf";
 import { yAxisScale } from "./chart";
 import { UnitCtx } from "./Page";
 
@@ -160,12 +160,14 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
     const isLoading = obsLoading || statsLoading;
     const normalOk = !allYears && showNormal && hasNormal(obs, stat);
     const days = buildSeries(result, obs, stat, year, waterYear, cumulative, statsOn ? dayStats : null);
+    // ET0: which method each day used (Penman-Monteith with sunshine, else Hargreaves-Samani), for the tooltip
+    const methods = new Map((result || []).filter((r) => r.method).map((r) => [Date.UTC(r.d[0], r.d[1] - 1, r.d[2]), r]));
     const prec = cumulative ? Math.max(precision, 0) : precision;
     const c = (v) => (v == null ? null : round(conv(v), prec));
     const isTotal = OBS.get(obs).summary === "total";
-    const name = OBS.get(obs).name + (isTotal || obs === "sunpct" ? "" : " (" + fmatAggTypeOpt(stat).toLowerCase() + ")");
+    const name = OBS.get(obs).name + (isTotal || dailyStatsFor(obs).length < 2 ? "" : " (" + fmatAggTypeOpt(stat).toLowerCase() + ")");
     const period = allYears ? (waterYear ? "All water years" : "All years") : waterYear ? "Water year " + (year - 1) + "–" + String(year).slice(2) : String(year);
-    const color = obs === "rain" ? "#2299dd" : obs === "wet" ? "#1f6fae" : obs.startsWith("rain") ? "#2299dd" : obs.startsWith("sun") ? "#e6a700" : stat === "min" ? "#3377dd" : "#ff5511";
+    const color = obs === "rain" ? "#2299dd" : obs === "wet" ? "#1f6fae" : obs.startsWith("rain") ? "#2299dd" : obs.startsWith("sun") ? "#e6a700" : obs === "et0" ? "#3a9a4a" : obs.endsWith("range") ? "#8a5cc2" : stat === "min" ? "#3377dd" : "#ff5511";
     const columns = !cumulative && isTotal;
 
     // in "All" mode today's month/day is marked on the reference calendar
@@ -189,7 +191,7 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
     if (!allYears) {
         series.push({
             id: "obs", type: columns ? "column" : "line",
-            name: (cumulative ? "Cumulative " + name.toLowerCase() : name),
+            name: (cumulative ? "Cumulative " + name.toLowerCase().replace("et0", "ET0") : name),
             color, lineWidth: 2, marker: { enabled: false }, zIndex: 2,
             pointPadding: 0, groupPadding: 0, borderWidth: 0,
             data: days.map((d) => [d.t, c(d.obs)]),
@@ -219,7 +221,7 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
             backgroundColor: isLoading ? "#00000022" : "#fff", zoomType: "x",
         },
         title: {
-            text: (isLoading ? "LOADING: " : "") + period + (cumulative ? " cumulative " : " daily ") + name.toLowerCase(),
+            text: (isLoading ? "LOADING: " : "") + period + (cumulative ? " cumulative " : " daily ") + name.toLowerCase().replace("et0", "ET0"),
             style: { fontSize: fontSize(18) },
         },
         time: { useUTC: true },
@@ -232,7 +234,7 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
         },
         // #83 rules (chart.yAxisScale): amounts start at 0, levels autoscale (never below 0 for wind/humidity/AQI);
         // auto is null, never undefined
-        yAxis: { title: { text: OBS.get(obs).name + " / " + unitSymbol, style: { fontSize: fontSize(13) } }, ...yAxisScale(obs, yValues) },
+        yAxis: { title: { text: (OBS.get(obs).shortName || OBS.get(obs).name) + " / " + unitSymbol, style: { fontSize: fontSize(13) } }, ...yAxisScale(obs, yValues) },
         tooltip: {
             shared: true, xDateFormat: "%a %e %b %Y", valueDecimals: prec, valueSuffix: " " + unitSymbol,
             formatter() {
@@ -253,6 +255,12 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
                         s += dot + p.series.name + ": " + v(p.y) + (p.point.n ? " (" + p.point.n + " yrs)" : "");
                     } else {
                         s += dot + p.series.name + ": " + v(p.y);
+                        if (id === "obs" && methods.size) {
+                            const m = cumulative ? null : methods.get(this.x);
+                            const how = !m ? "" : m.method === "pm" ? "Penman-Monteith"
+                                : "Hargreaves-Samani" + (m.cal != null ? " × " + m.cal.toFixed(2) : "");
+                            s += how ? " <span style=\"font-size:0.85em\">(" + how + ")</span>" : "";
+                        }
                     }
                 });
                 if (o != null && n != null) {
