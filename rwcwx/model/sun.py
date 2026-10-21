@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from rwcwx.config import TZ
 from rwcwx.sun.daylight import daylight_change_s, sun_times  # noqa: F401  (sun_times re-exported)
-from rwcwx.models import db
+from rwcwx.models import db, is_api_estimate
 
 KIND = "sunny"
 NOW_MAX_AGE_MIN = 20
@@ -53,7 +53,10 @@ class DerivedDay:
 
     @property
     def simple_dict_(self) -> dict:
-        return dict(d=(self.d.year, self.d.month, self.d.day), val=self.val)
+        out = dict(d=(self.d.year, self.d.month, self.d.day), val=self.val)
+        if is_api_estimate(self.comment):
+            out["api_est"] = True     # from the day's weather-API sunshine estimate, not the webcam
+        return out
 
 
 def possible_h(d: date, now_utc: Optional[datetime] = None) -> float:
