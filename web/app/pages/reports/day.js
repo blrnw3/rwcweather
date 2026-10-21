@@ -296,8 +296,12 @@ function WebcamGallery({ date, dateLabel, isToday, currentHm, datestamp }) {
         const minute = m % 60;
         if (span === "daytime" && dawnMs != null && duskMs != null) {
             const t = slotEpochMs(date, hour, minute);
-            // Include the interval containing dawn through the interval containing dusk.
-            if (t != null && (t + step * 60000 <= dawnMs || t > duskMs)) {
+            // A slot is one snapshot taken at time t, so keep it only if t itself falls between civil dawn and
+            // civil dusk (sun above -6°): the same twilight rule as the home sun card, applied identically at
+            // both ends. (Keeping "the interval containing dawn" used to add a dark pre-dawn image in the
+            // morning with no matching image after dusk.) Slots that don't exist (the 2 am hour skipped when
+            // DST starts) have no time and are left out.
+            if (t == null || t < dawnMs || t > duskMs) {
                 continue;
             }
         }
