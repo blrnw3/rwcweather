@@ -68,7 +68,7 @@ if __name__ == "__main__":
 def test_sun_times_passes_naive_datetime(monkeypatch):
     """astronomy uses time.mktime; an aware summer datetime (tm_isdst=1) overflows it on prod (TZ=UTC, older glibc)."""
     from datetime import date, datetime
-    from rwcwx.model import sun
+    from rwcwx.sun import daylight as sun   # sun_times lives here (re-exported by rwcwx.model.sun)
     seen = {}
 
     def fake(dt):

@@ -267,10 +267,16 @@ function WebcamImage({ date, dateLabel, hour, minute = 0 }) {
 
 const CAM_INTERVALS = ["60", "30", "15"];
 const CAM_SPANS = ["daytime", "all"];
-const CAM_SPAN_NAMES = { daytime: "Daytime (incl. twilight)", all: "All day" };
+const CAM_SPAN_NAMES = { daytime: "Daytime (incl. astronomical twilight)", all: "All day" };
 
-// Civil twilight bounds (sun 6° below horizon) in UTC ms for `date` at 37.469, -122.265.
+// Astronomical twilight bounds (sun 18° below the horizon) in UTC ms for `date` at 37.470, -122.265.
+// The API sends astro_dawn / astro_dusk as null if the sun never gets that low (all-night twilight, not
+// possible at this latitude but handled): then there is no bound on that side. An API without the keys
+// (older backend) falls back to civil twilight (-6°), then to sunrise/sunset ± 30 min.
 function twilightBoundsMs(date, sunDay) {
+    if (sunDay && "astro_dawn" in sunDay) {
+        return [sunDay.astro_dawn ?? -Infinity, sunDay.astro_dusk ?? Infinity];
+    }
     if (sunDay?.dawn && sunDay?.dusk) {
         return [sunDay.dawn, sunDay.dusk];
     }
@@ -296,11 +302,10 @@ function WebcamGallery({ date, dateLabel, isToday, currentHm, datestamp }) {
         const minute = m % 60;
         if (span === "daytime" && dawnMs != null && duskMs != null) {
             const t = slotEpochMs(date, hour, minute);
-            // A slot is one snapshot taken at time t, so keep it only if t itself falls between civil dawn and
-            // civil dusk (sun above -6°): the same twilight rule as the home sun card, applied identically at
-            // both ends. (Keeping "the interval containing dawn" used to add a dark pre-dawn image in the
-            // morning with no matching image after dusk.) Slots that don't exist (the 2 am hour skipped when
-            // DST starts) have no time and are left out.
+            // A slot is one snapshot taken at time t, so keep it only if t itself falls between astronomical
+            // dawn and dusk (sun above -18°), applied identically at both ends. (Keeping "the interval
+            // containing dawn" used to add an extra pre-dawn image in the morning with no matching image after
+            // dusk.) Slots that don't exist (the 2 am hour skipped when DST starts) have no time and are left out.
             if (t == null || t < dawnMs || t > duskMs) {
                 continue;
             }

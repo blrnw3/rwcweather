@@ -7,9 +7,8 @@ from typing import Iterable, List, Optional, Tuple
 from dateutil.tz import UTC
 from sqlalchemy import text
 
-from rwcwx.astronomy import get_all_times_rwc
 from rwcwx.config import TZ
-from rwcwx.sun.daylight import daylight_change_s
+from rwcwx.sun.daylight import daylight_change_s, sun_times  # noqa: F401  (sun_times re-exported)
 from rwcwx.models import db
 
 KIND = "sunny"
@@ -25,19 +24,6 @@ def local_day_bounds_utc(d: date):
     st = datetime(d.year, d.month, d.day, tzinfo=TZ)
     en = st + timedelta(days=1)
     return st.astimezone(UTC).replace(tzinfo=None), en.astimezone(UTC).replace(tzinfo=None)
-
-
-def sun_times(d: date) -> dict:
-    """Sunrise/sunset as epoch ms, same convention as the classifier (sun centre at -0.833 deg)."""
-    # Naive noon, like get_all_times_rwc's own default: astronomy uses time.mktime, and an aware
-    # datetime carries tm_isdst=1 in summer, which glibc rejects when the process zone is UTC (prod).
-    times = get_all_times_rwc(datetime(d.year, d.month, d.day, 12))
-    sr, ss = times["sunrise"], times["sunset"]
-    dawn, dusk = times.get("dawn", sr), times.get("dusk", ss)
-    # astronomy returns naive datetimes in the process's local zone; .timestamp() interprets them the same way
-    return dict(sunrise=int(sr.timestamp() * 1000), sunset=int(ss.timestamp() * 1000),
-                dawn=int(dawn.timestamp() * 1000), dusk=int(dusk.timestamp() * 1000),
-                daylight_h=round(times["daylight_secs"] / 3600, 2))
 
 
 @lru_cache(maxsize=8192)
