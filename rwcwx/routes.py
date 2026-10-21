@@ -27,6 +27,7 @@ from rwcwx.wet import intensity_store
 from rwcwx.wet import store as wet_store
 from rwcwx.fog import derive as fog_derive
 from rwcwx.calc import day_profile
+from rwcwx.calc import day_of_year
 
 
 def todo():
@@ -332,6 +333,41 @@ def var_anom_spells(var: str, typ: str):
 def _anom_spells_cached(var, typ, level, direction, month, order, limit, today: date, _bucket: int) -> dict:
     return anom_spells_mod.anom_spell_ranking(
         _daily_values(var, typ), typ, level, direction, month, order, limit, today)
+
+
+# Variables with no meaningful all-years range per calendar day: wind direction is circular, a fog day is 0/1.
+DAY_STATS_EXCLUDED = ("wdir", fog_derive.DAY_VAR)
+
+
+def var_day_stats(var: str, typ: str):
+    """
+    All-years average / lowest / highest of a daily value for each calendar day (366 rows, Jan 1 first), e.g.
+    /api/var/day_stats/temp/max/ ; running-total envelopes with ?mode=cumulative (&period=water for Oct-Sep years).
+    Values in DB units; today (partial) is left out. See rwcwx.calc.day_of_year.
+    """
+    mode = request.args.get("mode", "daily")
+    period = request.args.get("period", "calendar")
+    if var in DAY_STATS_EXCLUDED or mode not in ("daily", "cumulative") or period not in ("calendar", "water") \
+            or (mode == "cumulative" and typ != "total"):
+        return {"error": "Unsupported day stats",
+                "supported": dict(mode=["daily", "cumulative (totals only)"], period=["calendar", "water"],
+                                  excluded=list(DAY_STATS_EXCLUDED))}, 400
+    now = DateUtil.now()
+    # recomputed at most hourly (and on a new day), so late updates to yesterday's values show up
+    res = _day_stats_cached(var, typ, mode == "cumulative", period == "water", now.date(), int(now.timestamp() // 3600))
+    if res is None:
+        return {"error": f"No daily values for {var}/{typ}"}, 404
+    return _wrap_result(res, var=var, type=typ, mode=mode, period=period)
+
+
+@lru_cache(maxsize=64)
+def _day_stats_cached(var: str, typ: str, cumulative: bool, water: bool, today: date, _bucket: int):
+    values = _daily_values(var, typ)
+    if not values:
+        return None
+    if cumulative:
+        return day_of_year.cumulative_stats(values, today, water)
+    return day_of_year.daily_stats(values, today)
 
 
 def _daily_values(var: str, typ: str):

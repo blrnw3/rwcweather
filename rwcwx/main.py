@@ -64,6 +64,7 @@ app.add_url_rule("/api/obs/summary/year/", view_func=r.year_summary)
 # Summaries for a single variable at a given aggregate period for multiple periods
 # Note that these take query params to allow filtering on a given year, month, or arbitrary period
 app.add_url_rule("/api/var/daily/<var>/<typ>/", view_func=r.var_daily)
+app.add_url_rule("/api/var/day_stats/<var>/<typ>/", view_func=r.var_day_stats)
 app.add_url_rule("/api/var/monthly/<var>/<typ>/", view_func=r.var_monthly)
 app.add_url_rule("/api/var/yearly/<var>/<typ>/", view_func=r.var_yearly)
 app.add_url_rule("/api/var/all_periods/<var>/<typ>/", view_func=r.var_all_periods)
