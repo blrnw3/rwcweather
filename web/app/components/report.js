@@ -226,7 +226,9 @@ export function DerivedVarNote({ obs, ...props }) {
             daily mean wind taken as the 2 m wind (the anemometer is above the roofline on a sheltered hillside, so no
             height reduction; floored at FAO&apos;s 0.5 m/s). Days without usable sunshine (before Sept 2021, gaps,
             under 75% webcam coverage or weather-API estimates) use Hargreaves-Samani from the max and min temperature
-            instead; each day&apos;s method is shown in the chart tooltips. Today is not included.
+            instead, calibrated to Penman-Monteith month by month (each calendar month&apos;s ratio of Penman-Monteith to
+            Hargreaves-Samani over all the days that have both, about 0.7 in winter to 0.88 in summer); each day&apos;s
+            method is shown in the chart tooltips. Today is not included.
         </Text>;
     }
     if (OBS.get(obs)?.fmat && ["temprange", "humirange", "presrange", "dewptrange"].includes(obs)) {

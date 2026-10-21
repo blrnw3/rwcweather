@@ -161,7 +161,7 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
     const normalOk = !allYears && showNormal && hasNormal(obs, stat);
     const days = buildSeries(result, obs, stat, year, waterYear, cumulative, statsOn ? dayStats : null);
     // ET0: which method each day used (Penman-Monteith with sunshine, else Hargreaves-Samani), for the tooltip
-    const methods = new Map((result || []).filter((r) => r.method).map((r) => [Date.UTC(r.d[0], r.d[1] - 1, r.d[2]), r.method]));
+    const methods = new Map((result || []).filter((r) => r.method).map((r) => [Date.UTC(r.d[0], r.d[1] - 1, r.d[2]), r]));
     const prec = cumulative ? Math.max(precision, 0) : precision;
     const c = (v) => (v == null ? null : round(conv(v), prec));
     const isTotal = OBS.get(obs).summary === "total";
@@ -257,7 +257,9 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
                         s += dot + p.series.name + ": " + v(p.y);
                         if (id === "obs" && methods.size) {
                             const m = cumulative ? null : methods.get(this.x);
-                            s += m ? " <span style=\"font-size:0.85em\">(" + (m === "pm" ? "Penman-Monteith" : "Hargreaves-Samani") + ")</span>" : "";
+                            const how = !m ? "" : m.method === "pm" ? "Penman-Monteith"
+                                : "Hargreaves-Samani" + (m.cal != null ? " × " + m.cal.toFixed(2) : "");
+                            s += how ? " <span style=\"font-size:0.85em\">(" + how + ")</span>" : "";
                         }
                     }
                 });

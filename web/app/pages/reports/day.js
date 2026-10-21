@@ -136,7 +136,7 @@ function DerivedSummary({ summary, et0 }) {
                     return <Tr key={obs}><Td fontWeight="bold">{OBS.get(obs).name}</Td>{cell(obs, v)}<Td fontSize="sm">max − min</Td></Tr>;
                 })}
                 <Tr key="et0"><Td fontWeight="bold">ET0 (reference evapotranspiration)</Td>{cell("et0", et0?.val ?? null)}
-                    <Td fontSize="sm">{et0?.method === "pm" ? "FAO-56 Penman-Monteith" : et0?.method === "hs" ? "Hargreaves-Samani (no usable sunshine)" : "not for today"}</Td></Tr>
+                    <Td fontSize="sm">{et0?.method === "pm" ? "FAO-56 Penman-Monteith" : et0?.method === "hs" ? "Hargreaves-Samani (no usable sunshine)" + (et0.cal != null ? ", calibrated × " + et0.cal.toFixed(2) : "") : "not for today"}</Td></Tr>
             </Tbody>
         </Table>
         <DerivedVarNote obs="et0" mt="2" />
