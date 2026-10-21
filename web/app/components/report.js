@@ -13,6 +13,8 @@ export const fToC = (f) => String(Math.round((f - 32) * 5 / 9 * 10000) / 10000);
 export const mmToIn = (mm) => String(Math.round(mm / 25.4 * 10000) / 10000);
 export const kphToMph = (kph) => String(Math.round(kph / 1.60934 * 10000) / 10000);
 export const inHgToMb = (inhg) => String(Math.round(inhg / 0.02953 * 100) / 100);
+export const fDiffToC = (f) => String(Math.round(f * 5 / 9 * 10000) / 10000);
+export const inToMm = (i) => String(Math.round(i * 25.4 * 10000) / 10000);
 
 // Closest option for the current unit, so switching units keeps a similar threshold (e.g. 0.1 in -> 2 mm, 90 °F -> 30 °C).
 export function nearestThreshold(value, options) {
@@ -35,7 +37,8 @@ export const DAILY_VALUE_OBS_OPTIONS = [
 ];
 
 // Every value the "var" URL parameter may take: the buttons plus alternative views (sunshine as %, rain views, wind views).
-export const DAILY_VALUE_OBS_STATES = [...DAILY_VALUE_OBS_OPTIONS, "sunpct", "fog", "fogday", "wet", "wetrate", "rain60", "rain10", "gust", "wdir"];
+export const DAILY_VALUE_OBS_STATES = [...DAILY_VALUE_OBS_OPTIONS, "sunpct", "fog", "fogday", "wet", "wetrate", "rain60", "rain10", "gust", "wdir",
+    "temprange", "et0", "humirange", "dewptrange", "presrange"];
 
 // Wind direction is circular: a day's mean direction is shown, but it is never averaged over several days
 // (monthly / annual summaries, multi-day means, spells), matching DAILY_ONLY_VARS in rwcwx/calc/avg_extreme.py.
@@ -60,6 +63,12 @@ export const COUNT_THRESHOLDS = {
     wetrate: ["0", "0.02", "0.05", "0.1", "0.2"],
     rain60: ["0", "0.05", "0.1", "0.25", "0.5"],
     rain10: ["0", "0.02", "0.05", "0.1", "0.2"],
+    // derived: ranges in °C / % / mb, ET0 in mm
+    temprange: ["0", "5", "10", "15", "20"],
+    dewptrange: ["0", "3", "5", "8", "10"],
+    humirange: ["0", "20", "30", "40", "50", "60"],
+    presrange: ["0", "2", "4", "6", "8"],
+    et0: ["0", "1", "2", "3", "4", "5", "6"],
 };
 
 // Metric (uk & eu) count thresholds for variables stored in imperial units (rainfall in inches, rain rate in in/h).
@@ -81,6 +90,10 @@ const COUNT_THRESHOLDS_US = {
     temp: ["0", ...[40, 50, 60, 70, 80, 90, 100].map(fToC)],
     dewpt: ["0", ...[40, 45, 50, 55, 60, 65].map(fToC)],
     pres: ["0", ...[29.6, 29.8, 30.0, 30.2, 30.4].map(inHgToMb)],
+    temprange: ["0", ...[10, 20, 25, 30, 35].map(fDiffToC)],
+    dewptrange: ["0", ...[5, 10, 15, 20].map(fDiffToC)],
+    presrange: ["0", ...[0.05, 0.1, 0.15, 0.2, 0.25].map(inHgToMb)],
+    et0: ["0", ...[0.04, 0.08, 0.12, 0.16, 0.2, 0.24].map(inToMm)],
 };
 
 export function countThresholds(obs, unit = "us") {
@@ -194,6 +207,28 @@ export function RadioButtonGroup(props) {
             </RadioCard>;
         })}
     </Flex>;
+}
+
+// Footnote for the derived daily variables (ranges, ET0): how they are computed.
+export function DerivedVarNote({ obs, ...props }) {
+    if (obs === "et0") {
+        return <Text fontSize="sm" {...props}>
+            ET0 is the FAO-56 grass reference evapotranspiration, from the daily values: Penman-Monteith (FAO-56 eq. 6)
+            with solar radiation from the webcam sunshine hours (Angström, 0.25 + 0.50 n/N), net radiation with albedo
+            0.23, vapour pressure from the mean dew point, pressure from the 125 m elevation, G = 0, and the measured
+            daily mean wind taken as the 2 m wind (the anemometer is above the roofline on a sheltered hillside, so no
+            height reduction; floored at FAO&apos;s 0.5 m/s). Days without usable sunshine (before Sept 2021, gaps,
+            under 75% webcam coverage or weather-API estimates) use Hargreaves-Samani from the max and min temperature
+            instead; each day&apos;s method is shown in the chart tooltips. Today is not included.
+        </Text>;
+    }
+    if (OBS.get(obs)?.fmat && ["temprange", "humirange", "presrange", "dewptrange"].includes(obs)) {
+        return <Text fontSize="sm" {...props}>
+            {OBS.get(obs).name}: each day&apos;s maximum minus minimum (same local day as the other daily values); monthly
+            and annual figures average the daily ranges. There are no climate normals for it.
+        </Text>;
+    }
+    return null;
 }
 
 export function CountThresholdSelector({ obs, value, fn }) {

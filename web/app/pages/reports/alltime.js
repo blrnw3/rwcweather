@@ -17,6 +17,7 @@ import {
     summaryKey,
     summaryOptions,
     styleForReportValue,
+    DerivedVarNote,
     SunViewToggle,
 } from "../../components/report";
 import { formatObs } from "../../format";
@@ -410,5 +411,6 @@ export default function AllTimeReport() {
             for rain, the Water yr column likewise covers complete water years only (in-progress and partial
             water years are excluded).
         </Text>
+      <DerivedVarNote obs={obs} mt="3" />
     </Page>;
 }

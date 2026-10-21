@@ -1,7 +1,7 @@
 import { Flex, Heading, Text, useRadioGroup } from "@chakra-ui/react";
 import { SummaryChart } from "../../components/chart";
 import { baseObs, fmatAggTypeOpt, fmatDaysOpt, fmatObsOpt, fmatOptCapitalize, isTotalObs, OBS } from '../../components/conf';
-import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, SunViewToggle } from '../../components/report';
+import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, DerivedVarNote, SunViewToggle } from '../../components/report';
 import { Page } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
 import RadioCard from '../../components/RadioCard';
@@ -103,6 +103,7 @@ export default function Charts() {
       <Text mt="1" fontWeight="bold">Chart type:</Text>
       <RadioButtonGroup name="chart-type" value={chartType} options={["column", "line"]} optFormat={fmatOptCapitalize} fn={setChartType} />
 
+      <DerivedVarNote obs={obs} mt="3" />
     </Page>
   )
 }

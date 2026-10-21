@@ -37,6 +37,7 @@ import {
     summaryKey,
     summaryOptions,
     styleForReportValue,
+    DerivedVarNote,
     SunViewToggle,
 } from "../../components/report";
 import { formatObs } from "../../format";
@@ -1292,5 +1293,6 @@ export default function RankingReport() {
             month or season selected, any spell overlapping that month or season is included in full. Rain and wet-hour
             spells include today once it qualifies; other variables stop at yesterday.
         </Text>
+      <DerivedVarNote obs={obs} mt="3" />
     </Page>;
 }

@@ -107,7 +107,8 @@ def test_et0_excludes_today_and_needs_tmax_tmin():
 def test_sun_usable():
     assert dd.sun_usable("webcam; coverage 75.0%; scaled")
     assert not dd.sun_usable("webcam; coverage 74.9%; scaled")
-    assert not dd.sun_usable("estimated from x")
+    assert dd.sun_usable("estimated from 30-min snapshots; coverage 91.2%")
+    assert not dd.sun_usable("API estimate (api:hrrr); no webcam total")
     assert not dd.sun_usable(None)
 
 

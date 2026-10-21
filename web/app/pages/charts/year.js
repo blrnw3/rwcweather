@@ -4,7 +4,7 @@ import { baseObs, dailyStatsFor, defaultDailyStat, fmatAggTypeOpt, fmatObsOpt, i
 import { Page } from "../../components/Page";
 import RadioCard from "../../components/RadioCard";
 import { hasWaterYears } from "../../components/waterYear";
-import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, REPORT_YEAR_START, SunViewToggle } from "../../components/report";
+import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, DerivedVarNote, REPORT_YEAR_START, SunViewToggle } from "../../components/report";
 import { inList, useUrlState } from "../../components/urlState";
 import { hasDayStats, hasNormal, isMobile, STATS_MODES, YearChart } from "../../components/yearChart";
 import { ClimateNormalsLink } from "../../components/climate";
@@ -108,11 +108,12 @@ export default function YearCharts() {
       {hasDayStats(obs) && stats !== "off" && <Text fontSize="sm" mb="1">
         {cume === "cumulative"
           ? "All years: the " + (stats === "range" ? "average, lowest and highest " : "average ") + "running total reached by each date, over every complete " + (water ? "water" : "calendar") + " year in the record (from Dec 2020; sunshine from Sep 2021), plus the current one so far."
-          : "All years: the " + (stats === "range" ? "average, lowest and highest " : "average ") + (isTotalObs(obs) ? "daily total" : "daily " + fmatAggTypeOpt(stat).toLowerCase()) + " recorded on each calendar day since records began (Dec 2020; sunshine Sep 2021), excluding today. 29 February pools 28 Feb–1 Mar."}
+          : "All years: the " + (stats === "range" ? "average, lowest and highest " : "average ") + (isTotalObs(obs) ? "daily total" : dailyStatsFor(obs).length < 2 ? "daily value" : "daily " + fmatAggTypeOpt(stat).toLowerCase()) + " recorded on each calendar day since records began (Dec 2020; sunshine Sep 2021), excluding today. 29 February pools 28 Feb–1 Mar."}
       </Text>}
       {all ? null : hasNormal(obs, stat)
         ? <><Text fontSize="sm">Daily normals are interpolated from the monthly normals (rainfall is spread evenly over each month's days; sunshine is smoothed between mid-months).</Text><ClimateNormalsLink mt="1" /></>
-        : <Text fontSize="sm">There is no climate normal for {fmatObsOpt(obs).toLowerCase()}.</Text>}
+        : <Text fontSize="sm">There is no climate normal for {fmatObsOpt(obs).toLowerCase().replace("et0", "ET0")}.</Text>}
+      <DerivedVarNote obs={obs} mt="2" />
     </Page>
   );
 }

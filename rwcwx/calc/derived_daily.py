@@ -9,7 +9,7 @@ The inputs are the same local-day rows as every other daily value, so day bounda
 column is an enum, and each value is a cheap function of a handful of daily rows, so nothing is stored or backfilled.
 
 ET0 uses Penman-Monteith when the day has webcam sunshine with at least MIN_SUN_COVERAGE of daylight classified
-(sun rows from the API estimate backfill do not count), plus the daily mean wind and a dew point (or RH max/min);
+(live or from the 30-min archive snapshots; totals from the weather-API estimate do not count), plus the daily mean wind and a dew point (or RH max/min);
 otherwise Hargreaves-Samani. Each ET0 day carries its method ("pm" / "hs"). Today is left out of ET0: its sunshine
 and temperature extremes are still partial.
 """
@@ -66,8 +66,9 @@ class DerivedDay:
 
 
 def sun_usable(comment: Optional[str]) -> bool:
-    """Webcam sunshine with enough of daylight classified; API estimates and low-coverage days are not used."""
-    if not comment or comment.startswith("estimated") or comment.startswith("API estimate"):
+    """Webcam sunshine (live, or backfilled from the 30-min archive snapshots) with enough of daylight classified.
+    Totals from the weather-API estimate (no or too little webcam coverage) are not used."""
+    if not comment or comment.startswith("API estimate"):
         return False
     m = re.search(r"coverage ([\d.]+)%", comment)
     return m is None or float(m.group(1)) / 100 >= MIN_SUN_COVERAGE

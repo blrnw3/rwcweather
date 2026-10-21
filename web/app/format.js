@@ -226,6 +226,78 @@ const OBS_FORMAT = {
         year: [60, 64, 67, 70, 73, 76, 79, 82],
       },
     },
+    // Derived daily ranges (max - min). Differences convert without the +32 offset.
+    temprange: {
+      units: {
+        base: String.fromCharCode(176) + "C",
+        us: String.fromCharCode(176) + "F",
+      },
+      conv: {
+        us: c => c * 9/5
+      },
+      precision: {
+        base: 1
+      },
+      scale: {
+        base: [2, 4, 6, 8, 10, 12, 15, 18],
+        us: [4, 8, 12, 16, 20, 24, 28, 32]
+      }
+    },
+    humirange: {
+      units: {
+        base: "%",
+      },
+      conv: {
+      },
+      precision: {
+        base: 0
+      },
+      scale: {
+        base: [10, 20, 30, 40, 50, 60, 70, 80],
+      }
+    },
+    presrange: {
+      units: {
+        base: "mb",
+        us: "in",
+      },
+      conv: {
+        us: p => p * 0.02953,
+      },
+      precision: {
+        base: 1,
+        us: 2
+      },
+      scale: {
+        base: [1, 2, 3, 4, 5, 6, 8, 10],
+        us: [0.03, 0.06, 0.09, 0.12, 0.15, 0.18, 0.24, 0.3]
+      }
+    },
+    // FAO-56 reference evapotranspiration, stored per day in mm (inches for US units).
+    et0: {
+      units: {
+        base: "mm",
+        us: "in",
+      },
+      conv: {
+        us: e => e / 25.4,
+      },
+      precision: {
+        base: 1,
+        us: 2
+      },
+      wholeFrom: 100,
+      scale: {
+        base: [0.5, 1, 2, 3, 4, 5, 6, 7],
+        us: [0.02, 0.04, 0.08, 0.12, 0.16, 0.2, 0.24, 0.28]
+      },
+      // Months ~20-170 mm, years ~950-1150 mm (2021-2026 record).
+      periodScale: {
+        summaries: ["total"],
+        month: { base: [20, 40, 60, 80, 100, 120, 140, 160], us: [0.8, 1.6, 2.4, 3.1, 3.9, 4.7, 5.5, 6.3] },
+        year: { base: [900, 950, 1000, 1050, 1100, 1150, 1200, 1250], us: [35, 37, 39, 41, 43, 45, 47, 49] },
+      },
+    },
     aqi: {
       units: {
         base: "",
@@ -378,7 +450,8 @@ export function scaleForObsType(unitPref, obsType, period = "day", summary = nul
   const formatRules = OBS_FORMAT[obsType];
   const ps = formatRules["periodScale"];
   if (ps && period !== "day" && ps[period] && ps.summaries.includes(summary)) {
-    return ps[period];
+    // a list (same in every unit), or per unit like the daily scale
+    return Array.isArray(ps[period]) ? ps[period] : (ps[period][unitPref] || ps[period].base);
   }
   return (unitPref in formatRules["scale"]) ? formatRules["scale"][unitPref] : formatRules["scale"]["base"];
 }

@@ -2,7 +2,7 @@ import { Box, Flex, Grid, Heading, Spinner, Text, useRadioGroup } from "@chakra-
 import { Fragment, useContext } from 'react';
 import useSWR from 'swr';
 import { baseObs, fetcher, fmatAggTypeOpt, fmatForObs, fmatObsOpt, fmatYrOpt, isTotalObs, OBS } from '../../components/conf';
-import { DAILY_ONLY_OBS, DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, MINUTE_OBS_STATES, SunViewToggle } from '../../components/report';
+import { DAILY_ONLY_OBS, DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, MINUTE_OBS_STATES, DerivedVarNote, SunViewToggle } from '../../components/report';
 import { daysInMonth } from "../../components/dateUtil";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
@@ -291,6 +291,7 @@ export default function Obs() {
             monthly aggregations - monthly maximum, minimum and averages for each month.
         </Text>
 
+      <DerivedVarNote obs={obs} mt="3" />
     </Page>
 
 }
