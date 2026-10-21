@@ -10,7 +10,9 @@ from rwcwx.config import TZ
 from rwcwx.model.db import Db, SQL_ECHO
 from rwcwx.model.wx import Model
 
-mysql_url = os.getenv("MYSQL_URL", "root:test@127.0.0.1:3307/wx")
+# No password in code: set MYSQL_URL (user:password@host:port/db) for any DB that needs one, e.g. via
+# /etc/rwcwx.env on prod or dev/box/env.sh locally. The default is a passwordless local dev DB.
+mysql_url = os.getenv("MYSQL_URL", "root@127.0.0.1:3307/wx")
 # Pooled connections are pid-checked and pinged on checkout (see Db._install_pool_guards); pool_recycle also
 # replaces connections older than an hour.
 db = Db(f"mysql://{mysql_url}", echo_pool=SQL_ECHO, pool_recycle=3600)

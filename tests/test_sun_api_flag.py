@@ -5,8 +5,13 @@ from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rwcwx.model import sun as sun_model  # noqa: E402
-from rwcwx.models import AvgExt, is_api_estimate  # noqa: E402
+import pytest  # noqa: E402
+
+try:
+    from rwcwx.model import sun as sun_model  # noqa: E402
+    from rwcwx.models import AvgExt, is_api_estimate  # noqa: E402
+except Exception as e:  # rwcwx.models reflects tables at import: needs a reachable DB (MYSQL_URL)
+    pytest.skip(f"needs the dev DB (MYSQL_URL): {type(e).__name__}", allow_module_level=True)
 
 API = "API estimate (api:hrrr+asos; calibrated vs webcam, CV MAE 0.9 h); webcam coverage 0%"
 BACKFILL = "estimated from 30-min snapshots; coverage 98%"

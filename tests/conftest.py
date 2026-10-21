@@ -6,6 +6,7 @@ uses time.mktime / datetime.fromtimestamp, so results and failures depend on the
   RWC_TEST_TZ=UTC (default)          -> like prod
   RWC_TEST_TZ=America/Los_Angeles    -> catches code that only works when the box is in UTC
   RWC_TEST_NO_DB=1                   -> skip DB-backed tests (used by the deploy pre-check)
+  MYSQL_URL unset                    -> same as RWC_TEST_NO_DB=1
 
 scripts/test_backend.sh runs the suite under both zones.
 """
@@ -18,7 +19,10 @@ TEST_TZ = os.environ.get("RWC_TEST_TZ", "UTC")
 os.environ["TZ"] = TEST_TZ
 time.tzset()
 
-if os.environ.get("RWC_TEST_NO_DB"):
+# No MYSQL_URL means no DB: the code has no default password, so DB-backed tests need MYSQL_URL
+# (e.g. `. dev/box/env.sh`) and are skipped without it.
+if os.environ.get("RWC_TEST_NO_DB") or not os.environ.get("MYSQL_URL"):
+    os.environ["RWC_TEST_NO_DB"] = "1"
     os.environ["MYSQL_URL"] = "nodb:nodb@127.0.0.1:1/wx"
 
 _real_mktime = time.mktime

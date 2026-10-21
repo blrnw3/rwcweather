@@ -13,7 +13,9 @@ Davis VP2 weather station sending readings to a server running Cumulus MX using 
 * To start the webserver: FLASK_APP=rwcwx/main.py flask run
 
 ## Settings (as env vars)
-* MYSQL_URL - not needed in local but needed elsewhere
+* MYSQL_URL - `user:password@host:port/wx`. Required wherever the DB has a password (prod reads it from
+  `/etc/rwcwx.env`). Without it the app uses a passwordless local dev DB (`root@127.0.0.1:3307/wx`).
+  Never commit a real password.
 
 ## Deployment
 See /deploy

@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from rwcwx.model.db import Db
 
-URL = f"mysql://{os.getenv('MYSQL_URL', 'root:test@127.0.0.1:3307/wx')}"
+URL = f"mysql://{os.getenv('MYSQL_URL', 'root@127.0.0.1:3307/wx')}"
 
 
 def _db() -> Db:
