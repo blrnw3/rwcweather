@@ -104,6 +104,38 @@ def test_et0_excludes_today_and_needs_tmax_tmin():
     assert dd.et0_days(s) == []
 
 
+def _month_series(days, sun=12.0, start=date(2024, 7, 1)):
+    """`days` consecutive July days, same weather; sun=None makes them Hargreaves days."""
+    from datetime import timedelta
+    ds = [start + timedelta(days=i) for i in range(days)]
+    rows = lambda v, c=None: [Row(d, v, c) for d in ds]   # noqa: E731
+    return {("temp", "max"): rows(30.0), ("temp", "min"): rows(13.0), ("humi", "max"): rows(90.0),
+            ("humi", "min"): rows(30.0), ("wind", "avg"): rows(3.0), ("dewpt", "avg"): rows(11.0),
+            ("sun", "total"): rows(sun, "webcam; coverage 98.0%") if sun is not None else []}
+
+
+def test_hs_ratios_are_pm_over_hs_on_pm_days():
+    s = _month_series(25)
+    ratios = dd.hs_ratios(s)
+    pm = dd.et0_days(s)
+    ra = [et0.solar_geometry(x.d.timetuple().tm_yday)[0] for x in pm]
+    expect = sum(x.val for x in pm) / sum(et0.hargreaves(30.0, 13.0, r) for r in ra)
+    assert list(ratios) == [7] and ratios[7] == pytest.approx(expect, abs=1e-3)
+    # too few PM days in a month -> no ratio for it
+    assert dd.hs_ratios(_month_series(dd.MIN_RATIO_DAYS - 1)) == {}
+
+
+def test_hs_days_are_calibrated_pm_days_are_not():
+    hs = dd.et0_days(_month_series(3, sun=None), ratios={7: 0.8})
+    raw = dd.et0_days(_month_series(3, sun=None))
+    assert all(x.method == "hs" and x.cal == 0.8 for x in hs)
+    assert [x.val for x in hs] == [round(r.val * 0.8, 2) for r in raw]
+    assert hs[0].simple_dict_["cal"] == 0.8 and "cal" not in raw[0].simple_dict_
+    pm = dd.et0_days(_month_series(3), ratios={7: 0.8})
+    assert all(x.method == "pm" and x.cal is None for x in pm)
+    assert dd.et0_days(_month_series(3, sun=None), ratios={1: 0.8})[0].cal is None   # other month: raw
+
+
 def test_sun_usable():
     assert dd.sun_usable("webcam; coverage 75.0%; scaled")
     assert not dd.sun_usable("webcam; coverage 74.9%; scaled")

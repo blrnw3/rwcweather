@@ -1,7 +1,7 @@
 import { Flex, Heading, Text, useRadioGroup } from "@chakra-ui/react";
 import { SummaryChart } from "../../components/chart";
-import { baseObs, fmatAggTypeOpt, fmatDaysOpt, fmatObsOpt, fmatOptCapitalize, isTotalObs, OBS } from '../../components/conf';
-import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, DerivedVarNote, SunViewToggle } from '../../components/report';
+import { baseObs, DERIVED_PARENT, fmatAggTypeOpt, fmatDaysOpt, fmatObsOpt, fmatOptCapitalize, isTotalObs, OBS } from '../../components/conf';
+import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, DerivedVarNote, StatButtons, SunViewToggle } from '../../components/report';
 import { Page } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
 import RadioCard from '../../components/RadioCard';
@@ -52,7 +52,6 @@ const SUMMARY_URL_STATE = {
 
 export default function Charts() {
   const [{ obs, aggType, period, year, month, chartType }, update] = useUrlState(SUMMARY_URL_STATE);
-  const aggOpts = aggOptionsFor(obs);
 
   // Rain only has daily totals; other variables keep their statistic.
   const handleObsChange = (x, nextAgg) => update({
@@ -84,12 +83,12 @@ export default function Charts() {
       </Heading>
 
       <Heading size="2" as="h2">
-        Daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} {periodDesc}
+        Daily {DERIVED_PARENT[obs] ? "" : fmatAggTypeOpt(aggType) + " "}{OBS.get(obs).name} {periodDesc}
       </Heading>
 
       <RadioButtonGroup name="obs" value={baseObs(obs)} options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
       <SunViewToggle obs={obs} stat={aggType} fn={handleObsChange} Group={RadioButtonGroup} />
-      {baseObs(obs) !== "wind" && aggOpts.length > 1 && <RadioButtonGroup name="agg" value={aggType} options={aggOpts} optFormat={fmatAggTypeOpt} fn={setAggType} />}
+      <StatButtons name="agg" obs={obs} stat={aggType} options={aggOptionsFor} optFormat={fmatAggTypeOpt} fn={setAggType} onObs={handleObsChange} Group={RadioButtonGroup} />
 
       <SummaryChart obs={obs} aggType={aggType} chartType={chartType} period={period} year={year} month={month} my={4} mx={{base: 0, md: 4, xl: 6}}
        height="responsive" spacing={[20, 20, 25, 10]} />

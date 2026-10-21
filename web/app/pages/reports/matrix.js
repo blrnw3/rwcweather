@@ -1,8 +1,8 @@
 import { Box, Flex, Grid, Heading, Spinner, Text, useRadioGroup } from "@chakra-ui/react";
 import { Fragment, useContext } from 'react';
 import useSWR from 'swr';
-import { baseObs, fetcher, fmatAggTypeOpt, fmatForObs, fmatObsOpt, fmatYrOpt, isTotalObs, OBS } from '../../components/conf';
-import { DAILY_ONLY_OBS, DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, MINUTE_OBS_STATES, DerivedVarNote, SunViewToggle } from '../../components/report';
+import { baseObs, DERIVED_PARENT, fetcher, fmatAggTypeOpt, fmatForObs, fmatObsOpt, fmatYrOpt, isTotalObs, OBS } from '../../components/conf';
+import { DAILY_ONLY_OBS, DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, MINUTE_OBS_STATES, DerivedVarNote, StatButtons, SunViewToggle } from '../../components/report';
 import { daysInMonth } from "../../components/dateUtil";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
@@ -257,7 +257,6 @@ const MATRIX_URL_STATE = {
 
 export default function Obs() {
     const [{ obs, aggType, year }, update] = useUrlState(MATRIX_URL_STATE);
-    const aggOpts = aggOptionsFor(obs);
     const obsOptions = OBS_OPTIONS;
 
     // Rain only has daily totals; other variables keep their statistic.
@@ -273,13 +272,13 @@ export default function Obs() {
             Reports: Annual matrix
         </Heading>
         <Heading as="h2" size="2">
-            Daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} for {year}
+            Daily {DERIVED_PARENT[obs] ? "" : fmatAggTypeOpt(aggType) + " "}{OBS.get(obs).name} for {year}
         </Heading>
         <ClimateNormalsLink />
 
         <RadioButtonGroup name="obs" value={baseObs(obs)} options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
         <SunViewToggle obs={obs} stat={aggType} fn={handleObsChange} Group={RadioButtonGroup} />
-        {baseObs(obs) !== "wind" && aggOpts.length > 1 && <RadioButtonGroup name="agg" value={aggType} options={aggOpts} optFormat={fmatAggTypeOpt} fn={setAggType} />}
+        <StatButtons name="agg" obs={obs} stat={aggType} options={aggOptionsFor} optFormat={fmatAggTypeOpt} fn={setAggType} onObs={handleObsChange} Group={RadioButtonGroup} />
         <RadioButtonGroup name="yr" value={year} options={years} optFormat={fmatYrOpt} fn={setYear} />
         
         <DailyMatrix obs={obs} aggType={aggType} year={year} />
@@ -287,7 +286,7 @@ export default function Obs() {
         {hasWaterYears(obs) && <RainTotals year={year} obs={obs} />}
 
         <Text mt="3">
-            Description: daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} data for every day in the year {year}, along with
+            Description: daily {DERIVED_PARENT[obs] ? "" : fmatAggTypeOpt(aggType) + " "}{OBS.get(obs).name} data for every day in the year {year}, along with
             monthly aggregations - monthly maximum, minimum and averages for each month.
         </Text>
 

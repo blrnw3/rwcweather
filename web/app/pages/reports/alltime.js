@@ -8,6 +8,7 @@ import {
     countThresholdsAny,
     CountThresholdSelector,
     DAILY_AGGREGATION_NAMES,
+    dailyAggName,
     dailyAggregationOptions,
     RadioButtonGroup,
     DAILY_VALUE_OBS_OPTIONS,
@@ -18,6 +19,7 @@ import {
     summaryOptions,
     styleForReportValue,
     DerivedVarNote,
+    StatButtons,
     SunViewToggle,
 } from "../../components/report";
 import { formatObs } from "../../format";
@@ -355,7 +357,6 @@ const ALLTIME_URL_STATE = {
 
 export default function AllTimeReport() {
     const [{ obs, dailyAggregation, summary, threshold }, update] = useUrlState(ALLTIME_URL_STATE);
-    const dailyOptions = dailyAggregationOptions(obs);
     const monthlySummaryOptions = summaryOptions(obs);
 
     // Switching variable resets the daily statistic and threshold; a Mean/Total
@@ -374,23 +375,16 @@ export default function AllTimeReport() {
     return <Page name="reports" sub="all-time" title="Reports | all-time">
         <Heading as="h1" size="1">Reports: All-time</Heading>
         <Heading as="h2" size="2">
-            {SUMMARY_NAMES[summary]} of {DAILY_AGGREGATION_NAMES[dailyAggregation]} {OBS.get(obs).name}
+            {SUMMARY_NAMES[summary]} of {dailyAggName(obs, dailyAggregation)} {OBS.get(obs).name}
         </Heading>
         <ClimateNormalsLink />
 
         <Text fontWeight="bold">Variable:</Text>
         <RadioButtonGroup name="obs" value={baseObs(obs)} options={DAILY_VALUE_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
         <SunViewToggle obs={obs} stat={dailyAggregation} fn={handleObsChange} multiDay />
-        {baseObs(obs) !== "wind" && dailyOptions.length > 1 && <>
-            <Text mt="1" fontWeight="bold">Daily statistic:</Text>
-            <RadioButtonGroup
-                name="daily-aggregation"
-                value={dailyAggregation}
-                options={dailyOptions}
-                optFormat={(value) => DAILY_AGGREGATION_NAMES[value]}
-                fn={setDailyAggregation}
-            />
-        </>}
+        <StatButtons name="daily-aggregation" label="Daily statistic:" obs={obs} stat={dailyAggregation} options={dailyAggregationOptions}
+            optFormat={(value) => DAILY_AGGREGATION_NAMES[value]} fn={setDailyAggregation} onObs={handleObsChange}
+            allowObs={(v) => MULTIDAY_OBS_STATES.includes(v)} />
         <Text mt="1" fontWeight="bold">Monthly and annual summary:</Text>
         <RadioButtonGroup name="summary" value={summary} options={monthlySummaryOptions} optFormat={(value) => SUMMARY_NAMES[value]} fn={setSummary} />
         {summary === "count" && <CountThresholdSelector obs={obs} value={threshold} fn={setThreshold} />}

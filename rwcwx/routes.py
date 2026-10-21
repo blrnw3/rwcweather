@@ -161,11 +161,17 @@ def day_report(d: date):
     )
 
 
+def _et0_ratios(var: str, today: date) -> Optional[dict]:
+    """ET0's month-by-month Hargreaves-to-Penman-Monteith calibration (only ET0 needs it)."""
+    return derived_daily.default_hs_ratios(today) if var == derived_daily.ET0_VAR else None
+
+
 def _et0_day(d: date) -> Optional[dict]:
     """The day's ET0 and method for the daily report (None for today, or without a daily max/min temperature)."""
     try:
+        today = DateUtil.now().date()
         days = derived_daily.derive(derived_daily.ET0_VAR, lambda v, t: AvgExtQ.for_var_between_dates(v, t, d, d),
-                                    DateUtil.now().date())
+                                    today, ratios=derived_daily.default_hs_ratios(today))
         return days[0].simple_dict_ if days else None
     except Exception as e:
         logger.warning(f"et0 failed for {d}: {e}")
@@ -387,7 +393,9 @@ def _daily_values(var: str, typ: str):
     if derived_daily.is_derived(var):
         if not derived_daily.is_derived(var, typ):
             return []
-        return [(x.d, x.val) for x in derived_daily.derive(var, AvgExtQ.daily_rows, DateUtil.now().date())]
+        today = DateUtil.now().date()
+        days = derived_daily.derive(var, AvgExtQ.daily_rows, today, ratios=_et0_ratios(var, today))
+        return [(x.d, x.val) for x in days]
     if (var, typ) == (sun_model.PCT_VAR, sun_model.PCT_TYPE):
         return sun_model.pct_daily_values(AvgExtQ.daily_values("sun", "total"))
     if (var, typ) == (fog_derive.DAY_VAR, fog_derive.DAY_TYPE):
@@ -488,7 +496,8 @@ def _var_avg_exts_from_request(var: str, typ: str) -> List[AvgExt]:
         # Ranges and ET0, derived per day from the stored daily rows of the same date window.
         if not derived_daily.is_derived(var, typ):
             return []
-        return derived_daily.derive(var, _var_avg_exts_from_request, DateUtil.now().date())
+        today = DateUtil.now().date()
+        return derived_daily.derive(var, _var_avg_exts_from_request, today, ratios=_et0_ratios(var, today))
     if var == wet_rate.RATE_VAR:
         # Derived per day from the rain and wet-hours totals; blank (left out) on days without wet hours.
         if typ != wet_rate.RATE_TYPE:

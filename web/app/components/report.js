@@ -1,7 +1,7 @@
 import { Box, Flex, Text, useRadioGroup } from "@chakra-ui/react";
 import { useContext, useEffect } from "react";
 import { convFunction, formatObs, scaleForObsType } from "../format";
-import { baseObs, dailyStatsFor, OBS, VIEW_GROUPS } from "./conf";
+import { baseObs, DERIVED_PARENT, DERIVED_STATS, dailyStatsFor, OBS, statButtonValue, VIEW_GROUPS } from "./conf";
 import { UnitCtx } from "./Page";
 import RadioCard from "./RadioCard";
 
@@ -142,7 +142,14 @@ export const DAILY_AGGREGATION_NAMES = {
     max: "Daily High",
     avg: "Daily Mean",
     total: "Daily Total",
+    range: "Daily Range",
+    et0: "ET0",
 };
+
+// "Daily High" etc.; just "Daily" for derived daily variables (one value per day, named by the variable itself).
+export function dailyAggName(obs, stat) {
+    return DERIVED_PARENT[obs] ? "Daily" : DAILY_AGGREGATION_NAMES[stat];
+}
 
 export function dailyAggregationOptions(obs) {
     return dailyStatsFor(obs);
@@ -254,9 +261,9 @@ export function CountThresholdSelector({ obs, value, fn }) {
     </Box>;
 }
 
-// Views of one variable button, shown under the Variable buttons while it is selected:
-// "Show sunshine as: Hours | % of possible", "Show rainfall as: Amount | Wet hours",
-// "Show wind as: Max speed | Max gust | Avg speed | Avg gust | Avg direction" (or minute-level wind views).
+// Views of one variable button, as an unlabelled button row under the Variable buttons while it is selected:
+// sunshine "Hours | % of possible | Fog hours | Fog days", rainfall "Amount | Wet hours | ...",
+// wind "Max speed | Max gust | Avg speed | Avg gust | Avg direction" (or minute-level wind views).
 // multiDay: the page summarises several days, so daily-only views (wind direction) are left out.
 export function SunViewToggle({ obs, stat, fn, Group = RadioButtonGroup, summaryMode = true, multiDay = false }) {
     const base = baseObs(obs);
@@ -269,7 +276,6 @@ export function SunViewToggle({ obs, stat, fn, Group = RadioButtonGroup, summary
         const views = multiDay ? g.summaryViews.filter((v) => !DAILY_ONLY_OBS.includes(v.split(":")[0])) : g.summaryViews;
         const val = views.includes(obs + ":" + effStat) ? obs + ":" + effStat : "wind:max";
         return <>
-            <Text mt="1" fontWeight="bold">{g.label}</Text>
             <Group
                 name="wind-view"
                 value={val}
@@ -283,7 +289,35 @@ export function SunViewToggle({ obs, stat, fn, Group = RadioButtonGroup, summary
         </>;
     }
     return <>
-        <Text mt="1" fontWeight="bold">{g.label}</Text>
         <Group name={base + "-view"} value={obs} options={g.views} optFormat={(v) => g.names[v]} fn={(v) => fn(v)} />
+    </>;
+}
+
+// Daily-stat buttons of a variable plus its derived daily variables as extra stats
+// (Temperature: Maximum | Minimum | Average | Range | ET0; Humidity, Dew point, Pressure: ... | Range).
+// options(o): the page's own stats for a variable; allowObs(v): whether the page can show a derived variable.
+// Picking a real stat calls fn(stat) (switching back to the parent variable if a derived one is shown);
+// picking Range / ET0 calls onObs(derivedVar).
+export function StatButtons({ obs, stat, options, fn, onObs, optFormat, name = "stat", label = null, allowObs = () => true, Group = RadioButtonGroup }) {
+    const parent = DERIVED_PARENT[obs] || obs;
+    const real = options(parent);
+    const extras = (DERIVED_STATS[parent] || []).filter(([, v]) => allowObs(v));
+    const opts = [...real, ...extras.map(([k]) => k)];
+    if (baseObs(obs) === "wind" || opts.length < 2) {
+        return null;
+    }
+    const pick = (v) => {
+        const hit = extras.find(([k]) => k === v);
+        if (hit) {
+            onObs(hit[1]);
+        } else if (parent !== obs) {
+            onObs(parent, v);
+        } else {
+            fn(v);
+        }
+    };
+    return <>
+        {label && <Text mt="1" fontWeight="bold">{label}</Text>}
+        <Group name={name} value={statButtonValue(obs, stat)} options={opts} optFormat={optFormat} fn={pick} />
     </>;
 }

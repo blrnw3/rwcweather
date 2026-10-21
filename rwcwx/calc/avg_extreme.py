@@ -305,8 +305,9 @@ OBS_VAR_MAP = {o.db_field: o for o in (
 
 def _add_derived(stats: dict, by_type: dict, summarise=None) -> None:
     from rwcwx.calc import derived_daily
+    today = DateUtil.now().date()
     derived_daily.add_to_summary(stats, by_type, summarise or (lambda days: ObsVar.multiday_summary(days).as_dict),
-                                 DateUtil.now().date())
+                                 today, ratios=derived_daily.default_hs_ratios(today))
 
 
 class DaySummary:

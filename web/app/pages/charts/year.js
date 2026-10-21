@@ -4,7 +4,7 @@ import { baseObs, dailyStatsFor, defaultDailyStat, fmatAggTypeOpt, fmatObsOpt, i
 import { Page } from "../../components/Page";
 import RadioCard from "../../components/RadioCard";
 import { hasWaterYears } from "../../components/waterYear";
-import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, DerivedVarNote, REPORT_YEAR_START, SunViewToggle } from "../../components/report";
+import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, DerivedVarNote, REPORT_YEAR_START, StatButtons, SunViewToggle } from "../../components/report";
 import { inList, useUrlState } from "../../components/urlState";
 import { hasDayStats, hasNormal, isMobile, STATS_MODES, YearChart } from "../../components/yearChart";
 import { ClimateNormalsLink } from "../../components/climate";
@@ -85,10 +85,8 @@ export default function YearCharts() {
       <Text mt="1" fontWeight="bold">Variable:</Text>
       <RadioButtonGroup name="obs" value={baseObs(obs)} options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
       <SunViewToggle obs={obs} stat={stat} fn={handleObsChange} Group={RadioButtonGroup} />
-      {baseObs(obs) !== "wind" && dailyStatsFor(obs).length > 1 && <>
-        <Text mt="1" fontWeight="bold">Daily value:</Text>
-        <RadioButtonGroup name="stat" value={stat} options={dailyStatsFor(obs)} optFormat={fmatAggTypeOpt} fn={(v) => update({ stat: v })} />
-      </>}
+      <StatButtons name="stat" label="Daily value:" obs={obs} stat={stat} options={dailyStatsFor} optFormat={fmatAggTypeOpt}
+        fn={(v) => update({ stat: v })} onObs={handleObsChange} Group={RadioButtonGroup} />
       {hasWaterYears(obs) && <RadioButtonGroup name="period" value={period} options={["calendar", "water"]} optFormat={(p) => PERIOD_NAMES[p]} fn={handlePeriod} />}
       <Text mt="1" fontWeight="bold">{water ? "Water year (ending):" : "Year:"}</Text>
       <RadioButtonGroup name="year" value={year} options={yearOptions(water, obs)} optFormat={(y) => (y === "all" ? "All" : water ? "WY" + y : y)} fn={(v) => update({ year: v })} />

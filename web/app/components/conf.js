@@ -127,7 +127,7 @@ export const OBS = new Map([
         dailyStats: ["max"],
     }],
     // Derived at query time from the daily max and min (rwcwx/calc/derived_daily.py); one value per day, periods
-    // average it. Shown via the "Show ... as" toggle under their variable's button.
+    // average it. Offered as a "Range" daily-stat button of their parent variable (DERIVED_STATS).
     ["temprange", {
         name: "Temperature range",
         summary: "avg",
@@ -156,7 +156,7 @@ export const OBS = new Map([
         icon: <GiDew />,
         dailyStats: ["avg"],
     }],
-    // FAO-56 reference evapotranspiration (grass), derived per day; periods add it up. Under the Temperature button.
+    // FAO-56 reference evapotranspiration (grass), derived per day; periods add it up. An "ET0" stat button of Temperature.
     ["et0", {
         name: "ET0 (reference evapotranspiration)",
         shortName: "ET0",
@@ -176,8 +176,6 @@ export const SUN_VIEW_NAMES = { sun: "Hours", sunpct: "% of possible", fog: "Fog
 export const REPORT_SUN_VIEWS = [...SUN_VIEWS, "fog", "fogday"];
 export const RAIN_VIEWS = ["rain", "wet", "wetrate", "rain60", "rain10"];
 export const RAIN_VIEW_NAMES = { rain: "Amount", wet: "Wet hours", wetrate: "Rate when wet", rain60: "Max 60-min", rain10: "Max 10-min" };
-export const TEMP_VIEWS = ["temp", "temprange", "et0"];
-export const TEMP_VIEW_NAMES = { temp: "Temperature", temprange: "Diurnal range", et0: "ET0" };
 export const WIND_VIEWS = ["wind", "gust", "wdir"];
 export const WIND_VIEW_NAMES = { wind: "Wind speed", gust: "Gust speed", wdir: "Wind direction" };
 export const WIND_SUMMARY_VIEWS = ["wind:max", "gust:max", "wind:avg", "gust:avg", "wdir:avg"];
@@ -189,18 +187,40 @@ export const WIND_SUMMARY_NAMES = {
     "wdir:avg": "Avg direction",
 };
 
-// Variable button -> its views and their labels (the toggle shown under the Variable buttons).
+// Variable button -> its views and their labels (the unlabelled button row shown under the Variable buttons).
 export const VIEW_GROUPS = {
-    sun: { views: REPORT_SUN_VIEWS, names: SUN_VIEW_NAMES, label: "Show sunshine as:" },
-    rain: { views: RAIN_VIEWS, names: RAIN_VIEW_NAMES, label: "Show rainfall as:" },
-    wind: { views: WIND_VIEWS, names: WIND_VIEW_NAMES, summaryViews: WIND_SUMMARY_VIEWS, summaryNames: WIND_SUMMARY_NAMES, label: "Show wind as:" },
-    temp: { views: TEMP_VIEWS, names: TEMP_VIEW_NAMES, label: "Show temperature as:" },
-    humi: { views: ["humi", "humirange"], names: { humi: "Humidity", humirange: "Daily range" }, label: "Show humidity as:" },
-    dewpt: { views: ["dewpt", "dewptrange"], names: { dewpt: "Dew point", dewptrange: "Daily range" }, label: "Show dew point as:" },
-    pres: { views: ["pres", "presrange"], names: { pres: "Pressure", presrange: "Daily range" }, label: "Show pressure as:" },
+    sun: { views: REPORT_SUN_VIEWS, names: SUN_VIEW_NAMES },
+    rain: { views: RAIN_VIEWS, names: RAIN_VIEW_NAMES },
+    wind: { views: WIND_VIEWS, names: WIND_VIEW_NAMES, summaryViews: WIND_SUMMARY_VIEWS, summaryNames: WIND_SUMMARY_NAMES },
 };
 
+// Derived daily variables offered as extra daily-stat buttons of their parent variable, after min/max/mean:
+// Temperature: ... | Range | ET0; Humidity, Dew point, Pressure: ... | Range. [stat key, variable]
+export const DERIVED_STATS = {
+    temp: [["range", "temprange"], ["et0", "et0"]],
+    humi: [["range", "humirange"]],
+    dewpt: [["range", "dewptrange"]],
+    pres: [["range", "presrange"]],
+};
+export const DERIVED_PARENT = Object.fromEntries(
+    Object.entries(DERIVED_STATS).flatMap(([parent, list]) => list.map(([, v]) => [v, parent])));
+
+// The stat button shown as selected: "range"/"et0" for a derived variable, else the daily stat itself.
+export function statButtonValue(obs, stat) {
+    const parent = DERIVED_PARENT[obs];
+    return parent ? DERIVED_STATS[parent].find(([, v]) => v === obs)[0] : stat;
+}
+
+// Old links that put the derived variable in the stat (var=temp&daily=range) -> the derived variable.
+export function derivedFromStat(obs, stat) {
+    const hit = (DERIVED_STATS[obs] || []).find(([k]) => k === stat);
+    return hit ? hit[1] : null;
+}
+
 export function baseObs(obs) {
+    if (DERIVED_PARENT[obs]) {
+        return DERIVED_PARENT[obs];
+    }
     for (const [base, g] of Object.entries(VIEW_GROUPS)) {
         if (g.views.includes(obs)) {
             return base;
@@ -246,7 +266,9 @@ const aggNames = {
     max: "Maximum",
     min: "Minimum",
     avg: "Average",
-    total: "Total"
+    total: "Total",
+    range: "Range",
+    et0: "ET0",
   }
 
   export function fmatAggTypeOpt(opt) {

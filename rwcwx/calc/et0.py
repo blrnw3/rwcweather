@@ -46,7 +46,8 @@ def solar_geometry(doy: int, lat_deg: float = LAT_DEG):
     dr = 1 + 0.033 * math.cos(2 * math.pi * doy / 365)
     dec = 0.409 * math.sin(2 * math.pi * doy / 365 - 1.39)
     ws = math.acos(max(-1.0, min(1.0, -math.tan(phi) * math.tan(dec))))
-    ra = 24 * 60 / math.pi * GSC * dr * (ws * math.sin(phi) * math.sin(dec) + math.cos(phi) * math.cos(dec) * math.sin(ws))
+    ra = 24 * 60 / math.pi * GSC * dr * (ws * math.sin(phi) * math.sin(dec)
+                                         + math.cos(phi) * math.cos(dec) * math.sin(ws))
     return ra, 24 / math.pi * ws
 
 
