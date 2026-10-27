@@ -88,11 +88,15 @@ class Db:
         logger.debug('[%s] Getting new connection from pool', self._local_manager.get_ident())
         conn = self.engine.connect()
         self._local.connection = conn
-        yield conn
-        logger.debug('[%s] Releasing connection to pool', self._local_manager.get_ident())
-        self._local.connection = None
-        release_local(self._local)
-        conn.close()
+        try:
+            yield conn
+        finally:
+            # Also on an exception (e.g. a query on a missing table): otherwise the connection is never returned
+            # to the pool and stays pinned to this thread, and a few failing requests exhaust the pool.
+            logger.debug('[%s] Releasing connection to pool', self._local_manager.get_ident())
+            self._local.connection = None
+            release_local(self._local)
+            conn.close()
 
     @contextmanager
     def _reuse_connection_context(self):

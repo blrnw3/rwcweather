@@ -8,8 +8,6 @@ Body (JSON, <= MAX_BYTES, <= MAX_ROWS rows):
    "rows": [{"t": "2026-01-05T16:00:00Z", "fog": true|false|null, "confidence": 0.92, "reason": "...", "flags": "ir"}]}
 t is the frame time in UTC (archive filename time). fog=null (or a gate flag) means not judged.
 """
-import hmac
-import os
 from datetime import datetime, timedelta
 
 from dateutil import parser as dtparser
@@ -18,26 +16,14 @@ from flask import jsonify, request
 
 from rwcwx import logger
 from rwcwx.fog import rules, store
+from rwcwx.ingest_auth import TOKEN_ENV, authorized, check as check_auth, error as _err  # noqa: F401
 
-TOKEN_ENV = "RWC_INGEST_TOKEN"
 MAX_ROWS = 500
 MAX_BYTES = 1_000_000
 
 
 class BadRequest(ValueError):
     pass
-
-
-def _err(code: int, msg: str):
-    resp = jsonify(error=msg)
-    resp.status_code = code
-    return resp
-
-
-def authorized(header: str, token: str) -> bool:
-    if not token or not header or not header.startswith("Bearer "):
-        return False
-    return hmac.compare_digest(header[len("Bearer "):].strip().encode(), token.encode())
 
 
 def parse_time(raw) -> datetime:
@@ -99,13 +85,9 @@ def parse_body(body, now_utc: datetime) -> dict:
 
 
 def post_fog():
-    token = os.environ.get(TOKEN_ENV, "")
-    if not token:
-        return _err(503, "ingest disabled: server token not configured")
-    if not authorized(request.headers.get("Authorization", ""), token):
-        return _err(401, "unauthorized")
-    if request.content_length is None or request.content_length > MAX_BYTES:
-        return _err(413, f"body required and must be <= {MAX_BYTES} bytes")
+    denied = check_auth(MAX_BYTES)
+    if denied is not None:
+        return denied
     try:
         parsed = parse_body(request.get_json(force=True, silent=True), datetime.utcnow())
     except BadRequest as e:
