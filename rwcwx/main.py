@@ -14,6 +14,7 @@ from flask.json import JSONEncoder
 
 import rwcwx.routes as r
 from rwcwx.fog import api as fog_api
+from rwcwx.recap import api as recap_api
 
 
 class CustomJSONEncoder(JSONEncoder):
@@ -84,3 +85,7 @@ app.add_url_rule("/api/rain", view_func=r.rain_stats)
 
 # Ingest (bearer token from RWC_INGEST_TOKEN; disabled when unset)
 app.add_url_rule("/api/inferred/fog", view_func=fog_api.post_fog, methods=["POST"])
+app.add_url_rule("/api/recap", view_func=recap_api.post_recap, methods=["POST"])
+
+# Written recaps for the home page (latest of each kind)
+app.add_url_rule("/api/recap/latest", view_func=recap_api.get_latest)
