@@ -66,6 +66,18 @@ CREATE TABLE IF NOT EXISTS `obs_inferred` (
 DEFAULT CHARSET utf8
 COMMENT 'Inferred observations from classifiers (e.g. webcam sunshine), per kind and period';
 
+CREATE TABLE IF NOT EXISTS `recap` (
+  `kind` varchar(16) NOT NULL COMMENT 'day, month_to_date or month',
+  `period` varchar(10) NOT NULL COMMENT 'station-local (PT) period: YYYY-MM-DD for day, YYYY-MM for the month kinds',
+  `body_md` text NOT NULL COMMENT 'markdown subset: paragraphs, - lists, **bold**, [links](https://...)',
+  `generated_at` datetime NOT NULL COMMENT 'UTC time the writer generated the text',
+  `t_mod` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'UTC, last written here',
+  PRIMARY KEY (`kind`, `period`),
+  KEY `t_mod_key` (`t_mod`)
+) ENGINE=InnoDB
+DEFAULT CHARSET utf8mb4
+COMMENT 'Written daily / month-to-date / monthly weather recaps for the home page';
+
 CREATE TABLE IF NOT EXISTS `change_extreme` (
   `d` date NOT NULL,
   `var` enum('rain', 'temp', 'humi', 'pres', 'wind', 'gust', 'solr', 'feels', 'inhumi', 'intemp') not null,

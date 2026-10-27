@@ -70,6 +70,14 @@ class PoolGuardTest(unittest.TestCase):
         second = _conn_id(db)  # must not raise
         self.assertNotEqual(first, second)
 
+    def test_failing_queries_return_their_connection(self):
+        db = _db()
+        for _ in range(db.engine.pool.size() + db.engine.pool._max_overflow + 3):  # more than the pool can hold
+            with self.assertRaises(Exception):
+                db.execute(text("SELECT * FROM no_such_table_for_pool_test"))
+        self.assertEqual(db.engine.pool.checkedout(), 0, "a failed query leaked its pooled connection")
+        self.assertEqual(db.execute(text("SELECT 1")).scalar(), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

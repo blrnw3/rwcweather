@@ -21,6 +21,7 @@ import { Page, UnitCtx } from "../components/Page";
 import { SunRibbon, useSunDay, fmtDaylightDelta } from '../components/sun';
 import { WetRibbon } from '../components/wet';
 import RadioCard from '../components/RadioCard';
+import { RecapCard } from '../components/recap';
 import { aqiStatus, formatObs, moonPhase, prettySecs, timeOf } from '../format';
 import {
   CLIMATE_PAGE, ClimateAnom, annualNormal, dailyNormal, monthlyNormal,
@@ -1100,12 +1101,15 @@ function HomePage(props) {
       <ChartCardYear />
     </Flex>
     <Flex justify="center" wrap="wrap">
-      <AboutHomeCard />
+      <RecapCard />
       <DayClimateExtremesCard dash={data} summary={summary} />
     </Flex>
     <Flex justify="center" wrap="wrap">
       <MonthSummaryCard summary={summary} />
       <YearSummaryCard summary={summary} />
+    </Flex>
+    <Flex justify="center" wrap="wrap">
+      <AboutHomeCard />
     </Flex>
   </>;
 }
