@@ -1045,7 +1045,7 @@ const WebcamMemo = React.memo(function Webcam(props) {
     img.src = next;
   }, 6000);
 
-  return <Box mt={2}>
+  return <Box mt={2} mb={2}>
     <Box m="auto" width={{ base: "95%", md: "720px", lg: "1200px", xl: "1500px" }}
       style={{ aspectRatio: "1560 / 878" }} overflow="hidden">
       <img id="cam" src={src} width="1560" height="878" alt="rwc weather cam"
@@ -1095,6 +1095,9 @@ function HomePage(props) {
       <ChartCardDaily />
     </Flex>
     <Flex justify="center" wrap="wrap">
+      <WebcamMemo />
+    </Flex>
+    <Flex justify="center" wrap="wrap">
       <ChartCardYear />
     </Flex>
     <Flex justify="center" wrap="wrap">
@@ -1107,9 +1110,6 @@ function HomePage(props) {
     </Flex>
     <Flex justify="center" wrap="wrap">
       <AboutHomeCard />
-    </Flex>
-    <Flex justify="center" wrap="wrap">
-      <WebcamMemo />
     </Flex>
   </>;
 }
