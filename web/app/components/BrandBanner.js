@@ -2,6 +2,7 @@ import { Box, Flex, Text } from '@chakra-ui/react';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import { fetcher } from './conf';
+import { LIVE_SWR, useLivePoll } from './liveRefresh';
 import { formatObs } from '../format';
 import { HERO_PHOTO, SEASONAL_PHOTOS, seasonOf } from './bannerPhotos';
 
@@ -34,7 +35,9 @@ function BannerPhotos() {
 }
 
 export function LiveStrip({ unit }) {
-  const { data } = useSWR(`/api/web/dashboard/live`, fetcher, { refreshInterval: 60000, revalidateOnFocus: false });
+  // shares the key (and the last-request time) with the home page's 3-9 s poll, so it never double-fetches there
+  const { data, revalidate } = useSWR(`/api/web/dashboard/live`, fetcher, LIVE_SWR);
+  useLivePoll(`/api/web/dashboard/live`, revalidate, 60000);
   const res = data?.result;
   if (!res?.now) {
     return null;

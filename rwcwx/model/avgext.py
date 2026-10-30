@@ -31,6 +31,13 @@ class AvgExtQ:
         return [(d, v) for d, v in q.order_by(AvgExt.d.asc()).all()]
 
     @staticmethod
+    def daily_rows(var: str, typ: str) -> list:
+        """Rows with .d .val .comment for every day of one variable/statistic (inputs of derived daily values)."""
+        q = (db.s.query(AvgExt.d, AvgExt.val, AvgExt.comment)
+             .filter(AvgExt.var == var).filter(AvgExt.type == typ).filter(AvgExt.period == "day"))
+        return q.order_by(AvgExt.d.asc()).all()
+
+    @staticmethod
     def for_var_and_year(var: str, typ: str, year: int) -> List[AvgExt]:
         start_date, end_date = DateUtil.year_start_end_dates(year)
         q = (db.s.query(AvgExt).filter(AvgExt.var == var).filter(AvgExt.type == typ)

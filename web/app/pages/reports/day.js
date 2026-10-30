@@ -21,7 +21,7 @@ import { DailyChart } from "../../components/chart";
 import { baseObs, fetcher, fmatForObs, fmatObsOpt, OBS } from "../../components/conf";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
-import { MINUTE_OBS_STATES, RadioButtonGroup, REPORT_OBS_OPTIONS, styleForReportValue, SunViewToggle } from "../../components/report";
+import { DerivedVarNote, MINUTE_OBS_STATES, RadioButtonGroup, REPORT_OBS_OPTIONS, styleForReportValue, SunViewToggle } from "../../components/report";
 import { SunLegend, SunRibbon, useSunDay } from "../../components/sun";
 import { useWetDay, WetLegend, WetRibbon } from "../../components/wet";
 import { formatObs, timeOf } from "../../format";
@@ -114,6 +114,33 @@ function SummaryCell({ value, at, obs, summary, unit, date }) {
         {climate && <ClimateAnom value={value} normal={climate.normal} obs={obs} stat={climate.stat} unit={unit} />}
         {at != null && <Text fontSize="xs">at {stationTime(at)}</Text>}
     </Td>;
+}
+
+// Derived daily values (rwcwx/calc/derived_daily.py): ranges are the day's max - min of the summary above;
+// ET0 comes from the API (past days only).
+const RANGE_ROWS = [["temperature", "temprange"], ["dew_point", "dewptrange"], ["humidity", "humirange"], ["pressure", "presrange"]];
+
+function DerivedSummary({ summary, et0 }) {
+    const unit = useContext(UnitCtx);
+    const cell = (obs, v) => {
+        const { bg, col } = styleForReportValue(v, OBS.get(obs).fmat, unit, OBS.get(obs).summary);
+        return <Td isNumeric bg={bg} color={col}>{formatObs(unit, v, OBS.get(obs).fmat)}</Td>;
+    };
+    return <Box mt="4" overflowX="auto">
+        <Table id="daily-derived-table" variant="simple" size="md" maxWidth="680px">
+            <Thead><Tr><Th>Derived</Th><Th isNumeric>Value</Th><Th>Note</Th></Tr></Thead>
+            <Tbody>
+                {RANGE_ROWS.map(([key, obs]) => {
+                    const st = summary?.[key] || {};
+                    const v = st.max_val != null && st.min_val != null ? st.max_val - st.min_val : null;
+                    return <Tr key={obs}><Td fontWeight="bold">{OBS.get(obs).name}</Td>{cell(obs, v)}<Td fontSize="sm">max − min</Td></Tr>;
+                })}
+                <Tr key="et0"><Td fontWeight="bold">ET0 (reference evapotranspiration)</Td>{cell("et0", et0?.val ?? null)}
+                    <Td fontSize="sm">{et0?.method === "pm" ? "FAO-56 Penman-Monteith" : et0?.method === "hs" ? "Hargreaves-Samani (no usable sunshine)" + (et0.cal != null ? ", calibrated × " + et0.cal.toFixed(2) : "") : "not for today"}</Td></Tr>
+            </Tbody>
+        </Table>
+        <DerivedVarNote obs="et0" mt="2" />
+    </Box>;
 }
 
 function DailySummary({ summary, date }) {
@@ -240,10 +267,16 @@ function WebcamImage({ date, dateLabel, hour, minute = 0 }) {
 
 const CAM_INTERVALS = ["60", "30", "15"];
 const CAM_SPANS = ["daytime", "all"];
-const CAM_SPAN_NAMES = { daytime: "Daytime (incl. twilight)", all: "All day" };
+const CAM_SPAN_NAMES = { daytime: "Daytime (incl. astronomical twilight)", all: "All day" };
 
-// Civil twilight bounds (sun 6° below horizon) in UTC ms for `date` at 37.469, -122.265.
+// Astronomical twilight bounds (sun 18° below the horizon) in UTC ms for `date` at 37.470, -122.265.
+// The API sends astro_dawn / astro_dusk as null if the sun never gets that low (all-night twilight, not
+// possible at this latitude but handled): then there is no bound on that side. An API without the keys
+// (older backend) falls back to civil twilight (-6°), then to sunrise/sunset ± 30 min.
 function twilightBoundsMs(date, sunDay) {
+    if (sunDay && "astro_dawn" in sunDay) {
+        return [sunDay.astro_dawn ?? -Infinity, sunDay.astro_dusk ?? Infinity];
+    }
     if (sunDay?.dawn && sunDay?.dusk) {
         return [sunDay.dawn, sunDay.dusk];
     }
@@ -269,8 +302,11 @@ function WebcamGallery({ date, dateLabel, isToday, currentHm, datestamp }) {
         const minute = m % 60;
         if (span === "daytime" && dawnMs != null && duskMs != null) {
             const t = slotEpochMs(date, hour, minute);
-            // Include the interval containing dawn through the interval containing dusk.
-            if (t != null && (t + step * 60000 <= dawnMs || t > duskMs)) {
+            // A slot is one snapshot taken at time t, so keep it only if t itself falls between astronomical
+            // dawn and dusk (sun above -18°), applied identically at both ends. (Keeping "the interval
+            // containing dawn" used to add an extra pre-dawn image in the morning with no matching image after
+            // dusk.) Slots that don't exist (the 2 am hour skipped when DST starts) have no time and are left out.
+            if (t == null || t < dawnMs || t > duskMs) {
                 continue;
             }
         }
@@ -448,6 +484,7 @@ export default function DailyReport() {
         {report && <>
             {observations.length === 0 && <Text py="3">No observations are available for this date.</Text>}
             <DailySummary summary={report.summary} date={selectedDate} />
+            <DerivedSummary summary={report.summary} et0={report.et0} />
             <DailySunshine datestamp={datestamp} />
             <DailyWet datestamp={datestamp} />
             <DailyRainIntensity intensity={report.rain_intensity} />

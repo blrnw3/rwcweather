@@ -4,3 +4,4 @@ venv
 out
 log
 tmp
+cache

@@ -26,6 +26,9 @@ from rwcwx.wet import rate as wet_rate
 from rwcwx.wet import intensity_store
 from rwcwx.wet import store as wet_store
 from rwcwx.fog import derive as fog_derive
+from rwcwx.calc import day_profile
+from rwcwx.calc import day_of_year
+from rwcwx.calc import derived_daily
 
 
 def todo():
@@ -152,9 +155,27 @@ def day_report(d: date):
             summary=DaySummary(d).stats_json(observations),
             observations=observations,
             rain_intensity=_rain_intensity(d),
+            et0=_et0_day(d),
         ),
         date=d,
     )
+
+
+def _et0_ratios(var: str, today: date) -> Optional[dict]:
+    """ET0's month-by-month Hargreaves-to-Penman-Monteith calibration (only ET0 needs it)."""
+    return derived_daily.default_hs_ratios(today) if var == derived_daily.ET0_VAR else None
+
+
+def _et0_day(d: date) -> Optional[dict]:
+    """The day's ET0 and method for the daily report (None for today, or without a daily max/min temperature)."""
+    try:
+        today = DateUtil.now().date()
+        days = derived_daily.derive(derived_daily.ET0_VAR, lambda v, t: AvgExtQ.for_var_between_dates(v, t, d, d),
+                                    today, ratios=derived_daily.default_hs_ratios(today))
+        return days[0].simple_dict_ if days else None
+    except Exception as e:
+        logger.warning(f"et0 failed for {d}: {e}")
+        return None
 
 
 def _rain_intensity(d: date) -> Optional[dict]:
@@ -333,7 +354,48 @@ def _anom_spells_cached(var, typ, level, direction, month, order, limit, today: 
         _daily_values(var, typ), typ, level, direction, month, order, limit, today)
 
 
+# Variables with no meaningful all-years range per calendar day: wind direction is circular, a fog day is 0/1.
+DAY_STATS_EXCLUDED = ("wdir", fog_derive.DAY_VAR)
+
+
+def var_day_stats(var: str, typ: str):
+    """
+    All-years average / lowest / highest of a daily value for each calendar day (366 rows, Jan 1 first), e.g.
+    /api/var/day_stats/temp/max/ ; running-total envelopes with ?mode=cumulative (&period=water for Oct-Sep years).
+    Values in DB units; today (partial) is left out. See rwcwx.calc.day_of_year.
+    """
+    mode = request.args.get("mode", "daily")
+    period = request.args.get("period", "calendar")
+    if var in DAY_STATS_EXCLUDED or mode not in ("daily", "cumulative") or period not in ("calendar", "water") \
+            or (mode == "cumulative" and typ != "total"):
+        return {"error": "Unsupported day stats",
+                "supported": dict(mode=["daily", "cumulative (totals only)"], period=["calendar", "water"],
+                                  excluded=list(DAY_STATS_EXCLUDED))}, 400
+    now = DateUtil.now()
+    # recomputed at most hourly (and on a new day), so late updates to yesterday's values show up
+    res = _day_stats_cached(var, typ, mode == "cumulative", period == "water", now.date(), int(now.timestamp() // 3600))
+    if res is None:
+        return {"error": f"No daily values for {var}/{typ}"}, 404
+    return _wrap_result(res, var=var, type=typ, mode=mode, period=period)
+
+
+@lru_cache(maxsize=64)
+def _day_stats_cached(var: str, typ: str, cumulative: bool, water: bool, today: date, _bucket: int):
+    values = _daily_values(var, typ)
+    if not values:
+        return None
+    if cumulative:
+        return day_of_year.cumulative_stats(values, today, water)
+    return day_of_year.daily_stats(values, today)
+
+
 def _daily_values(var: str, typ: str):
+    if derived_daily.is_derived(var):
+        if not derived_daily.is_derived(var, typ):
+            return []
+        today = DateUtil.now().date()
+        days = derived_daily.derive(var, AvgExtQ.daily_rows, today, ratios=_et0_ratios(var, today))
+        return [(x.d, x.val) for x in days]
     if (var, typ) == (sun_model.PCT_VAR, sun_model.PCT_TYPE):
         return sun_model.pct_daily_values(AvgExtQ.daily_values("sun", "total"))
     if (var, typ) == (fog_derive.DAY_VAR, fog_derive.DAY_TYPE):
@@ -384,6 +446,26 @@ def rain_stats():
     ))
 
 
+def var_profile(var: str):
+    """
+    Average value at each time of day (local Pacific time) in 5-minute bins, e.g. /api/var/profile/temp/?month=7
+    Query params: year (optional), month (optional, 1-12). Neither = all time; month alone = that month in every year.
+    sun, wet and fog are % of classified/observed time; see rwcwx.calc.day_profile.
+    """
+    try:
+        year = int(request.args["year"]) if request.args.get("year") else None
+        month = int(request.args["month"]) if request.args.get("month") else None
+    except ValueError:
+        year = month = -1
+    var = day_profile.ALIASES.get(var, var)       # pm2 -> aqi
+    if var not in day_profile.VARS or (year is not None and not 2000 <= year <= 2100) \
+            or (month is not None and not 1 <= month <= 12):
+        return {"error": "Unsupported profile", "supported": dict(vars=list(day_profile.VARS), year="YYYY", month="1-12")}, 400
+    with db.engine.connect() as conn:
+        res = day_profile.profile(conn, var, year, month, DateUtil.now().date())
+    return _wrap_result(res)
+
+
 def _wrap_result(res, **extras) -> dict:
     now = DateUtil.now()
     return {
@@ -410,6 +492,13 @@ def _dictify_obs_result(res):
 
 
 def _var_avg_exts_from_request(var: str, typ: str) -> List[AvgExt]:
+    if derived_daily.is_derived(var):
+        # Ranges and ET0, derived per day from the stored daily rows of the same date window.
+        if not derived_daily.is_derived(var, typ):
+            return []
+        today = DateUtil.now().date()
+        days = derived_daily.derive(var, _var_avg_exts_from_request, today, ratios=_et0_ratios(var, today))
+        return sorted(days, key=lambda x: x.d, reverse=True)      # newest first, like the stored rows
     if var == wet_rate.RATE_VAR:
         # Derived per day from the rain and wet-hours totals; blank (left out) on days without wet hours.
         if typ != wet_rate.RATE_TYPE:

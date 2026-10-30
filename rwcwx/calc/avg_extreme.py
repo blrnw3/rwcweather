@@ -261,13 +261,53 @@ class FogDay(ObsVar):
     db_field = "fogday"
 
 
+class TempRange(ObsVar):
+    """Derived (rwcwx/calc/derived_daily.py): daily max - min temperature, the diurnal range. Periods average it."""
+    name = "temperature range"
+    unit = Unit.degc
+    db_field = "temprange"
+
+
+class HumiRange(ObsVar):
+    name = "humidity range"
+    unit = Unit.pct
+    db_field = "humirange"
+
+
+class PresRange(ObsVar):
+    name = "pressure range"
+    unit = Unit.hpa
+    db_field = "presrange"
+
+
+class DewptRange(ObsVar):
+    name = "dew point range"
+    unit = Unit.degc
+    db_field = "dewptrange"
+
+
+class Et0(ObsVar):
+    """Derived: FAO-56 reference evapotranspiration, mm/day (rwcwx/calc/et0.py). Periods sum it."""
+    name = "reference evapotranspiration"
+    unit = Unit.mm
+    db_field = "et0"
+
+
 class ObsVarGroup:
     ALL: Iterable[ObsVarT] = (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt)
 
 
 OBS_VAR_MAP = {o.db_field: o for o in (
-    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun, SunPct, Wet, WetRate, Rain10, Rain60, Fog, FogDay)
+    (Rain, Temp, Humi, Wind, Gust, Pres, Wdir, Aqi, Dewpt, Sun, SunPct, Wet, WetRate, Rain10, Rain60, Fog, FogDay,
+     TempRange, HumiRange, PresRange, DewptRange, Et0)
 )}
+
+
+def _add_derived(stats: dict, by_type: dict, summarise=None) -> None:
+    from rwcwx.calc import derived_daily
+    today = DateUtil.now().date()
+    derived_daily.add_to_summary(stats, by_type, summarise or (lambda days: ObsVar.multiday_summary(days).as_dict),
+                                 today, ratios=derived_daily.default_hs_ratios(today))
 
 
 class DaySummary:
@@ -327,6 +367,7 @@ class MonthSummary:
             stats[f"{sun_model.PCT_VAR}_{sun_model.PCT_TYPE}"] = ObsVar.multiday_summary(pct).as_dict
         _add_rain_days(stats, by_type)
         _add_rate(stats, by_type)
+        _add_derived(stats, by_type)
         return stats
 
 
@@ -372,6 +413,7 @@ class YearSummary:
             stats[f"{sun_model.PCT_VAR}_{sun_model.PCT_TYPE}"] = ObsVar.multiday_summary(pct).as_dict
         _add_rain_days(stats, by_type)
         _add_rate(stats, by_type)
+        _add_derived(stats, by_type)
         return stats
 
 
@@ -445,11 +487,22 @@ class DayOfYearSummary:
                 s["max_yr"] = s["max_at"].year
                 s["max_at"] = (s["max_at"].year, s["max_at"].month, s["max_at"].day)
             stats[f"{sun_model.PCT_VAR}_{sun_model.PCT_TYPE}"] = s
+        _add_derived(stats, by_type, _doy_summary)
         # Measurable-rain frequency for this calendar date (today excluded). Cached with the rest.
         from rwcwx.calc.rain_freq import frequency_from_rows
         rain_rows = AvgExtQ.daily_values("rain", "total")
         stats["rain_freq"] = frequency_from_rows(rain_rows, self.day, exclude=self.day)
         return stats
+
+
+def _doy_summary(days) -> dict:
+    s = ObsVar.multiday_summary(days).as_dict
+    for k in ("min", "max"):
+        at = s.get(k + "_at")
+        if isinstance(at, date):
+            s[k + "_yr"] = at.year
+            s[k + "_at"] = (at.year, at.month, at.day)
+    return s
 
 
 class AvgExtAggregator:

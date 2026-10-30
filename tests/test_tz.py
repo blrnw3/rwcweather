@@ -9,7 +9,8 @@ try:
 except Exception:  # no dev DB (deploy pre-check): rwcwx.models reflects tables at import; these tests don't query
     import sys
     import types
-    sys.modules["rwcwx.models"] = types.SimpleNamespace(db=None)
+    sys.modules["rwcwx.models"] = types.SimpleNamespace(
+        db=None, is_api_estimate=lambda c: bool(c) and c.startswith("API estimate"))
     sys.modules.pop("rwcwx.model.sun", None)
     from rwcwx.model.sun import local_day_bounds_utc, sun_times
 

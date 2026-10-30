@@ -8,7 +8,8 @@ Writes, per local day:
     "estimated from 30-min snapshots; coverage NN%" (the site shows these days as estimated).
 
 Never overwrites: obs_inferred rows whose source is not 'backfill' (live/manual), avg_extreme rows with
-overridden=1, or sun totals the live job wrote (comment starting "webcam"). Days that have any live rows are
+overridden=1, or sun totals the live job wrote (comment starting "webcam"). It does replace a weather-API
+estimate total ("API estimate ...") when the archive gives a total. Days that have any live rows are
 skipped entirely, and by default the run stops before the first live day.
 
 Low impact and resumable:
@@ -30,7 +31,10 @@ import sys
 import time
 from collections import defaultdict
 from datetime import date, datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional, Set
+
+from dateutil import tz
+from dateutil.tz import UTC
 
 from rwcwx.job.sun_classify import (FRAMES_DIR, KIND, REPO_ROOT, Classifier, local_day_bounds_utc,  # noqa: E402
                                     sun_times_utc)
@@ -46,6 +50,8 @@ PERIOD_MIN = 30
 TOLERANCE_S = 15 * 60
 LABEL = "estimated from 30-min snapshots"
 STATE_PATH = os.path.join(REPO_ROOT, "out_prod", "sun_backfill_state.json")
+# Station time zone (dateutil: prod runs Python 3.8, which has no zoneinfo).
+LOCAL_TZ = tz.gettz("America/Los_Angeles")
 
 UPSERT = """
 INSERT INTO obs_inferred (t, kind, value, prob, minutes, source, flags, model_version, t_mod)
@@ -59,15 +65,17 @@ ON DUPLICATE KEY UPDATE
   t_mod = IF(source = 'backfill', VALUES(t_mod), t_mod)
 """
 
-# Only replaces a total that is new, or was itself estimated by this job.
-UPSERT_TOTAL = """
+# A backfill total may replace an earlier backfill estimate or the weather-API estimate (the webcam archive is
+# better evidence), but never an overridden row or a total the live webcam job wrote ("webcam; ...").
+KEEP_TOTAL = "(overridden = 1 OR (comment NOT LIKE 'estimated%' AND comment NOT LIKE 'API estimate%'))"
+UPSERT_TOTAL = f"""
 INSERT INTO avg_extreme (d, var, type, period, val, at, cnt, t_mod, overridden, comment)
 VALUES (:d, 'sun', 'total', 'day', :val, NULL, :cnt, :t_mod, 0, :comment)
 ON DUPLICATE KEY UPDATE
-  val = IF(overridden = 1 OR comment NOT LIKE 'estimated%', val, VALUES(val)),
-  cnt = IF(overridden = 1 OR comment NOT LIKE 'estimated%', cnt, VALUES(cnt)),
-  t_mod = IF(overridden = 1 OR comment NOT LIKE 'estimated%', t_mod, VALUES(t_mod)),
-  comment = IF(overridden = 1 OR comment NOT LIKE 'estimated%', comment, VALUES(comment))
+  val = IF({KEEP_TOTAL}, val, VALUES(val)),
+  cnt = IF({KEEP_TOTAL}, cnt, VALUES(cnt)),
+  t_mod = IF({KEEP_TOTAL}, t_mod, VALUES(t_mod)),
+  comment = IF({KEEP_TOTAL}, comment, VALUES(comment))
 """
 
 
@@ -130,17 +138,21 @@ def classify_backfill_day(day: date, clf: Classifier, index) -> dict:
     return dict(day=day, frames=len(frames), rows=rows, total=tot, summary=summary(grid))
 
 
+def local_days(ts_utc: Iterable[datetime]) -> Set[date]:
+    """Station-local (America/Los_Angeles) dates of naive-UTC timestamps, DST-aware."""
+    return {t.replace(tzinfo=UTC).astimezone(LOCAL_TZ).date() for t in ts_utc if t is not None}
+
+
 def live_days(engine) -> set:
+    """Local days that have any live rows. Converted in Python: prod MySQL has no time-zone tables, so
+    CONVERT_TZ returns NULL there (the old 'UTC date and the day before' fallback wrongly skipped 2026-10-10).
+    Rows are bucketed by UTC hour first; LA offsets are whole hours, so each bucket has one local date."""
     from sqlalchemy import text
     with engine.connect() as c:
-        res = c.execute(text("SELECT DISTINCT DATE(CONVERT_TZ(t, '+00:00', 'America/Los_Angeles')) FROM obs_inferred "
+        res = c.execute(text("SELECT DISTINCT DATE(t), HOUR(t) FROM obs_inferred "
                              "WHERE kind = :k AND source = 'live'"), k=KIND)
-        days = {r[0] for r in res if r[0] is not None}
-        if not days:   # CONVERT_TZ needs the tz tables; fall back to UTC dates +- 1 day
-            res = c.execute(text("SELECT DISTINCT DATE(t) FROM obs_inferred WHERE kind = :k AND source = 'live'"), k=KIND)
-            for r in res:
-                days |= {r[0] - timedelta(days=1), r[0]}
-        return days
+        return local_days(datetime.combine(d, datetime.min.time()) + timedelta(hours=h)
+                          for d, h in res if d is not None)
 
 
 def write_day(engine, res: dict, now: datetime) -> None:

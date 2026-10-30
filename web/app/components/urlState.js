@@ -1,5 +1,6 @@
 import { useRouter } from "next/router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { derivedFromStat } from "./conf";
 
 // Page selections mirrored in the URL query string, so a link restores the view.
 //
@@ -17,6 +18,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // changes call router.replace with shallow routing: no reload or refetch of the
 // page, and no new history entry per click.
 export function resolveUrlState(spec, query, base = {}) {
+    // A derived daily variable given as the parent's stat (?var=temp&daily=range) is the derived variable itself.
+    const derived = query?.var && query?.daily && derivedFromStat(String(query.var), String(query.daily));
+    if (derived) {
+        query = { ...query, var: derived };
+        delete query.daily;
+    }
     const state = { ...base };
     for (const [key, field] of Object.entries(spec)) {
         const param = field.param || key;

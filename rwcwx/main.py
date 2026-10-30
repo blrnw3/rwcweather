@@ -14,6 +14,7 @@ from flask.json import JSONEncoder
 
 import rwcwx.routes as r
 from rwcwx.fog import api as fog_api
+from rwcwx.recap import api as recap_api
 
 
 class CustomJSONEncoder(JSONEncoder):
@@ -64,6 +65,7 @@ app.add_url_rule("/api/obs/summary/year/", view_func=r.year_summary)
 # Summaries for a single variable at a given aggregate period for multiple periods
 # Note that these take query params to allow filtering on a given year, month, or arbitrary period
 app.add_url_rule("/api/var/daily/<var>/<typ>/", view_func=r.var_daily)
+app.add_url_rule("/api/var/day_stats/<var>/<typ>/", view_func=r.var_day_stats)
 app.add_url_rule("/api/var/monthly/<var>/<typ>/", view_func=r.var_monthly)
 app.add_url_rule("/api/var/yearly/<var>/<typ>/", view_func=r.var_yearly)
 app.add_url_rule("/api/var/all_periods/<var>/<typ>/", view_func=r.var_all_periods)
@@ -71,6 +73,7 @@ app.add_url_rule("/api/var/all_periods/<var>/<typ>/", view_func=r.var_all_period
 app.add_url_rule("/api/var/rolling/<var>/<typ>/", view_func=r.var_rolling)
 app.add_url_rule("/api/var/spells/<var>/<typ>/", view_func=r.var_spells)
 app.add_url_rule("/api/var/anom_spells/<var>/<typ>/", view_func=r.var_anom_spells)
+app.add_url_rule("/api/var/profile/<var>/", view_func=r.var_profile)
 
 # Other
 app.add_url_rule("/api/astronomy", view_func=r.astronomy)
@@ -82,3 +85,7 @@ app.add_url_rule("/api/rain", view_func=r.rain_stats)
 
 # Ingest (bearer token from RWC_INGEST_TOKEN; disabled when unset)
 app.add_url_rule("/api/inferred/fog", view_func=fog_api.post_fog, methods=["POST"])
+app.add_url_rule("/api/recap", view_func=recap_api.post_recap, methods=["POST"])
+
+# Written recaps for the home page (latest of each kind)
+app.add_url_rule("/api/recap/latest", view_func=recap_api.get_latest)

@@ -1,10 +1,10 @@
 import {
   Box, Button, Collapse,
   Flex, Grid, Heading, Link, Spinner, Text,
-  Tooltip, Tab, TabList, TabPanel, TabPanels, Tabs,
+  Tooltip,
   useDisclosure, useRadioGroup, Image
 } from '@chakra-ui/react';
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { IconContext } from "react-icons";
 import { GiDew } from "react-icons/gi";
 import { FiChevronDown, FiWind } from "react-icons/fi";
@@ -16,11 +16,12 @@ import { WiBarometer, WiDaySunny, WiHumidity, WiRain, WiThermometer } from "reac
 import useSWR from "swr";
 import { LatestChart, SummaryChart } from '../components/chart';
 import { YearChart } from '../components/yearChart';
-import { fetcher, fmatObsOptIcon, fmatTimeOpt, OBS, RAIN_VIEW_NAMES, RAIN_VIEWS, SUN_VIEW_NAMES, SUN_VIEWS, WIND_SUMMARY_NAMES, WIND_SUMMARY_VIEWS, WIND_VIEW_NAMES, WIND_VIEWS } from '../components/conf';
+import { fetcher, fmatObsOptIcon, fmatTimeOpt, OBS, RAIN_VIEW_NAMES, RAIN_VIEWS, SUN_VIEW_NAMES, SUN_VIEWS, WIND_SUMMARY_NAMES, WIND_SUMMARY_VIEWS } from '../components/conf';
 import { Page, UnitCtx } from "../components/Page";
 import { SunRibbon, useSunDay, fmtDaylightDelta } from '../components/sun';
 import { WetRibbon } from '../components/wet';
 import RadioCard from '../components/RadioCard';
+import { RecapCard } from '../components/recap';
 import { aqiStatus, formatObs, moonPhase, prettySecs, timeOf } from '../format';
 import {
   CLIMATE_PAGE, ClimateAnom, annualNormal, dailyNormal, monthlyNormal,
@@ -32,6 +33,7 @@ import {
   hottestHigh, coldestLow, warmestLow, coldestHigh, localHourFromServer,
 } from '../lib/recordFlags';
 import React from 'react';
+import { LIVE_SWR, useLivePoll } from '../components/liveRefresh';
 
 let isLoading = true;
 let errCount = 0;
@@ -42,7 +44,8 @@ let updateCount = 0;
 
 function useDashboard(props) {
   let updateInterval = updateCount < 10 ? 3000 : 9000;
-  const { data, error, isValidating } = useSWR(`/api/web/dashboard/live`, fetcher, { refreshInterval: updateInterval });
+  const { data, error, isValidating, revalidate } = useSWR(`/api/web/dashboard/live`, fetcher, LIVE_SWR);
+  useLivePoll(`/api/web/dashboard/live`, revalidate, updateInterval);
   isLoading = true;
   if (error || !data) {
     console.log(error);
@@ -92,7 +95,8 @@ function useDashboard(props) {
 // }
 
 function useSummary() {
-  const { data, error } = useSWR(`/api/web/dashboard/summary`, fetcher, { refreshInterval: 300000 })
+  const { data, error, revalidate } = useSWR(`/api/web/dashboard/summary`, fetcher, LIVE_SWR);
+  useLivePoll(`/api/web/dashboard/summary`, revalidate, 300000, { minAgeMs: 30000 });
   if (error || !data) {
     console.log(error);
     return error ? 0 : null;
@@ -179,6 +183,16 @@ function serverDate(...sources) {
   return null;
 }
 
+// Outside daylight: "twilight" between civil dawn and sunrise or sunset and civil dusk (sun 0° to -6°),
+// "dark" otherwise; null in daylight (or without astronomy times). Uses today's suncalc times from the summary.
+function nightPhase(astro, nowMs) {
+  if (!astro?.sunrise || !astro?.sunset || nowMs == null) return null;
+  if (nowMs >= astro.sunrise && nowMs <= astro.sunset) return null;
+  const dawn = astro.dawn, dusk = astro.dusk;
+  if ((dawn && nowMs >= dawn && nowMs < astro.sunrise) || (dusk && nowMs > astro.sunset && nowMs <= dusk)) return "twilight";
+  return "dark";
+}
+
 // Optional `normals` = { lo, hi } (DB units) adds a bracketed climate
 // comparison after each value, e.g. "Lo: 57.2 °F (+1.3) @ 07:18".
 function LoHiCardSection(props) {
@@ -240,13 +254,14 @@ function AboutHomeCard() {
   return <Box id="about-home-card" width={{ base: "98%", md: "460px" }} minHeight="250px" border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 4 }} my={2} mx={{ base: 0, md: 3 }} borderRadius="10px">
     <Text fontSize={{ base: "lg", md: "xl" }} mb="2">About RWC Weather</Text>
     <Text fontSize="sm" mb="2">
-      RWC Weather is an amateur personal weather station in Redwood City, California, collecting data continuously since November 2020.
+      RWC Weather is an amateur-run personal weather station in Redwood City, California, collecting data continuously since November 2020.
     </Text>
     <Text fontSize="sm" mb="2">
-      The station sits ~125 m (420 ft) above sea level in Emerald Lake Hills between Redwood City and Woodside. Towards the top of the canyon, it experiences milder winter nights than the valleys below, protection from westerly winds, and much less summer fog than the coast.
+      The station sits ~125 m (420 ft) above sea level in Emerald Hills between Redwood City and Woodside. We experience generally milder nights than the valleys below, protection from westerly winds, and much less summer fog than the coast.
+     
     </Text>
     <Text fontSize="sm" mb="2">
-      Powered by a wireless Davis VP2 with WeatherLink Live, Cumulus software, a Python Flask backend, and a Next.js / React frontend.
+      Powered by a wireless Davis VP2 with WeatherLink Live running Cumulus software, a Python Flask backend, and a Next.js / React frontend.
     </Text>
     <Text fontSize="sm">
       <Link href="/about">More about the station &rarr;</Link>
@@ -464,6 +479,7 @@ function RainHomeCard(props) {
   let now = formatObs(unit, dash?.["now"]?.["rain"], "rain");
   let rn10 = formatObs(unit, dash?.["rain_trend"]?.["m10"], "rain");
   let rnhr = formatObs(unit, dash?.["rain_trend"]?.["hr1"], "rain");
+  const show10m = dash?.["rain_trend"]?.["hr1"] > 0;
   let rn24 = formatObs(unit, dash?.["rain_trend"]?.["hr24"], "rain");
   let monthly = formatObs(unit, props.summary?.["month"]?.["rain_total"]?.["total"], "rain");
   let annual = formatObs(unit, props.summary?.["year"]?.["rain_total"]?.["total"], "rain");
@@ -482,8 +498,9 @@ function RainHomeCard(props) {
       <WetHoursInline wet={dash?.wet} rainToday={dash?.["now"]?.["rain"]} isOpen={wetDisc.isOpen} onToggle={wetDisc.onToggle} />
     </Text>
     <WetHoursDetails wet={dash?.wet} rainToday={dash?.["now"]?.["rain"]} isOpen={wetDisc.isOpen} nowMs={dash?.server?.epoch ? dash.server.epoch * 1000 : null} />
-    <Text>Last rain: <Text as="span" fontWeight="bold">{last}</Text> ago</Text>
-    <Text borderBottom="1px solid #ccc">Past 10m: <Text as="span" fontWeight="bold">{rn10}</Text></Text>
+    {/* "Past 10m" only matters while it's raining: show it only if there was rain in the past hour. */}
+    <Text borderBottom={show10m ? null : "1px solid #ccc"}>Last rain: <Text as="span" fontWeight="bold">{last}</Text> ago</Text>
+    {show10m && <Text borderBottom="1px solid #ccc" className="rain-past-10m">Past 10m: <Text as="span" fontWeight="bold">{rn10}</Text></Text>}
     <Text>Hourly: <Text as="span" fontWeight="bold">{rnhr}</Text></Text>
     <Text borderBottom="1px solid #ccc">Past 24hrs: <Text as="span" fontWeight="bold">{rn24}</Text></Text>
     <Text>
@@ -587,7 +604,7 @@ function WaterYearClimate({ total, date }) {
 
 // Webcam sunshine: today's hours so far, % of possible daylight so far, a "Sunny now" badge (only from a fresh,
 // classified minute) and today's minute ribbon.
-function SunPanel(props) {
+function SunshineHomeCard(props) {
   const dash = props.dash;
   const sun = dash?.sun;
   const { day, now } = useSunDay("", 120000);
@@ -597,21 +614,32 @@ function SunPanel(props) {
   const monthTotal = props.summary?.["month"]?.["sun_total"]?.["total"];
   const monthPct = props.summary?.["month"]?.["sunpct_avg"]?.["avg"];
   let badge = null;
-  if (sun?.now) {
+  const astro = props.summary?.astronomy;
+  const nowMs = dash?.server?.epoch ? dash.server.epoch * 1000 : Date.now();
+  const night = nightPhase(astro, nowMs);
+  // From sunset onward today's sunshine is final, so drop "so far".
+  const dayOver = astro?.sunset != null && nowMs > astro.sunset;
+  if (night) {
+    const twi = night === "twilight";
+    badge = <Text as="span" ml="2" px="2" py="0.5" borderRadius="8" fontSize="sm" fontWeight="bold"
+      bg={twi ? "purple.200" : "blue.800"} color={twi ? "purple.900" : "blue.50"} className="sun-now-badge">
+      {twi ? "Twilight" : "Dark"}
+    </Text>;
+  } else if (sun?.now) {
     const sunny = sun.now.state === "sun";
     badge = <Text as="span" ml="2" px="2" py="0.5" borderRadius="8" fontSize="sm" fontWeight="bold"
       bg={sunny ? "yellow.300" : "gray.300"} color="gray.800" className="sun-now-badge">
       {sunny ? "Sunny now" : "Not sunny"}
     </Text>;
   }
-  return <Box>
+  return <HomeCard changed={null}>
     <Text marginBottom="0.5em">
       <Tooltip label="Sunshine (from the webcam)">{icon}</Tooltip>
       <Text as="span" fontSize={{ base: "2xl", md: "3xl" }} paddingRight="2" paddingLeft="1">{hours}</Text>
       {badge}
     </Text>
     <Text borderBottom="1px solid #ccc">
-      Today so far: <Text as="span" fontWeight="bold">{sun?.pct_of_possible != null ? sun.pct_of_possible + "%" : "–"}</Text> of {possible} possible
+      {dayOver ? "Today" : "Today so far"}: <Text as="span" fontWeight="bold">{sun?.pct_of_possible != null ? sun.pct_of_possible + "%" : "–"}</Text> of {possible} possible
     </Text>
     <Box my="2"><SunRibbon day={day} nowMs={now} height="16px" /></Box>
     <Text borderTop="1px solid #ccc">
@@ -623,7 +651,7 @@ function SunPanel(props) {
     <Text>Monthly: <Text as="span" fontWeight="bold">{monthTotal != null ? formatObs(unit, monthTotal, "sun") : "–"}</Text>
       {monthPct != null && <Text as="span" fontSize="sm" color="gray.600" className="sun-month-pct"> ({Math.round(monthPct)}% of possible)</Text>}
     </Text>
-  </Box>
+  </HomeCard>
 }
 
 function PressureHomeCard(props) {
@@ -694,13 +722,13 @@ function AirQualityHomeCard(props) {
   </HomeCard>
 }
 
-function MoonPanel(props) {
+function AstronomyHomeCard(props) {
   const astro = props.dash?.astronomy;
   let frac = formatObs(unit, astro?.fraction * 100, "humi")
   const icon = <Text as="span" color="black" className="home_ico_sml"><IoTelescopeOutline /></Text>
   let phase = moonPhase(astro?.phase) || ["", ""];
 
-  return <Box>
+  return <HomeCard changed={null}>
     <Text>
       {icon}
       <Text as="span" fontSize="2xl" paddingRight="1" paddingLeft="1">{frac} full &nbsp;<Tooltip label={phase[0]}>{phase[1]}</Tooltip></Text>
@@ -711,28 +739,9 @@ function MoonPanel(props) {
     <Text>
       Moon set: <Text as="span" fontWeight="bold">{timeOf(astro?.set)}</Text>
     </Text>
-  </Box>
-}
-
-
-// Sun (default) and Moon share one card as compact tabs (Chakra Tabs: arrow keys / Home / End, roving focus).
-function SunMoonHomeCard(props) {
-  const tabSx = { px: 2, py: 0.5, fontSize: "sm", borderRadius: "8", color: "gray.700",
-    _selected: { bg: "orange.200", color: "gray.900", fontWeight: "bold" }, _focusVisible: { boxShadow: "outline" } };
-  return <HomeCard changed={null}>
-    <Tabs size="sm" variant="unstyled" isLazy={false} className="sun-moon-tabs">
-      <TabList mb="1" gap="1" justifyContent="flex-end" aria-label="Sun or moon">
-        <Tab sx={tabSx}>Sun</Tab>
-        <Tab sx={tabSx}>Moon</Tab>
-      </TabList>
-      {/* Panels share one grid cell and the hidden one keeps its space, so switching tabs never changes the card height. */}
-      <TabPanels display="grid" sx={{ "& > [role=tabpanel]": { gridArea: "1 / 1" }, "& > [role=tabpanel][hidden]": { display: "block !important", visibility: "hidden" } }}>
-        <TabPanel p="0"><SunPanel dash={props.dash} summary={props.summary} /></TabPanel>
-        <TabPanel p="0"><MoonPanel dash={props.astroDash} /></TabPanel>
-      </TabPanels>
-    </Tabs>
   </HomeCard>
 }
+
 
 function SignedPctAnom({ value, normal }) {
   const text = signedPctDeparture(value, normal);
@@ -906,19 +915,15 @@ const ChartCardLatest = React.memo(function ChartCardLatest(props) {
   const hrsOptions = ["6", "12", "24", "72"];
 
   const [obs, setObs] = useState("temp");
-  const [windView, setWindView] = useState("wind");
   const [hrs, setHrs] = useState("6");
-  const chartObs = obs === "wind" ? windView : obs;
+  // Wind plots speed and gust together (no direction on the home chart).
+  const chartObs = obs;
 
   return <Box w={{ base: "98%", md: "80%", lg: "47%" }} border="2px solid #656382" bg="gray.100"
     p="2" my={2} mx={{ base: 0, md: 2, lg: 3, xl: 4 }} borderRadius="10px">
     <Flex wrap="wrap" justifyContent="space-between" alignItems="center">
       <RadioButtonGroup name="obs" value={obs} options={obsOptions} optFormat={fmatObsOptIcon} fn={setObs} ico={true} />
       <Box m={1}></Box>
-      {obs === "wind" && <>
-        <RadioButtonGroup name="windView" value={windView} options={WIND_VIEWS} optFormat={(v) => WIND_VIEW_NAMES[v]} fn={setWindView} />
-        <Box m={1}></Box>
-      </>}
       <RadioButtonGroup name="hrs" value={hrs} options={hrsOptions} optFormat={fmatTimeOpt} fn={setHrs} />
       <Box m={1}></Box>
       <Text><Link href="/charts/latest" title="More charts">More</Link></Text>
@@ -926,6 +931,9 @@ const ChartCardLatest = React.memo(function ChartCardLatest(props) {
     <LatestChart obs={chartObs} hrs={hrs} m={1} height="55%" spacing={[5, 5, 12, 3]} />
   </Box>
 });
+
+// Home 30-day wind: daily max or average, each showing speed and gust together.
+const HOME_WIND_AGGS = ["max", "avg"];
 
 // Memoized: no props from HomePage, so the ~3-9s live poll doesn't redraw this chart.
 const ChartCardDaily = React.memo(function ChartCardDaily(props) {
@@ -936,12 +944,11 @@ const ChartCardDaily = React.memo(function ChartCardDaily(props) {
   const [aggType, setAggType] = useState("avg");
   const [sunView, setSunView] = useState("sun");  // sunshine as hours or % of possible (#24)
   const [rainView, setRainView] = useState("rain");  // rainfall as amount or wet hours
-  const [windView, setWindView] = useState("wind:max");  // wind summary sub-options
+  const [windAgg, setWindAgg] = useState("max");  // wind: daily max or avg, speed and gust together
   const isSun = obs === "sun";
   const isRain = obs === "rain";
   const isWind = obs === "wind";
-  const [windObs, windAgg] = windView.split(":");
-  const chartObs = isSun ? sunView : isRain ? rainView : isWind ? windObs : obs;
+  const chartObs = isSun ? sunView : isRain ? rainView : isWind ? "wind" : obs;
   const chartAgg = isSun ? (sunView === "sunpct" ? "avg" : "total") : isRain ? OBS.get(rainView).summary : isWind ? windAgg : aggType;
   const period = "30";
 
@@ -955,13 +962,13 @@ const ChartCardDaily = React.memo(function ChartCardDaily(props) {
         : isRain
         ? <RadioButtonGroup name="rainView" value={rainView} options={RAIN_VIEWS} optFormat={(v) => RAIN_VIEW_NAMES[v]} fn={setRainView} />
         : isWind
-        ? <RadioButtonGroup name="windView" value={windView} options={WIND_SUMMARY_VIEWS} optFormat={(v) => WIND_SUMMARY_NAMES[v]} fn={setWindView} />
+        ? <RadioButtonGroup name="windAgg" value={windAgg} options={HOME_WIND_AGGS} optFormat={(v) => v} fn={setWindAgg} />
         : <RadioButtonGroup name="aggType" value={aggType} options={aggOpts} optFormat={(c) => c} fn={setAggType} />}
       <Box m={1}></Box>
       {/* <RadioButtonGroup name="period" options={periodOptions} optFormat={fmatDaysOpt} default={"30"} fn={setPeriod} /> */}
       <Text><Link href="/charts/summary" title="More charts">More</Link></Text>
     </Flex>
-    <SummaryChart m={1} obs={chartObs} aggType={chartAgg} height="55%" chartType="column" period={period} spacing={[5, 5, 12, 3]} />
+    <SummaryChart m={1} obs={chartObs} aggType={chartAgg} withGust={isWind} height="55%" chartType="column" period={period} spacing={[5, 5, 12, 3]} />
   </Box>
 });
 
@@ -1028,19 +1035,17 @@ const CAM_URL = "https://rwcweather.com/cumulus/skycam_large.jpg";
 const WebcamMemo = React.memo(function Webcam(props) {
   const [src, setSrc] = useState(CAM_URL + "?" + new Date().getTime());
 
-  useEffect(() => {
-    let cancelled = false;
-    const interval = setInterval(() => {
-      if (document.visibilityState == "hidden") return;
-      const next = CAM_URL + "?" + new Date().getTime();
-      const img = new window.Image();
-      img.onload = () => { if (!cancelled && img.naturalWidth > 0) setSrc(next); };
-      img.src = next;
-    }, 6000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, []);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+  // every 6 s while visible, and at once when the page is viewed again
+  useLivePoll("webcam", () => {
+    const next = CAM_URL + "?" + new Date().getTime();
+    const img = new window.Image();
+    img.onload = () => { if (mounted.current && img.naturalWidth > 0) setSrc(next); };
+    img.src = next;
+  }, 6000);
 
-  return <Box mt={2}>
+  return <Box mt={2} mb={2}>
     <Box m="auto" width={{ base: "95%", md: "720px", lg: "1200px", xl: "1500px" }}
       style={{ aspectRatio: "1560 / 878" }} overflow="hidden">
       <img id="cam" src={src} width="1560" height="878" alt="rwc weather cam"
@@ -1082,17 +1087,21 @@ function HomePage(props) {
       <PressureHomeCard dash={data} summary={summary} />
       <DewPtHomeCard dash={data} summary={summary} />
       <AirQualityHomeCard dash={data} summary={summary} />
-      <SunMoonHomeCard dash={data} summary={summary} astroDash={summary} />
+      <SunshineHomeCard dash={data} summary={summary} />
+      <AstronomyHomeCard dash={summary} summary={summary} />
     </Flex>
     <Flex justify="center" wrap="wrap">
       <ChartCardLatest />
       <ChartCardDaily />
     </Flex>
     <Flex justify="center" wrap="wrap">
+      <WebcamMemo />
+    </Flex>
+    <Flex justify="center" wrap="wrap">
       <ChartCardYear />
     </Flex>
     <Flex justify="center" wrap="wrap">
-      <AboutHomeCard />
+      <RecapCard />
       <DayClimateExtremesCard dash={data} summary={summary} />
     </Flex>
     <Flex justify="center" wrap="wrap">
@@ -1100,7 +1109,7 @@ function HomePage(props) {
       <YearSummaryCard summary={summary} />
     </Flex>
     <Flex justify="center" wrap="wrap">
-      <WebcamMemo />
+      <AboutHomeCard />
     </Flex>
   </>;
 }

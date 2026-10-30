@@ -119,7 +119,8 @@ rsync "${RSYNC_ARGS[@]}" -e "$RSYNC_SSH" \
 
 echo "Syncing ingestion start script..."
 rsync "${RSYNC_ARGS[@]}" -e "$RSYNC_SSH" \
-    "$REPO_ROOT/scripts/start_save_latest.sh" "$REPO_ROOT/scripts/run_sun_classify.sh" "$DEPLOY_HOST:$REMOTE_ROOT/scripts/"
+    "$REPO_ROOT/scripts/start_save_latest.sh" "$REPO_ROOT/scripts/run_sun_classify.sh" \
+    "$REPO_ROOT/scripts/run_day_profile_warm.sh" "$DEPLOY_HOST:$REMOTE_ROOT/scripts/"
 
 if [[ "$DRY_RUN" == true ]]; then
     echo "Dry run complete; production was not changed or restarted."
@@ -150,6 +151,13 @@ ssh "${SSH_ARGS[@]}" "$DEPLOY_HOST" \
 
 echo "Verifying production backend..."
 RWCWX_PUBLIC_URL="$PUBLIC_URL" "$SCRIPT_DIR/verify_backend.sh"
+
+# Refill the Daily profile caches (read-only on the DB; ~1 s when warm, ~2.5 min after a cache-key change). Detached
+# so the deploy is not held up; the wrapper's flock keeps it from overlapping the daily cron run.
+echo "Starting Daily profile cache warm-up in the background (log: $REMOTE_ROOT/log/day_profile_warm.log)..."
+ssh "${SSH_ARGS[@]}" "$DEPLOY_HOST" \
+    "setsid nohup '$REMOTE_ROOT/scripts/run_day_profile_warm.sh' </dev/null >/dev/null 2>&1 &" ||
+    echo "Warning: could not start the warm-up; run $REMOTE_ROOT/scripts/run_day_profile_warm.sh on the server." >&2
 
 echo "Backend deployment complete: $PUBLIC_URL/api/web/dashboard/live"
 echo "Note: the save_latest.py ingestion daemon is not restarted by this script. If rwcwx/job/save_latest.py or a"

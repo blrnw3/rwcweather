@@ -1,8 +1,8 @@
 import { Box, Flex, Grid, Heading, Spinner, Text, useRadioGroup } from "@chakra-ui/react";
 import { Fragment, useContext } from 'react';
 import useSWR from 'swr';
-import { baseObs, fetcher, fmatAggTypeOpt, fmatForObs, fmatObsOpt, fmatYrOpt, isTotalObs, OBS } from '../../components/conf';
-import { DAILY_ONLY_OBS, DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, MINUTE_OBS_STATES, SunViewToggle } from '../../components/report';
+import { baseObs, DERIVED_PARENT, fetcher, fmatAggTypeOpt, fmatForObs, fmatObsOpt, fmatYrOpt, isTotalObs, OBS } from '../../components/conf';
+import { DAILY_ONLY_OBS, DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, MINUTE_OBS_STATES, DerivedVarNote, StatButtons, SunViewToggle } from '../../components/report';
 import { daysInMonth } from "../../components/dateUtil";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
@@ -97,15 +97,20 @@ function DailyMatrix(props) {
 
     // Convert input to matrix structure (map of month->array<day>)
     let data = new Map();
+    // Sunshine days filled from the weather-API estimate (no webcam data): "month-day" keys, marked with *.
+    const apiEst = new Set();
     for (let r of res) {
         let mon = months[r["d"][1] - 1];
         if (!data.has(mon)) {
             data.set(mon, Array(31));
         }
         data.get(mon)[r["d"][2]] = r["val"];
+        if (r["api_est"]) {
+            apiEst.add(mon + "-" + r["d"][2]);
+        }
     }
 
-    return <Grid id="obs-matrix-days"
+    return <><Grid id="obs-matrix-days"
         templateColumns="0.8fr repeat(12, 1fr)"
         templateRows="30px auto"
         overflow="auto"
@@ -127,6 +132,7 @@ function DailyMatrix(props) {
                         let col = "black";
                         let bg = "gray.200";
                         let hover = {}
+                        let est = false;
                         if (d > daysInMonth(props.year, m + 1)) {
                             // Invalid day
                             bg = ""
@@ -147,6 +153,7 @@ function DailyMatrix(props) {
                             v = matrixValue(unit, data.get(m)[d], fmat);
                             ({ bg, col } = getStyleForObsValue(data.get(m)[d], fmat, unit));
                             hover = { border: "1px solid " + col };
+                            est = apiEst.has(m + "-" + d);
                         }
                         // Past days link to that day's report, keeping the variable where the daily report has it.
                         const href = v !== "" ? dayReportHref(props.year, m + 1, d, obs) : null;
@@ -154,17 +161,23 @@ function DailyMatrix(props) {
                         bg = "var(--chakra-colors-" + bgComps[0] + "-" + bgComps[1] + ") !important";
                         return <Box key={m.toString() + "-" + d.toString()} className={"cell" + (href ? " day-link" : "")}
                             as={href ? "a" : "div"} href={href || undefined} display="block"
-                            title={href ? "Daily report for " + href.slice(18, 28) : undefined}
+                            title={href ? "Daily report for " + href.slice(18, 28) + (est ? " (estimated, no webcam data)" : "") : undefined}
                             textAlign="center" backgroundColor={bg} color={col}
                             border="1px solid transparent"
                             _hover={href ? { ...hover, textDecoration: "underline", cursor: "pointer" } : hover} px={1}
                         >
-                            {v}</Box>
+                            {est
+                                ? <Box as="span" position="relative">{v}<Box as="sup" className="api-est" position="absolute" left="100%" top="-0.1em" fontSize="0.7em" lineHeight="1">*</Box></Box>
+                                : v}</Box>
                     })}
                 </Box>
             </Fragment>
         })}
     </Grid>
+    {apiEst.size > 0 && <Text id="api-est-note" mt="2" fontSize="sm">
+        * estimated from weather-model sunshine and airport cloud reports (no webcam data)
+    </Text>}
+    </>
 }
 
 function MonthlyMatrix(props) {
@@ -257,7 +270,6 @@ const MATRIX_URL_STATE = {
 
 export default function Obs() {
     const [{ obs, aggType, year }, update] = useUrlState(MATRIX_URL_STATE);
-    const aggOpts = aggOptionsFor(obs);
     const obsOptions = OBS_OPTIONS;
 
     // Rain only has daily totals; other variables keep their statistic.
@@ -273,13 +285,13 @@ export default function Obs() {
             Reports: Annual matrix
         </Heading>
         <Heading as="h2" size="2">
-            Daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} for {year}
+            Daily {DERIVED_PARENT[obs] ? "" : fmatAggTypeOpt(aggType) + " "}{OBS.get(obs).name} for {year}
         </Heading>
         <ClimateNormalsLink />
 
         <RadioButtonGroup name="obs" value={baseObs(obs)} options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
         <SunViewToggle obs={obs} stat={aggType} fn={handleObsChange} Group={RadioButtonGroup} />
-        {baseObs(obs) !== "wind" && aggOpts.length > 1 && <RadioButtonGroup name="agg" value={aggType} options={aggOpts} optFormat={fmatAggTypeOpt} fn={setAggType} />}
+        <StatButtons name="agg" obs={obs} stat={aggType} options={aggOptionsFor} optFormat={fmatAggTypeOpt} fn={setAggType} onObs={handleObsChange} Group={RadioButtonGroup} />
         <RadioButtonGroup name="yr" value={year} options={years} optFormat={fmatYrOpt} fn={setYear} />
         
         <DailyMatrix obs={obs} aggType={aggType} year={year} />
@@ -287,10 +299,11 @@ export default function Obs() {
         {hasWaterYears(obs) && <RainTotals year={year} obs={obs} />}
 
         <Text mt="3">
-            Description: daily {fmatAggTypeOpt(aggType)} {OBS.get(obs).name} data for every day in the year {year}, along with
+            Description: daily {DERIVED_PARENT[obs] ? "" : fmatAggTypeOpt(aggType) + " "}{OBS.get(obs).name} data for every day in the year {year}, along with
             monthly aggregations - monthly maximum, minimum and averages for each month.
         </Text>
 
+      <DerivedVarNote obs={obs} mt="3" />
     </Page>
 
 }

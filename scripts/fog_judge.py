@@ -161,8 +161,14 @@ class Judge:
 
 
 def day_rows(d: date, session: requests.Session, frame_base: str, judge: Optional[Judge]) -> List[Dict]:
+    frames = rules.window_frames(d)
     rows, prev_md5 = [], None
-    for t in rules.window_frames(d):
+    if frames:
+        # Seed with the frame before the window (as the sun backfill starts 30 min before sunrise), so the first
+        # frame of a day inside a multi-day frozen run is gated too, not judged as new.
+        before = fetch(session, frame_url(frame_base, frames[0] - timedelta(minutes=rules.FRAME_MIN)))
+        prev_md5 = hashlib.md5(before).hexdigest() if before else None
+    for t in frames:
         row = dict(t=t.strftime("%Y-%m-%dT%H:%M:%SZ"), fog=None, confidence=None, reason=None, flags=None)
         data = fetch(session, frame_url(frame_base, t))
         if data is None:

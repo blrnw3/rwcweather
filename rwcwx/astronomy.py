@@ -106,6 +106,8 @@ def sunCoords(d):
 
 def getSetJ(h, lw, phi, dec, n, M, L):
     w = hourAngle(h, phi, dec)
+    if w is None:  # the sun never reaches this angle today
+        return None
     a = approxTransit(w, lw, n)
     return solarTransitJ(a, M, L)
 
@@ -162,6 +164,10 @@ def getTimes(date, lat, lng):
     for i in range(0, len(times)):
         time = times[i]
         Jset = getSetJ(time[0] * rad, lw, phi, dec, n, M, L)
+        if Jset is None:
+            # The sun never reaches this angle today (e.g. astronomical twilight lasting all night in high
+            # summer at high latitudes): leave both keys out rather than fail.
+            continue
         Jrise = Jnoon - (Jset - Jnoon)
         result[time[1]] = fromJulian(Jrise)
         result[time[2]] = fromJulian(Jset)
