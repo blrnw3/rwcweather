@@ -1075,11 +1075,11 @@ function HomePage(props) {
       <TemperatureHomeCard dash={data} summary={summary} />
       <WindHomeCard dash={data} summary={summary} />
       <RainHomeCard dash={data} summary={summary} />
+      <SunshineHomeCard dash={data} summary={summary} />
       <HumidityHomeCard dash={data} summary={summary} />
       <PressureHomeCard dash={data} summary={summary} />
       <DewPtHomeCard dash={data} summary={summary} />
       <AirQualityHomeCard dash={data} summary={summary} />
-      <SunshineHomeCard dash={data} summary={summary} />
     </Flex>
     <Flex justify="center" wrap="wrap">
       <ChartCardLatest />
