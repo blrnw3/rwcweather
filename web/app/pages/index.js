@@ -9,7 +9,6 @@ import { IconContext } from "react-icons";
 import { GiDew } from "react-icons/gi";
 import { FiChevronDown, FiWind } from "react-icons/fi";
 import { ImArrowDown, ImArrowUp } from "react-icons/im";
-import { IoTelescopeOutline } from "react-icons/io5";
 import { RiHazeLine } from "react-icons/ri";
 import { VscCircleFilled, VscDash } from "react-icons/vsc";
 import { WiBarometer, WiDaySunny, WiHumidity, WiRain, WiThermometer } from "react-icons/wi";
@@ -651,6 +650,7 @@ function SunshineHomeCard(props) {
     <Text>Monthly: <Text as="span" fontWeight="bold">{monthTotal != null ? formatObs(unit, monthTotal, "sun") : "–"}</Text>
       {monthPct != null && <Text as="span" fontSize="sm" color="gray.600" className="sun-month-pct"> ({Math.round(monthPct)}% of possible)</Text>}
     </Text>
+    <MoonLine astro={astro} />
   </HomeCard>
 }
 
@@ -722,24 +722,16 @@ function AirQualityHomeCard(props) {
   </HomeCard>
 }
 
-function AstronomyHomeCard(props) {
-  const astro = props.dash?.astronomy;
-  let frac = formatObs(unit, astro?.fraction * 100, "humi")
-  const icon = <Text as="span" color="black" className="home_ico_sml"><IoTelescopeOutline /></Text>
-  let phase = moonPhase(astro?.phase) || ["", ""];
-
-  return <HomeCard changed={null}>
-    <Text>
-      {icon}
-      <Text as="span" fontSize="2xl" paddingRight="1" paddingLeft="1">{frac} full &nbsp;<Tooltip label={phase[0]}>{phase[1]}</Tooltip></Text>
-    </Text>
-    <Text borderTop="1px solid #ccc">
-      Moon rise: <Text as="span" fontWeight="bold">{timeOf(astro?.rise)}</Text>
-    </Text>
-    <Text>
-      Moon set: <Text as="span" fontWeight="bold">{timeOf(astro?.set)}</Text>
-    </Text>
-  </HomeCard>
+// One compact moon line for the sun card: phase icon with % lit, then moonrise and moonset.
+function MoonLine({ astro }) {
+  const phase = moonPhase(astro?.phase) || ["", ""];
+  const lit = astro?.fraction != null ? Math.round(astro.fraction * 100) + "%" : "–";
+  return <Text borderTop="1px solid #ccc" className="sun-moon-line" whiteSpace="nowrap">
+    <Tooltip label={phase[0] || "Moon"}><Text as="span" aria-label={phase[0]}>{phase[1] || "Moon"}</Text></Tooltip>
+    {" "}<Text as="span" fontWeight="bold">{lit}</Text> lit
+    {" · "}Rise <Text as="span" fontWeight="bold">{timeOf(astro?.rise)}</Text>
+    {" · "}Set <Text as="span" fontWeight="bold">{timeOf(astro?.set)}</Text>
+  </Text>;
 }
 
 
@@ -1088,7 +1080,6 @@ function HomePage(props) {
       <DewPtHomeCard dash={data} summary={summary} />
       <AirQualityHomeCard dash={data} summary={summary} />
       <SunshineHomeCard dash={data} summary={summary} />
-      <AstronomyHomeCard dash={summary} summary={summary} />
     </Flex>
     <Flex justify="center" wrap="wrap">
       <ChartCardLatest />
