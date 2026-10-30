@@ -448,6 +448,8 @@ function WindHomeCard(props) {
   let avgWind = formatObs(unit, dash?.today?.wind_speed?.["avg"], "wind");
   let avgWdir = formatObs(unit, dash?.today?.wind_direction?.["avg"], "wdir");
   let yestAvg = formatObs(unit, props.summary?.["yesterday"]?.["wind_speed"]["avg"], "wind");
+  let yestGust = formatObs(unit, props.summary?.["yesterday"]?.["gust_speed"]?.["max_val"], "gust");
+  let yestGustAt = timeOf(props.summary?.["yesterday"]?.["gust_speed"]?.["max_at"]);
 
   let changed = dash ? dash["obs_change"].get("wind") : null;
 
@@ -468,6 +470,9 @@ function WindHomeCard(props) {
     </Text>
     <Text marginTop="1" >
       Yesterday avg: <Text as="span" fontWeight="bold">{yestAvg}</Text>
+    </Text>
+    <Text className="wind-yest-gust">
+      Yesterday max gust: <Text as="span" fontWeight="bold">{yestGust}</Text> @ {yestGustAt}
     </Text>
   </HomeCard>
 }
@@ -610,8 +615,6 @@ function SunshineHomeCard(props) {
   const icon = <Text as="span" color="orange.400" className="home_ico"><WiDaySunny /></Text>
   const hours = sun?.today_h != null ? formatObs(unit, sun.today_h, "sun") : "–";
   const possible = sun ? formatObs(unit, sun.possible_so_far_h, "sun") : "–";
-  const monthTotal = props.summary?.["month"]?.["sun_total"]?.["total"];
-  const monthPct = props.summary?.["month"]?.["sunpct_avg"]?.["avg"];
   let badge = null;
   const astro = props.summary?.astronomy;
   const nowMs = dash?.server?.epoch ? dash.server.epoch * 1000 : Date.now();
@@ -646,9 +649,6 @@ function SunshineHomeCard(props) {
       {fmtDaylightDelta(sun?.daylight_change_s) && <Tooltip label="Change in day length vs yesterday">
         <Text as="span" fontSize="sm" color="gray.600" whiteSpace="nowrap" className="sun-daylight-delta"> ({fmtDaylightDelta(sun.daylight_change_s)})</Text>
       </Tooltip>}
-    </Text>
-    <Text>Monthly: <Text as="span" fontWeight="bold">{monthTotal != null ? formatObs(unit, monthTotal, "sun") : "–"}</Text>
-      {monthPct != null && <Text as="span" fontSize="sm" color="gray.600" className="sun-month-pct"> ({Math.round(monthPct)}% of possible)</Text>}
     </Text>
     <MoonLine astro={astro} />
   </HomeCard>
@@ -1075,11 +1075,11 @@ function HomePage(props) {
       <TemperatureHomeCard dash={data} summary={summary} />
       <WindHomeCard dash={data} summary={summary} />
       <RainHomeCard dash={data} summary={summary} />
+      <SunshineHomeCard dash={data} summary={summary} />
       <HumidityHomeCard dash={data} summary={summary} />
       <PressureHomeCard dash={data} summary={summary} />
       <DewPtHomeCard dash={data} summary={summary} />
       <AirQualityHomeCard dash={data} summary={summary} />
-      <SunshineHomeCard dash={data} summary={summary} />
     </Flex>
     <Flex justify="center" wrap="wrap">
       <ChartCardLatest />
