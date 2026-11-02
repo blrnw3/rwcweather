@@ -1,0 +1,122 @@
+{
+ "properties": {
+  "updateTime": "2026-11-02T16:36:40+00:00",
+  "generatedAt": "2026-11-02T17:44:37+00:00",
+  "periods": [
+   {
+    "number": 1,
+    "name": "Today",
+    "startTime": "2026-11-02T09:00:00-08:00",
+    "endTime": "2026-11-02T18:00:00-08:00",
+    "isDaytime": true,
+    "temperature": 67,
+    "temperatureUnit": "F",
+    "temperatureTrend": null,
+    "probabilityOfPrecipitation": {
+     "unitCode": "wmoUnit:percent",
+     "value": 1
+    },
+    "windSpeed": "2 mph",
+    "windDirection": "NNE",
+    "icon": "https://api.weather.gov/icons/land/day/bkn?size=medium",
+    "shortForecast": "Partly Sunny",
+    "detailedForecast": "Partly sunny. High near 67, with temperatures falling to around 63 in the afternoon. North northeast wind around 2 mph."
+   },
+   {
+    "number": 2,
+    "name": "Tonight",
+    "startTime": "2026-11-02T18:00:00-08:00",
+    "endTime": "2026-11-03T06:00:00-08:00",
+    "isDaytime": false,
+    "temperature": 52,
+    "temperatureUnit": "F",
+    "temperatureTrend": null,
+    "probabilityOfPrecipitation": {
+     "unitCode": "wmoUnit:percent",
+     "value": 10
+    },
+    "windSpeed": "0 to 5 mph",
+    "windDirection": "SSW",
+    "icon": "https://api.weather.gov/icons/land/night/bkn?size=medium",
+    "shortForecast": "Mostly Cloudy",
+    "detailedForecast": "Mostly cloudy, with a low around 52. South southwest wind 0 to 5 mph. New rainfall amounts less than a tenth of an inch possible."
+   },
+   {
+    "number": 3,
+    "name": "Tuesday",
+    "startTime": "2026-11-03T06:00:00-08:00",
+    "endTime": "2026-11-03T18:00:00-08:00",
+    "isDaytime": true,
+    "temperature": 64,
+    "temperatureUnit": "F",
+    "temperatureTrend": null,
+    "probabilityOfPrecipitation": {
+     "unitCode": "wmoUnit:percent",
+     "value": 82
+    },
+    "windSpeed": "3 to 12 mph",
+    "windDirection": "S",
+    "icon": "https://api.weather.gov/icons/land/day/rain_showers,80/rain_showers,40?size=medium",
+    "shortForecast": "Rain Showers",
+    "detailedForecast": "Rain showers. Partly sunny. High near 64, with temperatures falling to around 60 in the afternoon. South wind 3 to 12 mph, with gusts as high as 23 mph. Chance of precipitation is 80%. New rainfall amounts less than a tenth of an inch possible."
+   },
+   {
+    "number": 4,
+    "name": "Tuesday Night",
+    "startTime": "2026-11-03T18:00:00-08:00",
+    "endTime": "2026-11-04T06:00:00-08:00",
+    "isDaytime": false,
+    "temperature": 51,
+    "temperatureUnit": "F",
+    "temperatureTrend": null,
+    "probabilityOfPrecipitation": {
+     "unitCode": "wmoUnit:percent",
+     "value": 23
+    },
+    "windSpeed": "3 mph",
+    "windDirection": "SE",
+    "icon": "https://api.weather.gov/icons/land/night/rain_showers,20/sct?size=medium",
+    "shortForecast": "Slight Chance Rain Showers then Partly Cloudy",
+    "detailedForecast": "A slight chance of rain showers before 7pm. Partly cloudy, with a low around 51. Southeast wind around 3 mph. Chance of precipitation is 20%. New rainfall amounts less than a tenth of an inch possible."
+   },
+   {
+    "number": 5,
+    "name": "Wednesday",
+    "startTime": "2026-11-04T06:00:00-08:00",
+    "endTime": "2026-11-04T18:00:00-08:00",
+    "isDaytime": true,
+    "temperature": 67,
+    "temperatureUnit": "F",
+    "temperatureTrend": null,
+    "probabilityOfPrecipitation": {
+     "unitCode": "wmoUnit:percent",
+     "value": 1
+    },
+    "windSpeed": "2 to 8 mph",
+    "windDirection": "NNE",
+    "icon": "https://api.weather.gov/icons/land/day/few?size=medium",
+    "shortForecast": "Sunny",
+    "detailedForecast": "Sunny, with a high near 67. North northeast wind 2 to 8 mph."
+   },
+   {
+    "number": 6,
+    "name": "Wednesday Night",
+    "startTime": "2026-11-04T18:00:00-08:00",
+    "endTime": "2026-11-05T06:00:00-08:00",
+    "isDaytime": false,
+    "temperature": 52,
+    "temperatureUnit": "F",
+    "temperatureTrend": null,
+    "probabilityOfPrecipitation": {
+     "unitCode": "wmoUnit:percent",
+     "value": 0
+    },
+    "windSpeed": "1 to 12 mph",
+    "windDirection": "NNW",
+    "icon": "https://api.weather.gov/icons/land/night/sct?size=medium",
+    "shortForecast": "Partly Cloudy",
+    "detailedForecast": "Partly cloudy, with a low around 52."
+   }
+  ]
+ }
+}

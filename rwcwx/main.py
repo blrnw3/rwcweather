@@ -14,6 +14,7 @@ from flask.json import JSONEncoder
 
 import rwcwx.routes as r
 from rwcwx.fog import api as fog_api
+from rwcwx.forecast import api as forecast_api
 from rwcwx.recap import api as recap_api
 
 
@@ -89,3 +90,6 @@ app.add_url_rule("/api/recap", view_func=recap_api.post_recap, methods=["POST"])
 
 # Written recaps for the home page (latest of each kind)
 app.add_url_rule("/api/recap/latest", view_func=recap_api.get_latest)
+
+# NWS forecast, forecast discussion highlights and active alerts for the home page (cached server-side)
+app.add_url_rule("/api/forecast", view_func=forecast_api.get_forecast)
