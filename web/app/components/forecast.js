@@ -2,7 +2,7 @@ import { Box, Button, Collapse, Grid, Link, ListItem, Spinner, Text, UnorderedLi
 import { useContext, useState } from 'react';
 import { FiChevronDown } from "react-icons/fi";
 import useSWR from "swr";
-import { convFunction, unitForObsType } from '../format';
+import { convFunction, formatObs, unitForObsType } from '../format';
 import { fetcher } from './conf';
 import { UnitCtx } from './Page';
 
@@ -31,6 +31,13 @@ function fmtWind(unit, p) {
   const conv = convFunction(unit, "wind");
   const lo = Math.round(conv(p.wind_mph_lo)), hi = Math.round(conv(p.wind_mph_hi));
   return (p.wind_dir ? p.wind_dir + " " : "") + (lo === hi ? hi : lo + "–" + hi) + " " + unitForObsType(unit, "wind");
+}
+
+// NWS QPF arrives in mm; the site's rain base unit is inches. null when it rounds to zero in the chosen unit.
+export function fmtRain(unit, mm, keepZero = false) {
+  if (mm == null) return null;
+  const txt = formatObs(unit, mm / 25.4, "rain");
+  return !keepZero && parseFloat(txt) === 0 ? null : txt;
 }
 
 export function fmtWhen(iso) {
@@ -74,20 +81,30 @@ function Periods({ periods, unit }) {
   if (periods.length === 0) {
     return <Text fontSize="sm" color="gray.600" my="2">No forecast periods yet.</Text>;
   }
-  // Desktop: name | short forecast | temp | rain · wind on one line. Mobile: the short forecast drops to its own
-  // line under the numbers (CSS order), so neither gets squeezed.
-  return <Grid id="forecast-periods" templateColumns={{ base: "auto auto 1fr", md: "auto 1fr auto auto" }}
-    columnGap="2" rowGap={{ base: "0", md: "1" }} fontSize="sm" mt="1" alignItems="baseline">
-    {periods.map((p, i) => [
-      <Text key={p.start + "n"} order={i * 4} fontWeight="bold" whiteSpace="nowrap" mt={{ base: i ? 1 : 0, md: 0 }}>{p.name}</Text>,
-      <Text key={p.start + "s"} order={{ base: i * 4 + 3, md: i * 4 + 1 }} gridColumn={{ base: "1 / -1", md: "auto" }}
-        title={p.detailed} noOfLines={1} color={{ base: "gray.700", md: "inherit" }}>{p.short}</Text>,
-      <Text key={p.start + "t"} order={{ base: i * 4 + 1, md: i * 4 + 2 }} whiteSpace="nowrap" title={p.is_daytime ? "High" : "Low"}
-        color={p.is_daytime ? "red.700" : "blue.700"}>{p.is_daytime ? "Hi " : "Lo "}{fmtTemp(unit, p.temp_c)}</Text>,
-      <Text key={p.start + "w"} order={{ base: i * 4 + 2, md: i * 4 + 3 }} whiteSpace="nowrap" color="gray.700"
-        title="Chance of precipitation · wind">💧{p.pop}% · {fmtWind(unit, p)}</Text>,
-    ])}
+  // Two lines per period: name | Hi/Lo | rain chance (+ forecast amount), then the short forecast and wind.
+  return <Grid id="forecast-periods" templateColumns="auto auto 1fr" columnGap="2" rowGap="0" fontSize="sm" mt="1" alignItems="baseline">
+    {periods.map((p, i) => {
+      const rain = fmtRain(unit, p.qpf_mm);
+      return [
+        <Text key={p.start + "n"} fontWeight="bold" whiteSpace="nowrap" mt={i ? 1 : 0}>{p.name}</Text>,
+        <Text key={p.start + "t"} whiteSpace="nowrap" title={p.is_daytime ? "High" : "Low"}
+          color={p.is_daytime ? "red.700" : "blue.700"}>{p.is_daytime ? "Hi " : "Lo "}{fmtTemp(unit, p.temp_c)}</Text>,
+        <Text key={p.start + "r"} whiteSpace="nowrap" color="gray.700" title="Chance of precipitation (forecast amount)">
+          💧{p.pop}%{rain && <Text as="span" className="forecast-qpf" color="blue.700"> · {rain}</Text>}</Text>,
+        <Text key={p.start + "s"} gridColumn="1 / -1" title={p.detailed} noOfLines={1} color="gray.700">
+          {p.short} · <Text as="span" whiteSpace="nowrap">{fmtWind(unit, p)}</Text></Text>,
+      ];
+    })}
   </Grid>;
+}
+
+function RainTotal({ periods, total, unit }) {
+  if (!periods || periods.length === 0 || total == null) return null;
+  const first = periods[0].name, last = periods[periods.length - 1].name;
+  return <Text id="forecast-qpf-total" fontSize="sm" mt="1" color="gray.700">
+    Forecast rain, {first} to {last}: <Text as="span" fontWeight="bold" color="blue.700">
+      {fmtRain(unit, total, true)}</Text>
+  </Text>;
 }
 
 function Discussion({ d }) {
@@ -95,7 +112,9 @@ function Discussion({ d }) {
   if (d == null) {
     return <Text className="forecast-afd-unavailable" fontSize="xs" color="gray.600" mt="2">Forecast discussion unavailable right now.</Text>;
   }
-  const hasMore = (d.local?.length || 0) > 0 || d.short_term || d.long_term || d.synopsis;
+  const shown = new Set(d.highlights || []);
+  const otherKms = (d.key_messages || []).filter((m) => !shown.has(m));
+  const hasMore = otherKms.length > 0 || d.short_term || d.long_term || d.synopsis;
   const url = SAFE_HREF.test(d.url || "") ? d.url : null;
   return <Box id="forecast-discussion" mt="2" fontSize="sm">
     <Text fontWeight="bold">
@@ -107,16 +126,20 @@ function Discussion({ d }) {
         <Box as={FiChevronDown} transition="transform 0.2s" transform={isOpen ? "rotate(180deg)" : undefined} />
       </Button>}
     </Text>
-    {d.key_messages?.length > 0
-      ? <UnorderedList className="forecast-key-messages" ml="4" spacing="0" lineHeight="short">
-        {d.key_messages.map((m, i) => <ListItem key={i}>{m}</ListItem>)}
-      </UnorderedList>
+    {d.highlights?.length > 0
+      ? <>
+        <Text className="forecast-highlights-scope" fontSize="xs" color="gray.600">
+          {d.highlights_scope === "peninsula" ? "For the SF Peninsula" : "General key messages (nothing Peninsula-specific today)"}</Text>
+        <UnorderedList className="forecast-highlights" ml="4" spacing="0" lineHeight="short">
+          {d.highlights.map((m, i) => <ListItem key={i}>{m}</ListItem>)}
+        </UnorderedList>
+      </>
       : !isOpen && d.short_term && <Text noOfLines={2} lineHeight="short">{d.short_term}</Text>}
     <Collapse in={isOpen} animateOpacity>
       <Box id="forecast-afd-details" className="forecast-afd-details" color="gray.700" lineHeight="short" mt="1">
-        {d.local?.length > 0 && <>
-          <Text fontWeight="bold" fontSize="xs" mt="1">Bay Area mentions</Text>
-          {d.local.map((s, i) => <Text key={i} fontSize="xs">“{s}”</Text>)}
+        {otherKms.length > 0 && <>
+          <Text fontWeight="bold" fontSize="xs" mt="1">Other key messages</Text>
+          {otherKms.map((s, i) => <Text key={i} fontSize="xs">• {s}</Text>)}
         </>}
         {d.synopsis && <><Text fontWeight="bold" fontSize="xs" mt="1">Synopsis</Text><Text fontSize="xs">{d.synopsis}</Text></>}
         {d.short_term && <><Text fontWeight="bold" fontSize="xs" mt="1">Short term</Text><Text fontSize="xs">{d.short_term}</Text></>}
@@ -139,6 +162,7 @@ export function ForecastCard() {
     {fc && <>
       <Alerts alerts={fc.alerts} />
       <Periods periods={fc.periods} unit={unit} />
+      <RainTotal periods={fc.periods} total={fc.qpf_total_mm} unit={unit} />
       <Discussion d={fc.discussion} />
     </>}
     <Text fontSize="xs" color="gray.600" mt="2">

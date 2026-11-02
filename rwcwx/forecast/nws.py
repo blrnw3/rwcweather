@@ -71,6 +71,14 @@ def forecast() -> Optional[dict]:
     return _safe("forecast", TTL_FORECAST, lambda: get_json(p["forecast"])["properties"])
 
 
+def gridpoint() -> Optional[dict]:
+    """Raw gridpoint data (for quantitativePrecipitation); same cache and failure handling as the forecast."""
+    p = point()
+    if not p or not p.get("forecastGridData"):
+        return None
+    return _safe("gridpoint", TTL_FORECAST, lambda: get_json(p["forecastGridData"])["properties"])
+
+
 def afd() -> Optional[dict]:
     p = point()
     office = (p or {}).get("gridId") or "MTR"

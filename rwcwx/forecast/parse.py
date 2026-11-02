@@ -7,8 +7,14 @@ import re
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 
-LOCAL_TERMS = re.compile(r"\b(Peninsula|San Mateo|Redwood City|Bay Area|SF Bay|San Francisco Bay|"
-                         r"Santa Cruz Mountains|Bay shoreline|urban areas?)\b", re.I)
+# SF Peninsula relevance: the Peninsula itself, SF, San Mateo, the Santa Cruz Mountains, the (non-Central) coast and
+# coastal hills, beaches, and Bay Area / SF Bay wording. Marine-only lines ("coastal waters") don't count.
+PENINSULA_TERMS = re.compile(r"\b(Peninsula|San Francisco|SF|San Mateo|Redwood City|Half Moon Bay|Pacifica|"
+                             r"Santa Cruz Mountains|coastal hills|coastal mountains|beach(?:es)?|"
+                             r"(?<!Central )(?<!Big Sur )coast(?:al|line)?|Bay Area|SF Bay|Bay shoreline)\b")
+NOT_PENINSULA = re.compile(r"coastal waters|\bwaters\b|\bTAF|\bVFR|\bIFR", re.I)
+LOCAL_TERMS = PENINSULA_TERMS
+MAX_HIGHLIGHTS = 3
 MAX_KEY_MESSAGES = 5
 MAX_LOCAL_MENTIONS = 3
 EXCERPT_CHARS = 600
@@ -58,11 +64,69 @@ def periods(fc: Optional[dict], today: date) -> Optional[List[dict]]:
             temp_c = f_to_c(temp)
         pop = (p.get("probabilityOfPrecipitation") or {}).get("value")
         out.append(dict(name=p.get("name"), day=0 if d == today else 1, is_daytime=bool(p.get("isDaytime")),
-                        start=p.get("startTime"), short=p.get("shortForecast"), detailed=p.get("detailedForecast"),
+                        start=p.get("startTime"), end=p.get("endTime"), short=p.get("shortForecast"), detailed=p.get("detailedForecast"),
                         temp_c=temp_c, pop=int(pop) if pop is not None else 0,
                         wind_dir=p.get("windDirection") or None, wind_mph_lo=lo, wind_mph_hi=hi,
                         icon=p.get("icon")))
     return out
+
+
+# ---------------------------------------------------------------- QPF (rain totals)
+
+DURATION = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$")
+
+
+def _interval(valid_time: str):
+    """'2026-11-03T12:00:00+00:00/PT6H' -> (start, end) aware datetimes; None if unparseable."""
+    try:
+        start_s, dur = valid_time.split("/")
+        m = DURATION.match(dur)
+        if not m or not any(m.groups()):
+            return None
+        d, h, mi = (int(g or 0) for g in m.groups())
+        start = datetime.fromisoformat(start_s)
+        return start, start + timedelta(days=d, hours=h, minutes=mi)
+    except (AttributeError, ValueError):
+        return None
+
+
+def qpf_mm(grid: Optional[dict], start_iso: str, end_iso: str) -> Optional[float]:
+    """Forecast precipitation (mm) between two times: each QPF interval contributes in proportion to its overlap
+    (NWS spreads an interval's amount evenly; 6 h blocks rarely line up with the 6am/6pm periods).
+    None when there is no QPF data or it doesn't cover the whole window."""
+    q = (grid or {}).get("quantitativePrecipitation") or {}
+    vals = q.get("values")
+    if not isinstance(vals, list) or not start_iso or not end_iso:
+        return None
+    factor = 25.4 if "in" == (q.get("uom") or "wmoUnit:mm").split(":")[-1] else 1.0
+    try:
+        w0, w1 = datetime.fromisoformat(start_iso), datetime.fromisoformat(end_iso)
+    except ValueError:
+        return None
+    total, covered = 0.0, 0.0
+    for v in vals:
+        iv = _interval((v or {}).get("validTime") or "")
+        if iv is None or v.get("value") is None:
+            continue
+        a, b = max(iv[0], w0), min(iv[1], w1)
+        if b <= a:
+            continue
+        frac = (b - a).total_seconds() / (iv[1] - iv[0]).total_seconds()
+        total += float(v["value"]) * factor * frac
+        covered += (b - a).total_seconds()
+    if covered < (w1 - w0).total_seconds() - 60:
+        return None
+    return round(total, 2)
+
+
+def add_qpf(periods_: Optional[List[dict]], grid: Optional[dict]) -> Optional[float]:
+    """Set each period's qpf_mm; return the whole window's total (None if any period lacks coverage)."""
+    if not periods_:
+        return None
+    for p in periods_:
+        p["qpf_mm"] = qpf_mm(grid, p.get("start"), p.get("end"))
+    amounts = [p["qpf_mm"] for p in periods_]
+    return None if any(a is None for a in amounts) else round(sum(amounts), 2)
 
 
 # ---------------------------------------------------------------- AFD
@@ -122,6 +186,24 @@ def excerpt(body: Optional[str], limit: int = EXCERPT_CHARS) -> Optional[str]:
     return out or None
 
 
+def is_peninsula(text: str) -> bool:
+    return bool(PENINSULA_TERMS.search(text)) and not NOT_PENINSULA.search(text)
+
+
+def highlights(key_msgs: List[str], local: List[str]) -> (List[str], str):
+    """Headline lines for the collapsed card: Peninsula-relevant key messages, then Peninsula-relevant sentences
+    from the synopsis / short / long term; general key messages only if nothing Peninsula-relevant exists."""
+    pen = [m for m in key_msgs if is_peninsula(m)]
+    for s in local:
+        if len(pen) >= MAX_HIGHLIGHTS:
+            break
+        if s not in pen:
+            pen.append(s)
+    if pen:
+        return pen[:MAX_HIGHLIGHTS], "peninsula"
+    return key_msgs[:MAX_HIGHLIGHTS], "general"
+
+
 def local_mentions(*bodies: Optional[str]) -> List[str]:
     """Sentences that name the Peninsula / Bay Area (in order, de-duplicated, capped)."""
     seen, out = set(), []
@@ -129,7 +211,7 @@ def local_mentions(*bodies: Optional[str]) -> List[str]:
         if not body:
             continue
         for s in sentences(" ".join(_paragraphs(_strip_meta(body)))):
-            if LOCAL_TERMS.search(s) and s not in seen and len(s) <= 300:
+            if is_peninsula(s) and s not in seen and len(s) <= 300:
                 seen.add(s)
                 out.append(s)
     return out[:MAX_LOCAL_MENTIONS]
@@ -143,10 +225,13 @@ def discussion(product: Optional[dict]) -> Optional[dict]:
     long_ = secs.get("LONG TERM")
     synopsis = secs.get("SYNOPSIS") or secs.get("DISCUSSION")
     office = (product.get("issuingOffice") or "KMTR")[-3:]
-    return dict(issued=product.get("issuanceTime"), office=office,
-                key_messages=key_messages(secs.get("KEY MESSAGES")),
+    kms = key_messages(secs.get("KEY MESSAGES"))
+    local = local_mentions(synopsis, short, long_)
+    hl, scope = highlights(kms, local)
+    return dict(issued=product.get("issuanceTime"), office=office, key_messages=kms,
+                highlights=hl, highlights_scope=scope,
                 synopsis=excerpt(synopsis), short_term=excerpt(short), long_term=excerpt(long_),
-                local=local_mentions(short, long_, synopsis),
+                local=local,
                 url=f"https://forecast.weather.gov/product.php?site={office}&issuedby={office}&product=AFD")
 
 

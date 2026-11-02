@@ -150,6 +150,7 @@ def _client(monkeypatch, fc=FORECAST, afd=AFD, alerts=ALERTS):
     monkeypatch.setattr(nws, "forecast", lambda: fc)
     monkeypatch.setattr(nws, "afd", lambda: afd)
     monkeypatch.setattr(nws, "alerts", lambda: alerts)
+    monkeypatch.setattr(nws, "gridpoint", lambda: None)
     # 17:30 UTC = 09:30 PST on Mon Nov 2
     monkeypatch.setattr(fc_api, "_now", lambda: datetime(2026, 11, 2, 17, 30, tzinfo=timezone.utc))
     app = Flask(__name__)
@@ -176,3 +177,73 @@ def test_endpoint_local_date_late_evening(monkeypatch):
 def test_endpoint_degrades_when_nws_down(monkeypatch):
     res = _client(monkeypatch, fc=None, afd=None, alerts=None).get("/api/forecast").get_json()["result"]
     assert res["periods"] is None and res["discussion"] is None and res["alerts"] is None
+
+
+# ---------------------------------------------------------------- QPF rain totals
+
+GRID = load("gridpoint_qpf_mtr_87_91.json")["properties"]
+
+
+def test_qpf_per_period_prorates_6h_blocks():
+    ps = parse.periods(FORECAST, date(2026, 11, 2))
+    total = parse.add_qpf(ps, GRID)
+    # Today 09-18 PST = 17Z-02Z: dry. Tonight 02Z-14Z Nov 3: 1/3 of the 12Z block (0.254 mm) = 0.085.
+    # Tuesday 14Z-02Z: 2/3 of 12Z (0.169) + 18Z (0.762) + 1/3 of 00Z (0.085). Tuesday night: 2/3 of 00Z = 0.169.
+    assert [p["qpf_mm"] for p in ps] == [0, pytest.approx(0.085, abs=0.01), pytest.approx(1.016, abs=0.01),
+                                         pytest.approx(0.169, abs=0.01)]
+    assert total == pytest.approx(1.27, abs=0.01)
+
+
+def test_qpf_interval_parsing():
+    a, b = parse._interval("2026-11-02T10:00:00+00:00/PT2H")
+    assert (b - a).total_seconds() == 7200
+    a, b = parse._interval("2026-11-02T00:00:00+00:00/P1DT6H")
+    assert (b - a).total_seconds() == 30 * 3600
+    assert parse._interval("bad") is None and parse._interval("2026-11-02T00:00:00+00:00/P") is None
+
+
+def test_qpf_window_partly_covered_or_missing():
+    grid = {"quantitativePrecipitation": {"uom": "wmoUnit:mm",
+                                          "values": [{"validTime": "2026-11-02T00:00:00+00:00/PT6H", "value": 6}]}}
+    assert parse.qpf_mm(grid, "2026-11-02T01:00:00+00:00", "2026-11-02T04:00:00+00:00") == 3      # prorated
+    assert parse.qpf_mm(grid, "2026-11-02T03:00:00+00:00", "2026-11-02T09:00:00+00:00") is None   # not covered
+    assert parse.qpf_mm(None, "2026-11-02T01:00:00+00:00", "2026-11-02T04:00:00+00:00") is None
+    ps = [{"start": "2026-11-02T01:00:00+00:00", "end": "2026-11-02T04:00:00+00:00"},
+          {"start": "2026-11-02T05:00:00+00:00", "end": "2026-11-02T08:00:00+00:00"}]
+    assert parse.add_qpf(ps, grid) is None and ps[0]["qpf_mm"] == 3 and ps[1]["qpf_mm"] is None
+
+
+# ---------------------------------------------------------------- Peninsula focus
+
+def test_highlights_lead_with_peninsula():
+    d = parse.discussion(AFD)
+    assert d["highlights_scope"] == "peninsula"
+    assert d["highlights"][0].startswith("Hazardous beach conditions")
+    assert any("Bay Area 0.01-0.25" in s for s in d["highlights"])
+    assert not any("interior Central Coast" in s and "Bay" not in s for s in d["highlights"])
+    assert len(d["highlights"]) <= parse.MAX_HIGHLIGHTS
+
+
+@pytest.mark.parametrize("text,yes", [
+    ("Gusty winds over the Santa Cruz Mountains.", True), ("Drizzle along the San Mateo coast.", True),
+    ("Fog for San Francisco and the Peninsula.", True), ("Dry for the interior Central Coast.", False),
+    ("Seas build over the coastal waters.", False), ("Rain in the North Bay.", False)])
+def test_is_peninsula(text, yes):
+    assert parse.is_peninsula(text) is yes
+
+
+def test_highlights_general_fallback():
+    hl, scope = parse.highlights(["Warm in the North Bay valleys", "Dry through Friday"], [])
+    assert scope == "general" and hl == ["Warm in the North Bay valleys", "Dry through Friday"]
+    hl, scope = parse.highlights(["Dry through Friday"], ["Fog on the Peninsula."])
+    assert scope == "peninsula" and hl == ["Fog on the Peninsula."]
+
+
+def test_endpoint_includes_qpf(monkeypatch):
+    c = _client(monkeypatch)
+    monkeypatch.setattr(nws, "gridpoint", lambda: GRID)
+    res = c.get("/api/forecast").get_json()["result"]
+    assert res["qpf_total_mm"] == pytest.approx(1.27, abs=0.01)
+    monkeypatch.setattr(nws, "gridpoint", lambda: None)
+    res = c.get("/api/forecast").get_json()["result"]
+    assert res["qpf_total_mm"] is None and res["periods"][0]["qpf_mm"] is None
