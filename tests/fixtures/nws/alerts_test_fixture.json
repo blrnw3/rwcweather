@@ -1,0 +1,11 @@
+{"_comment": "TEST FIXTURE (synthetic, not a real alert): shape of api.weather.gov/alerts/active features.",
+ "features": [
+  {"properties": {"status": "Actual", "messageType": "Alert", "event": "Wind Advisory", "severity": "Moderate",
+   "headline": "Wind Advisory issued November 2 at 3:00AM PST until November 3 at 4:00PM PST by NWS San Francisco CA",
+   "onset": "2026-11-03T04:00:00-08:00", "ends": "2026-11-03T16:00:00-08:00", "expires": "2026-11-02T15:00:00-08:00",
+   "senderName": "NWS San Francisco CA",
+   "description": "* WHAT...South winds 20 to 30 mph with gusts up to 45 mph.\n\n* WHERE...San Francisco Peninsula Coast and Santa Cruz Mountains."}},
+  {"properties": {"status": "Test", "messageType": "Alert", "event": "Test Message", "severity": "Unknown", "headline": "ignore me"}},
+  {"properties": {"status": "Actual", "messageType": "Alert", "event": "High Wind Warning", "severity": "Severe",
+   "headline": "High Wind Warning until 4PM", "expires": "2026-11-03T16:00:00-08:00", "description": ""}}
+ ]}

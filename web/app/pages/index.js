@@ -21,6 +21,7 @@ import { SunRibbon, useSunDay, fmtDaylightDelta } from '../components/sun';
 import { WetRibbon } from '../components/wet';
 import RadioCard from '../components/RadioCard';
 import { RecapCard } from '../components/recap';
+import { ForecastCard } from '../components/forecast';
 import { aqiStatus, formatObs, moonPhase, prettySecs, timeOf } from '../format';
 import {
   CLIMATE_PAGE, ClimateAnom, annualNormal, dailyNormal, monthlyNormal,
@@ -1094,6 +1095,7 @@ function HomePage(props) {
     <Flex justify="center" wrap="wrap">
       <RecapCard />
       <DayClimateExtremesCard dash={data} summary={summary} />
+      <ForecastCard />
     </Flex>
     <Flex justify="center" wrap="wrap">
       <MonthSummaryCard summary={summary} />
