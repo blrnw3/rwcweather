@@ -133,6 +133,54 @@ def test_cache_ttl_backoff_and_stale(monkeypatch):
     assert nws._safe("y", 600, boom, now) is None
 
 
+def test_long_ttl_success_is_not_dropped_after_stale_max():
+    # Regression: the 24 h /points entry was treated as stale 3 h after a *successful* fetch, so point() returned
+    # None and the forecast and rain totals went blank ~3 h after each deploy/worker start.
+    nws.clear()
+    t = [1000.0]
+    now = lambda: t[0]
+    calls = []
+
+    def ok():
+        calls.append(1)
+        return {"gridId": "MTR"}
+
+    assert nws._safe("p", nws.TTL_POINT, ok, now) == {"gridId": "MTR"}
+    for step in (nws.STALE_MAX - 1, 2, 6 * 3600, 12 * 3600):
+        t[0] += step
+        assert nws._safe("p", nws.TTL_POINT, ok, now) == {"gridId": "MTR"}
+    assert calls == [1]                                    # still the one fetch, within 24 h
+    t[0] = 1000 + nws.TTL_POINT + 1
+    assert nws._safe("p", nws.TTL_POINT, ok, now) == {"gridId": "MTR"} and calls == [1, 1]
+    nws.clear()
+
+
+def test_point_failure_after_long_success_serves_stale_then_none():
+    nws.clear()
+    t = [1000.0]
+    now = lambda: t[0]
+
+    def boom():
+        raise IOError("x")
+    nws._safe("p", nws.TTL_POINT, lambda: {"gridId": "MTR"}, now)
+    t[0] = 1000 + nws.TTL_POINT + 1                       # due again, NWS down; last good is >3 h old
+    assert nws._safe("p", nws.TTL_POINT, boom, now) is None
+    nws.clear()
+
+
+def test_forecast_survives_hours_after_point_lookup(monkeypatch):
+    nws.clear()
+    t = [5000.0]
+    monkeypatch.setattr(nws.time, "monotonic", lambda: t[0])
+    point = {"forecast": "https://example/forecast", "forecastGridData": "https://example/grid", "gridId": "MTR"}
+    monkeypatch.setattr(nws, "get_json", lambda url, accept=None: {"properties": point} if "points" in url
+                        else {"properties": FORECAST})
+    assert nws.forecast() is not None
+    t[0] += 4 * 3600                                       # 4 h later: forecast due again, point still cached
+    assert nws.forecast() is not None and nws.point() is not None
+    nws.clear()
+
+
 def test_fetch_failure_is_logged_without_response_text(monkeypatch, caplog):
     nws.clear()
 

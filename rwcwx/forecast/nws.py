@@ -32,32 +32,44 @@ def get_json(url: str, accept: str = "application/geo+json") -> Any:
 
 
 _lock = threading.Lock()
-_cache: Dict[str, Tuple[float, float, Any]] = {}     # name -> (next check due, last good fetch, value)
+_cache: Dict[str, Tuple[float, Any]] = {}     # name -> (next fetch due, value to serve until then)
+_good: Dict[str, Tuple[float, Any]] = {}      # name -> (time of last successful fetch, its value)
 STALE_MAX = 3 * 3600
 
 
-def _safe(name: str, ttl: float, fn: Callable[[], Any], now: Callable[[], float] = time.monotonic) -> Optional[Any]:
+def _safe(name: str, ttl: float, fn: Callable[[], Any], now: Optional[Callable[[], float]] = None) -> Optional[Any]:
     """fn()'s value, cached for ttl seconds. A failed fetch is retried after TTL_FAILED, and meanwhile the last
-    good value (if under STALE_MAX old) is served, so a brief NWS outage doesn't blank the card."""
-    t = now()
+    good value (if under STALE_MAX old) is served, so a brief NWS outage doesn't blank the card.
+
+    STALE_MAX only limits how long a last-good value is served *after a failure*; a successful fetch is served for
+    its full ttl even when that is longer (the 24 h /points lookup)."""
+    t = (now or time.monotonic)()
     with _lock:
         hit = _cache.get(name)
     if hit is not None and t < hit[0]:
-        return hit[2] if hit[1] is not None and t - hit[1] < STALE_MAX else None
+        return hit[1]
     try:
-        entry = (t + ttl, t, fn())
+        val = fn()
+        entry = (t + ttl, val)
+        with _lock:
+            _good[name] = (t, val)
     except Exception as e:      # network, HTTP, JSON or shape errors; never echo the response
         logger.warning(f"NWS {name} fetch failed: {type(e).__name__}")
-        good = hit if hit is not None and hit[1] is not None and t - hit[1] < STALE_MAX else None
-        entry = (t + TTL_FAILED, good[1], good[2]) if good else (t + TTL_FAILED, None, None)
+        with _lock:
+            good = _good.get(name)
+        if good is not None and t - good[0] < STALE_MAX:
+            entry = (min(t + TTL_FAILED, good[0] + STALE_MAX), good[1])
+        else:
+            entry = (t + TTL_FAILED, None)
     with _lock:
         _cache[name] = entry
-    return entry[2]
+    return entry[1]
 
 
 def clear() -> None:
     with _lock:
         _cache.clear()
+        _good.clear()
 
 
 def point() -> Optional[dict]:
