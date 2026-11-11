@@ -22,6 +22,7 @@ import { WetRibbon } from '../components/wet';
 import RadioCard from '../components/RadioCard';
 import { RecapCard } from '../components/recap';
 import { ForecastCard } from '../components/forecast';
+import { NearbyCard } from '../components/nearby';
 import { aqiStatus, formatObs, moonPhase, prettySecs, timeOf } from '../format';
 import {
   CLIMATE_PAGE, ClimateAnom, annualNormal, dailyNormal, monthlyNormal,
@@ -1096,6 +1097,7 @@ function HomePage(props) {
       <RecapCard />
       <DayClimateExtremesCard dash={data} summary={summary} />
       <ForecastCard />
+      <NearbyCard dash={data} />
     </Flex>
     <Flex justify="center" wrap="wrap">
       <MonthSummaryCard summary={summary} />
