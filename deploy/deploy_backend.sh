@@ -120,7 +120,8 @@ rsync "${RSYNC_ARGS[@]}" -e "$RSYNC_SSH" \
 echo "Syncing ingestion start script..."
 rsync "${RSYNC_ARGS[@]}" -e "$RSYNC_SSH" \
     "$REPO_ROOT/scripts/start_save_latest.sh" "$REPO_ROOT/scripts/run_sun_classify.sh" \
-    "$REPO_ROOT/scripts/run_day_profile_warm.sh" "$DEPLOY_HOST:$REMOTE_ROOT/scripts/"
+    "$REPO_ROOT/scripts/run_day_profile_warm.sh" "$REPO_ROOT/scripts/run_nearby_log.sh" \
+    "$DEPLOY_HOST:$REMOTE_ROOT/scripts/"
 
 if [[ "$DRY_RUN" == true ]]; then
     echo "Dry run complete; production was not changed or restarted."

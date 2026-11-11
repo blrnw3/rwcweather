@@ -2,7 +2,7 @@
 and /api/nearby with the network mocked. No network, no DB."""
 import json
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import pytest
 from flask import Flask
@@ -229,9 +229,14 @@ def _client(monkeypatch, nws_sfo=NWS_SFO, nws_pug=NWS_PUG, iem_sfo=IEM_SFO, iem_
                 return wl.get(st["id"])
         return None
 
+    def wlembed(token):
+        return WL_JR_HILO if token == "f1628dfa80d64cce8825eb59f4020acb" else None
+
     monkeypatch.setattr(fetch, "nws_latest", nws)
     monkeypatch.setattr(fetch, "iem_current", iem)
     monkeypatch.setattr(fetch, "weatherlink", wlink)
+    monkeypatch.setattr(fetch, "weatherlink_embed", wlembed)
+    monkeypatch.setattr("rwcwx.nearby.store.samples_on_day", lambda day: {})
     app = Flask(__name__)
     app.add_url_rule("/api/nearby", view_func=nb_api.get_nearby)
     return app.test_client()
@@ -261,3 +266,92 @@ def test_endpoint_degrades_per_station(monkeypatch):
     assert by["sfo"]["available"] is False and by["sfo"]["temp_c"] is None
     assert by["tum_suden"]["available"] is False
     assert by["white_oaks"]["available"] and by["pulgas"]["available"]
+
+
+# ---------------------------------------------------------------- logged daily Lo-Hi
+
+from dateutil.tz import gettz
+
+PT = gettz("America/Los_Angeles")
+DAY = date(2026, 11, 11)
+
+
+def _pt(h, m, day=DAY):
+    return datetime(day.year, day.month, day.day, h, m, tzinfo=PT)
+
+
+def test_hilo_from_log_needs_early_coverage():
+    late = [(_pt(14, 30), 20.0), (_pt(15, 0), 21.0)]
+    assert parse.hilo_from_log(late, DAY) is None          # started mid-afternoon
+    just_after = [(_pt(6, 1), 10.0), (_pt(14, 0), 20.0)]
+    assert parse.hilo_from_log(just_after, DAY) is None    # first sample after 06:00 PT
+    on_cutoff = [(_pt(6, 0), 10.0), (_pt(14, 0), 20.0)]
+    rec = parse.hilo_from_log(on_cutoff, DAY)
+    assert rec["temp_min_c"] == 10.0 and rec["temp_max_c"] == 20.0 and rec["hilo_source"] == "log"
+    early = [(_pt(1, 10), 8.5), (_pt(5, 59), 7.2), (_pt(14, 30), 22.0)]
+    rec = parse.hilo_from_log(early, DAY)
+    assert rec["temp_min_c"] == 7.2 and rec["temp_max_c"] == 22.0
+
+
+def test_hilo_from_log_ignores_other_days_and_nulls():
+    samples = [(_pt(23, 0, date(2026, 11, 10)), 4.0), (_pt(5, 0), 9.0), (None, 99.0)]
+    # None timestamp would throw; only valid pairs
+    samples = [(_pt(23, 0, date(2026, 11, 10)), 4.0), (_pt(5, 0), 9.0), (_pt(15, 0), None)]
+    rec = parse.hilo_from_log(samples, DAY)
+    assert rec["temp_min_c"] == 9.0 and rec["temp_max_c"] == 9.0
+
+
+def test_hilo_from_log_accepts_naive_utc():
+    # 05:00 PT = 13:00 UTC on 11 Nov 2026 (PST)
+    rec = parse.hilo_from_log([(datetime(2026, 11, 11, 13, 0), 11.0)], DAY)
+    assert rec["temp_min_c"] == 11.0
+
+
+def test_endpoint_fills_missing_hilo_from_log(monkeypatch):
+    samples = {"tum_suden": [(_pt(5, 0), 8.0), (_pt(14, 0), 18.0)]}
+    client = _client(monkeypatch)
+    monkeypatch.setattr("rwcwx.nearby.store.samples_on_day", lambda day: samples)
+    res = client.get("/api/nearby").get_json()["result"]
+    by = {s["id"]: s for s in res["stations"]}
+    assert by["tum_suden"]["temp_min_c"] == 8.0 and by["tum_suden"]["temp_max_c"] == 18.0
+    assert by["tum_suden"]["hilo_source"] == "log"
+    # source-provided range is kept (IEM), not replaced by a log value
+    assert by["sfo"]["hilo_source"] == "iem"
+    assert by["white_oaks"]["temp_min_c"] is None          # no log samples, still a dash
+
+
+def test_endpoint_omits_log_hilo_when_coverage_is_thin(monkeypatch):
+    samples = {"tum_suden": [(_pt(14, 30), 20.0)]}
+    client = _client(monkeypatch)
+    monkeypatch.setattr("rwcwx.nearby.store.samples_on_day", lambda day: samples)
+    res = client.get("/api/nearby").get_json()["result"]
+    by = {s["id"]: s for s in res["stations"]}
+    assert by["tum_suden"]["temp_min_c"] is None and by["tum_suden"]["temp_max_c"] is None
+
+
+def test_logger_collects_and_upserts(monkeypatch):
+    from rwcwx.job import nearby_log
+    rows_written = []
+
+    def upsert(rows, now_utc=None):
+        rows_written.extend(rows)
+        return len(rows)
+
+    monkeypatch.setattr(nearby_log.store, "upsert_many", upsert)
+    monkeypatch.setattr(nearby_log.store, "prune", lambda now_utc=None: 2)
+    c = _client(monkeypatch)  # patches fetch
+    out = nearby_log.run(now_utc=datetime(2026, 11, 11, 20, 0))
+    assert out["table"] is True and out["pruned"] == 2 and out["logged"] == 5
+    ids = {r["station"] for r in rows_written}
+    assert ids == {"pulgas", "sfo", "tum_suden", "white_oaks", "jasper_ridge"}
+    assert all(r["t_obs"] and r["temp_c"] is not None for r in rows_written)
+
+
+def test_logger_ok_when_table_missing(monkeypatch):
+    from rwcwx.job import nearby_log
+    monkeypatch.setattr(nearby_log.store, "upsert_many",
+                        lambda *a, **k: (_ for _ in ()).throw(nearby_log.store.TableMissing("no table")))
+    # need fetch patches too
+    _client(monkeypatch)
+    out = nearby_log.run()
+    assert out["table"] is False and out["logged"] == 0

@@ -112,7 +112,7 @@ export function NearbyCard({ dash }) {
       {rows.map((s) => <StationRow key={s.id} s={s} unit={unit} nowMs={Date.now()} />)}
     </Grid>}
     <Text fontSize="xs" color="gray.600" mt="2">
-      Pulgas Ridge and SFO from the NWS and the Iowa Environmental Mesonet; Tum Suden, White Oaks and Jasper Ridge from WeatherLink public pages. Today&apos;s Lo–Hi is the source&apos;s own daily range (IEM, WeatherLink, or this station); a dash means the source does not publish one.
+      Pulgas Ridge and SFO from the NWS and the Iowa Environmental Mesonet; Tum Suden, White Oaks and Jasper Ridge from WeatherLink public pages.
     </Text>
   </Box>;
 }

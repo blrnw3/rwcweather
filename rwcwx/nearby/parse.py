@@ -4,7 +4,7 @@ Output units: temperatures in °C, rain in mm (the frontend converts to the visi
 """
 import math
 import re
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from typing import List, Optional
 
 RWC_LAT, RWC_LON = 37.470, -122.265
@@ -196,6 +196,39 @@ def apply_hilo(obs: Optional[dict], hilo: Optional[dict]) -> Optional[dict]:
         obs["hilo_source"] = hilo.get("hilo_source")
     return obs
 
+
+
+
+# ---------------------------------------------------------------- logged daily range
+
+# Omit a computed Lo-Hi until there is a sample at or before this local time, so a mid-day start
+# (after the typical morning low) does not show a misleading range. Overnight (before this cutoff)
+# a running min/max is fine as soon as the first sample after midnight exists.
+HILO_COVER_BY = time(6, 0)
+
+
+def hilo_from_log(samples, day) -> Optional[dict]:
+    """Today's min/max from logged samples whose PT date is `day`. None if coverage since midnight is thin."""
+    from rwcwx.config import TZ
+    temps = []
+    earliest = None
+    for t, val in samples or []:
+        if val is None:
+            continue
+        if getattr(t, "tzinfo", None) is None:
+            from dateutil.tz import UTC
+            t = t.replace(tzinfo=UTC)
+        local = t.astimezone(TZ)
+        if local.date() != day:
+            continue
+        temps.append(float(val))
+        if earliest is None or local < earliest:
+            earliest = local
+    if not temps or earliest is None:
+        return None
+    if earliest.time() > HILO_COVER_BY:
+        return None
+    return dict(temp_min_c=round(min(temps), 2), temp_max_c=round(max(temps), 2), hilo_source="log")
 
 # ---------------------------------------------------------------- station list
 
