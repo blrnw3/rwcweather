@@ -25,6 +25,7 @@ IEM_PUG = load("iem_pugc1_current.json")["last_ob"]
 WL_TUM = load("wl_tum_suden.json")
 WL_WO = load("wl_white_oaks.json")
 WL_JR = load("wl_jasper_ridge.json")
+WL_JR_HILO = load("wl_jasper_embed_hilo.json")
 
 
 # ---------------------------------------------------------------- units / distance
@@ -45,6 +46,9 @@ def test_sfo_prefers_nws_temp_and_iem_today_rain():
     assert rec["temp_source"] == "nws"
     assert rec["rain_today_mm"] == 0                               # IEM precip_today 0.00 in
     assert rec["rain_source"] == "iem"
+    assert rec["temp_min_c"] == pytest.approx(12.22, abs=0.05)     # IEM min_dayairtemp 54 °F
+    assert rec["temp_max_c"] == pytest.approx(14.44, abs=0.05)     # IEM max_dayairtemp 58 °F
+    assert rec["hilo_source"] == "iem"
     assert rec["observed_at"].startswith("2026-11-11T15:")
 
 
@@ -53,6 +57,9 @@ def test_pulgas_nws_temp_iem_rain():
     assert rec["temp_c"] == pytest.approx(11.11, abs=0.05)
     assert rec["rain_today_mm"] == 0
     assert rec["temp_source"] == "nws" and rec["rain_source"] == "iem"
+    assert rec["temp_min_c"] == pytest.approx(10.56, abs=0.05)     # 51 °F
+    assert rec["temp_max_c"] == pytest.approx(15.00, abs=0.05)     # 59 °F
+    assert rec["hilo_source"] == "iem"
 
 
 def test_official_falls_back_to_iem_when_nws_missing():
@@ -67,6 +74,19 @@ def test_official_uses_nws_precip_only_when_iem_has_none():
     nws["precipitationLast24Hours"] = {"unitCode": "wmoUnit:mm", "value": 1.2}
     rec = parse.official(nws, {"airtemp[F]": 56, "utc_valid": "2026-11-11T15:56:00Z"})
     assert rec["rain_today_mm"] == pytest.approx(1.2, abs=0.01) and rec["rain_source"] == "nws"
+
+
+
+def test_official_hilo_absent_without_iem():
+    rec = parse.official(NWS_SFO, None)
+    assert rec["temp_c"] == pytest.approx(13.0, abs=0.05)
+    assert rec["temp_min_c"] is None and rec["temp_max_c"] is None and rec["hilo_source"] is None
+    # Rolling 24 h NWS extremes are present-but-null on the fixture and must not be treated as today's hi/lo.
+    nws = dict(NWS_SFO)
+    nws["maxTemperatureLast24Hours"] = {"unitCode": "wmoUnit:degC", "value": 20}
+    nws["minTemperatureLast24Hours"] = {"unitCode": "wmoUnit:degC", "value": 8}
+    rec = parse.official(nws, None)
+    assert rec["temp_min_c"] is None and rec["temp_max_c"] is None
 
 
 def test_official_both_missing():
@@ -98,6 +118,27 @@ def test_weatherlink_white_oaks():
     rec = parse.weatherlink(WL_WO)
     assert rec["temp_c"] == pytest.approx(12.78, abs=0.05)         # 55 °F
     assert rec["rain_today_mm"] == 0
+
+
+
+def test_weatherlink_map_json_has_no_hilo():
+    rec = parse.weatherlink(WL_TUM)
+    assert rec["temp_min_c"] is None and rec["temp_max_c"] is None and rec["hilo_source"] is None
+
+
+def test_weatherlink_embed_hilo_jasper():
+    h = parse.weatherlink_hilo(WL_JR_HILO)
+    assert h["hilo_source"] == "weatherlink"
+    assert h["temp_max_c"] == pytest.approx(24.44, abs=0.05)       # 76 °F
+    assert h["temp_min_c"] == pytest.approx(6.67, abs=0.05)        # 44 °F
+    rec = parse.apply_hilo(parse.weatherlink(WL_JR), h)
+    assert rec["temp_c"] == pytest.approx(12.22, abs=0.05)
+    assert rec["temp_min_c"] == h["temp_min_c"] and rec["temp_max_c"] == h["temp_max_c"]
+
+
+def test_weatherlink_hilo_missing():
+    assert parse.weatherlink_hilo(None) == dict(temp_min_c=None, temp_max_c=None, hilo_source=None)
+    assert parse.weatherlink_hilo({"highLowValues": []})["hilo_source"] is None
 
 
 def test_weatherlink_missing_and_dashes():
@@ -204,7 +245,11 @@ def test_endpoint_ok(monkeypatch):
     assert ids == ["pulgas", "sfo", "tum_suden", "white_oaks", "jasper_ridge"]
     by = {s["id"]: s for s in res["stations"]}
     assert by["sfo"]["available"] and by["sfo"]["temp_c"] == pytest.approx(13.0, abs=0.05)
+    assert by["sfo"]["temp_min_c"] == pytest.approx(12.22, abs=0.05) and by["sfo"]["hilo_source"] == "iem"
     assert by["jasper_ridge"]["rain_today_mm"] == pytest.approx(0.254, abs=0.001)
+    assert by["jasper_ridge"]["temp_min_c"] == pytest.approx(6.67, abs=0.05)
+    assert by["jasper_ridge"]["temp_max_c"] == pytest.approx(24.44, abs=0.05)
+    assert by["tum_suden"]["temp_min_c"] is None and by["white_oaks"]["temp_max_c"] is None
     assert res["origin"]["lat"] == parse.RWC_LAT
 
 

@@ -9,7 +9,10 @@ def _obs_for(st: dict):
         return parse.official(fetch.nws_latest(st["nws_id"]),
                               fetch.iem_current(st["iem_id"], st["iem_network"]))
     if st["kind"] == "weatherlink":
-        return parse.weatherlink(fetch.weatherlink(st["wl_id"]))
+        obs = parse.weatherlink(fetch.weatherlink(st["wl_id"]))
+        if obs and st.get("wl_embed"):
+            parse.apply_hilo(obs, parse.weatherlink_hilo(fetch.weatherlink_embed(st["wl_embed"])))
+        return obs
     return None
 
 

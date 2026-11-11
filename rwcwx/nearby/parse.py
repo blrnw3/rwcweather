@@ -117,11 +117,17 @@ def official(nws: Optional[dict], iem: Optional[dict]) -> Optional[dict]:
     if rain is None:
         rain = nws_rain_mm(nws)
         rain_src = "nws" if rain is not None else None
+    # Today's (station-local calendar day) extremes: IEM max_dayairtemp / min_dayairtemp.
+    # NWS latest has maxTemperatureLast24Hours, which is a rolling 24 h window, so it is not used.
+    tmin = f_to_c(_num((iem or {}).get("min_dayairtemp[F]")))
+    tmax = f_to_c(_num((iem or {}).get("max_dayairtemp[F]")))
     observed = _iso((nws or {}).get("timestamp")) or _iso((iem or {}).get("utc_valid"))
-    if temp is None and rain is None and observed is None:
+    if temp is None and rain is None and observed is None and tmin is None and tmax is None:
         return None
     return dict(temp_c=temp, rain_today_mm=rain, observed_at=observed,
-                temp_source=temp_src, rain_source=rain_src)
+                temp_min_c=tmin, temp_max_c=tmax,
+                temp_source=temp_src, rain_source=rain_src,
+                hilo_source="iem" if (tmin is not None or tmax is not None) else None)
 
 
 # ---------------------------------------------------------------- WeatherLink
@@ -147,7 +153,48 @@ def weatherlink(data: Optional[dict]) -> Optional[dict]:
     if temp_c is None and rain is None and observed is None:
         return None
     return dict(temp_c=temp_c, rain_today_mm=rain, observed_at=observed,
+                temp_min_c=None, temp_max_c=None, hilo_source=None,
                 temp_source="weatherlink", rain_source="weatherlink")
+
+
+def _wl_temp(value, unit) -> Optional[float]:
+    n = _num(value)
+    if n is None:
+        return None
+    unit = str(unit or "")
+    if _UNIT_C.search(unit) and not _UNIT_F.search(unit):
+        return round(n, 2)
+    return f_to_c(n)
+
+
+def weatherlink_hilo(summary: Optional[dict]) -> dict:
+    """Today's high and low from a WeatherLink embeddable summary (highLowValues). Map JSON has neither."""
+    out = dict(temp_min_c=None, temp_max_c=None, hilo_source=None)
+    if not summary:
+        return out
+    by = {}
+    for item in summary.get("highLowValues") or []:
+        name = (item or {}).get("sensorDataName")
+        if name:
+            by[name] = item
+    hi, lo = by.get("High Temp") or {}, by.get("Low Temp") or {}
+    # Unit is on the value row; default °F like the map JSON.
+    unit = hi.get("unitLabel") or lo.get("unitLabel") or "°F"
+    out["temp_max_c"] = _wl_temp(hi.get("value"), unit)
+    out["temp_min_c"] = _wl_temp(lo.get("value"), unit)
+    if out["temp_min_c"] is not None or out["temp_max_c"] is not None:
+        out["hilo_source"] = "weatherlink"
+    return out
+
+
+def apply_hilo(obs: Optional[dict], hilo: Optional[dict]) -> Optional[dict]:
+    if not obs:
+        return obs
+    if hilo:
+        obs["temp_min_c"] = hilo.get("temp_min_c")
+        obs["temp_max_c"] = hilo.get("temp_max_c")
+        obs["hilo_source"] = hilo.get("hilo_source")
+    return obs
 
 
 # ---------------------------------------------------------------- station list
@@ -174,7 +221,9 @@ STATIONS: List[dict] = [
     dict(id="jasper_ridge", name="Jasper Ridge", kind="weatherlink",
          wl_id="a9fe5e92-cdc0-408d-9885-5d69fe378110",
          lat=37.40312, lon=-122.24429, elev_m=128, elev_source="published",
-         url="https://www.weatherlink.com/map/a9fe5e92-cdc0-408d-9885-5d69fe378110"),
+         url="https://www.weatherlink.com/map/a9fe5e92-cdc0-408d-9885-5d69fe378110",
+         # Public embed token from the preserve's Weather Resources page; the map JSON has no daily hi/lo.
+         wl_embed="f1628dfa80d64cce8825eb59f4020acb"),
 ]
 
 
@@ -186,8 +235,8 @@ def meta(st: dict) -> dict:
 
 def station_record(st: dict, obs: Optional[dict]) -> dict:
     rec = meta(st)
-    rec.update(temp_c=None, rain_today_mm=None, observed_at=None, available=False,
-               temp_source=None, rain_source=None)
+    rec.update(temp_c=None, rain_today_mm=None, temp_min_c=None, temp_max_c=None,
+               observed_at=None, available=False, temp_source=None, rain_source=None, hilo_source=None)
     if obs:
         rec.update(obs)
         rec["available"] = obs.get("temp_c") is not None or obs.get("rain_today_mm") is not None

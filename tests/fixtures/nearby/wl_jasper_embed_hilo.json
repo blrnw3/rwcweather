@@ -1,0 +1,57 @@
+{
+ "lastReceived": 1794436028000,
+ "highLowValues": [
+  {
+   "sensorDataTypeId": 57,
+   "sensorDataName": "High Temp",
+   "displayName": null,
+   "reportedValue": 76,
+   "value": 76,
+   "convertedValue": "76",
+   "depthLabel": null,
+   "category": "high",
+   "assocSensorDataTypeId": 7,
+   "sortOrder": 2,
+   "unitLabel": "\u00b0F"
+  },
+  {
+   "sensorDataTypeId": 58,
+   "sensorDataName": "Low Temp",
+   "displayName": null,
+   "reportedValue": 44,
+   "value": 44,
+   "convertedValue": "44",
+   "depthLabel": null,
+   "category": "low",
+   "assocSensorDataTypeId": 7,
+   "sortOrder": 3,
+   "unitLabel": "\u00b0F"
+  },
+  {
+   "sensorDataTypeId": null,
+   "sensorDataName": "High Temp Time",
+   "displayName": null,
+   "reportedValue": 1427,
+   "value": 1427,
+   "convertedValue": null,
+   "depthLabel": null,
+   "category": null,
+   "assocSensorDataTypeId": null,
+   "sortOrder": null,
+   "unitLabel": null
+  },
+  {
+   "sensorDataTypeId": null,
+   "sensorDataName": "Low Temp Time",
+   "displayName": null,
+   "reportedValue": 455,
+   "value": 455,
+   "convertedValue": null,
+   "depthLabel": null,
+   "category": null,
+   "assocSensorDataTypeId": null,
+   "sortOrder": null,
+   "unitLabel": null
+  }
+ ]
+}

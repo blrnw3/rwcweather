@@ -23,6 +23,7 @@ STALE_MAX = 3 * 3600
 IEM_CURRENT = "https://mesonet.agron.iastate.edu/json/current.py"
 NWS_OBS = "https://api.weather.gov/stations/{id}/observations/latest"
 WL_STATION = "https://www.weatherlink.com/map/data/station/{id}"
+WL_EMBED = "https://www.weatherlink.com/embeddablePage/summaryData/{id}"
 
 
 def get_json(url: str, accept: str = "application/json") -> Any:
@@ -90,3 +91,12 @@ def weatherlink(station_id: str) -> Optional[dict]:
             raise ValueError("weatherlink shape")
         return data
     return _safe("wl_" + station_id, TTL, fetch)
+
+
+def weatherlink_embed(token: str) -> Optional[dict]:
+    def fetch():
+        data = get_json(WL_EMBED.format(id=token))
+        if not isinstance(data, dict):
+            raise ValueError("weatherlink embed shape")
+        return data
+    return _safe("wl_embed_" + token, TTL, fetch)
