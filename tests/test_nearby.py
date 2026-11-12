@@ -280,6 +280,12 @@ def _pt(h, m, day=DAY):
     return datetime(day.year, day.month, day.day, h, m, tzinfo=PT)
 
 
+def _freeze_now(monkeypatch, day=DAY, hour=14, minute=0):
+    """Pin /api/nearby's idea of 'now' so log-fill tests do not depend on the real calendar day."""
+    frozen = datetime(day.year, day.month, day.day, hour, minute, tzinfo=PT)
+    monkeypatch.setattr(nb_api, "_now", lambda: frozen)
+
+
 def test_hilo_from_log_needs_early_coverage():
     late = [(_pt(14, 30), 20.0), (_pt(15, 0), 21.0)]
     assert parse.hilo_from_log(late, DAY) is None          # started mid-afternoon
@@ -310,6 +316,7 @@ def test_hilo_from_log_accepts_naive_utc():
 def test_endpoint_fills_missing_hilo_from_log(monkeypatch):
     samples = {"tum_suden": [(_pt(5, 0), 8.0), (_pt(14, 0), 18.0)]}
     client = _client(monkeypatch)
+    _freeze_now(monkeypatch)
     monkeypatch.setattr("rwcwx.nearby.store.samples_on_day", lambda day: samples)
     res = client.get("/api/nearby").get_json()["result"]
     by = {s["id"]: s for s in res["stations"]}
@@ -323,6 +330,7 @@ def test_endpoint_fills_missing_hilo_from_log(monkeypatch):
 def test_endpoint_omits_log_hilo_when_coverage_is_thin(monkeypatch):
     samples = {"tum_suden": [(_pt(14, 30), 20.0)]}
     client = _client(monkeypatch)
+    _freeze_now(monkeypatch)
     monkeypatch.setattr("rwcwx.nearby.store.samples_on_day", lambda day: samples)
     res = client.get("/api/nearby").get_json()["result"]
     by = {s["id"]: s for s in res["stations"]}
