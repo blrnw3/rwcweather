@@ -99,12 +99,13 @@ export function NearbyCard({ dash }) {
     rows.push(rwcStation(dash, nearby.origin));
     rows.push(...(nearby.stations || []));
   }
-  return <Box id="nearby-card" width={{ base: "98%", md: "460px" }} minHeight="250px" border="2px solid #656382" bg="gray.100"
-    p={{ base: 2, md: 4 }} my={2} mx={{ base: 0, md: 3 }} borderRadius="10px">
+  return <Box id="nearby-card" width="100%" maxWidth={{ base: "100%", md: "460px", lg: "none" }} minHeight="250px"
+    border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 3 }} my={0} mx={0} borderRadius="10px"
+    minW={0} gridColumn={{ md: "1 / -1", lg: "auto" }} justifySelf={{ md: "center", lg: "stretch" }}>
     <Text fontSize={{ base: "lg", md: "xl" }} mb="1">Weather nearby</Text>
     {loading && <Spinner size="sm" />}
     {error && !nearby && <Text className="nearby-unavailable" fontSize="sm" color="gray.600">Nearby observations unavailable right now.</Text>}
-    {nearby && <Grid id="nearby-stations" templateColumns="1fr auto auto auto" columnGap={{ base: "2", md: "3" }} rowGap="2" fontSize="sm" mt="1" alignItems="baseline">
+    {nearby && <Grid id="nearby-stations" templateColumns="1fr auto auto auto" columnGap={{ base: "2", md: "2", lg: "3" }} rowGap="2" fontSize="sm" mt="1" alignItems="baseline">
       <Text fontSize="xs" color="gray.600"></Text>
       <Text fontSize="xs" color="gray.600">Temp</Text>
       <Text fontSize="xs" color="gray.600" whiteSpace="nowrap">Lo–Hi</Text>
