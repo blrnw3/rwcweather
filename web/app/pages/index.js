@@ -22,6 +22,7 @@ import { WetRibbon } from '../components/wet';
 import RadioCard from '../components/RadioCard';
 import { RecapCard } from '../components/recap';
 import { ForecastCard } from '../components/forecast';
+import { waterYearOf } from '../components/waterYear';
 import { NearbyCard } from '../components/nearby';
 import { aqiStatus, formatObs, moonPhase, prettySecs, timeOf } from '../format';
 import {
@@ -973,9 +974,12 @@ const ChartCardDaily = React.memo(function ChartCardDaily(props) {
 const ChartCardYear = React.memo(function ChartCardYear(props) {
   // Same variable buttons as the home 30-day chart. Rain and sun (hours) are
   // always cumulative; everything else is daily. Reuses YearChart.
+  // Rainfall amount is the current Oct–Sep water year; other variables stay
+  // on the calendar year (wet-hours and rain-rate views included).
   const obsOptions = ["temp", "rain", "sun", "humi", "dewpt", "aqi", "wind", "pres"];
   const aggOpts = ["avg", "max", "min"];
-  const CURRENT_YEAR = new Date().getFullYear();
+  const now = new Date();
+  const calendarYear = now.getFullYear();
   const [obs, setObs] = useState("temp");
   const [aggType, setAggType] = useState("avg");
   const [sunView, setSunView] = useState("sun");
@@ -997,9 +1001,12 @@ const ChartCardYear = React.memo(function ChartCardYear(props) {
     : aggType;
   // Only rainfall amount and sunshine hours are cumulative on the home year chart.
   const cumulative = chartObs === "rain" || chartObs === "sun";
+  const useWaterYear = chartObs === "rain";
+  const chartYear = useWaterYear ? waterYearOf(calendarYear, now.getMonth() + 1) : calendarYear;
   const moreHref = "/charts/year?var=" + chartObs
     + (chartAgg !== "avg" && chartAgg !== "total" ? "&daily=" + chartAgg : "")
-    + (cumulative ? "&mode=cumulative" : "");
+    + (cumulative ? "&mode=cumulative" : "")
+    + (useWaterYear ? "&period=water&year=" + chartYear : "");
 
   return <Box id="home-year-chart-card" w={{ base: "98%", md: "96%", lg: "96%" }} border="2px solid #656382" bg="gray.100"
     p="2" my={2} mx={{ base: 0, md: 2, lg: 3, xl: 4 }} borderRadius="10px">
@@ -1017,7 +1024,7 @@ const ChartCardYear = React.memo(function ChartCardYear(props) {
       <Text><Link href={moreHref} title="More year charts">More</Link></Text>
     </Flex>
     <Box m={1}>
-      <YearChart obs={chartObs} stat={chartAgg} year={CURRENT_YEAR} waterYear={false}
+      <YearChart obs={chartObs} stat={chartAgg} year={chartYear} waterYear={useWaterYear}
         cumulative={cumulative} showNormal={true} today={today}
         spacing={[5, 5, 12, 3]} />
     </Box>
