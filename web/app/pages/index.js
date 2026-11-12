@@ -799,7 +799,8 @@ function MonthSummaryCard(props) {
   const sunNormal = date ? periodToDateTotalNormal("sun", y, mo, 1, y, mo, d) : null;
   const normAvg = date ? periodToDateTempNormal("avg", y, mo, 1, y, mo, d) : null;
   // No rain-day climate normal on site; omit expected-to-date anomaly.
-  return <Box id="month-summary-card" width="460px" minHeight="250px" border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 4 }} my={2} mx={{ base: 0, md: 3 }} borderRadius="10px">
+  return <Box id="month-summary-card" width="100%" maxWidth={{ base: "100%", md: "460px", lg: "none" }} minHeight="250px"
+    border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 3 }} borderRadius="10px" minW={0}>
     <Text fontSize={{ base: "lg", md: "xl" }}>This month averages &amp; extremes</Text>
     <Grid id="monthly-summary" key="monthly-summary"
       templateColumns="1.5fr repeat(3, 1fr)"
@@ -844,7 +845,8 @@ function YearSummaryCard(props) {
   const rainNormal = date ? periodToDateTotalNormal("rain", y, 1, 1, y, mo, d) : null;
   const sunNormal = date ? periodToDateTotalNormal("sun", y, 1, 1, y, mo, d) : null;
   const normAvg = date ? periodToDateTempNormal("avg", y, 1, 1, y, mo, d) : null;
-  return <Box id="year-summary-card" width="460px" minHeight="250px" border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 4 }} m={{ base: 0, md: 3 }} borderRadius="10px">
+  return <Box id="year-summary-card" width="100%" maxWidth={{ base: "100%", md: "460px", lg: "none" }} minHeight="250px"
+    border="2px solid #656382" bg="gray.100" p={{ base: 2, md: 3 }} borderRadius="10px" minW={0}>
     <Text fontSize={{ base: "lg", md: "xl" }}>This year averages &amp; extremes</Text>
     <Grid id="annual-summary" key="annual-summary"
       templateColumns="1.5fr repeat(3, 1fr)"
@@ -1097,12 +1099,14 @@ function HomePage(props) {
       <RecapCard />
       <DayClimateExtremesCard dash={data} summary={summary} />
       <ForecastCard />
-      <NearbyCard dash={data} />
     </Flex>
-    <Flex justify="center" wrap="wrap">
+    <Grid id="month-year-nearby-row" width="100%" justifyContent="center" alignItems="stretch"
+      templateColumns={{ base: "minmax(0, 1fr)", md: "repeat(2, minmax(0, 460px))", lg: "repeat(3, minmax(0, 1fr))" }}
+      gap={{ base: 2, md: 3 }} px={{ base: 1, md: 2, lg: 1 }} maxWidth="1620px" mx="auto">
       <MonthSummaryCard summary={summary} />
       <YearSummaryCard summary={summary} />
-    </Flex>
+      <NearbyCard dash={data} />
+    </Grid>
     <Flex justify="center" wrap="wrap">
       <AboutHomeCard />
     </Flex>
