@@ -585,10 +585,9 @@ function WaterYearLine({ value, total, date }) {
   </>;
 }
 
-// Water-year rain to date against (1) the full Oct-Sep normal, as an
-// absolute difference, and (2) the normal expected by today's date, as a
-// percentage. Early in the water year the expected amount is small, so it is
-// shown alongside the percentage; if it is ~0 the percentage is omitted.
+// Water-year rain to date against (1) the full Oct-Sep normal and (2) the
+// normal expected by today's date, both as an absolute difference. The
+// percentage of normal to date already appears on the main Water Year line.
 function WaterYearClimate({ total, date }) {
   if (total == null || !date) {
     return null;
@@ -602,9 +601,7 @@ function WaterYearClimate({ total, date }) {
   return <Text className="water-year-climate" fontSize="sm" lineHeight="short" color="gray.700">
     <span className="wy-vs-full">({formatObs(unit, total - fullNormal, "rain", true)} vs full-year {normalLink})</span>
     <br />
-    <span className="wy-vs-to-date">{expected >= 0.005
-      ? <>({Math.round(total / expected * 100)}% of {formatObs(unit, expected, "rain")} normal to date)</>
-      : <>(normal to date: {formatObs(unit, 0, "rain")})</>}</span>
+    <span className="wy-vs-to-date">({formatObs(unit, total - expected, "rain", true)} vs normal to date)</span>
   </Text>
 }
 
