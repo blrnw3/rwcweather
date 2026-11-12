@@ -22,6 +22,7 @@ import { baseObs, fetcher, fmatForObs, fmatObsOpt, OBS } from "../../components/
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
 import { DerivedVarNote, MINUTE_OBS_STATES, RadioButtonGroup, REPORT_OBS_OPTIONS, styleForReportValue, SunViewToggle } from "../../components/report";
+import { useFogDay } from "../../components/fog";
 import { SunLegend, SunRibbon, useSunDay } from "../../components/sun";
 import { useWetDay, WetLegend, WetRibbon } from "../../components/wet";
 import { formatObs, timeOf } from "../../format";
@@ -378,6 +379,30 @@ function DailySunshine({ datestamp }) {
     </Box>;
 }
 
+// Webcam fog for the day (dawn to 1 pm, 30-min frames). Hidden when the day has no stored fog total
+// (coverage too thin, or before the record began). A stored 0 is shown as "No fog".
+function DailyFog({ datestamp }) {
+    const { fog } = useFogDay(datestamp);
+    if (!fog || !fog.available) {
+        return null;
+    }
+    const hours = fog.fog_h != null ? Number(fog.fog_h).toFixed(1) + " hours" : null;
+    let detail;
+    if (fog.foggy) {
+        detail = <>
+            <Text as="span" fontWeight="bold">Foggy</Text>
+            {hours ? " · " + hours : ""}
+            {fog.cleared_at ? " · cleared " + stationTime(fog.cleared_at) : (fog.ended_foggy ? " · still foggy at 1 pm" : "")}
+        </>;
+    } else {
+        detail = <Text as="span" fontWeight="bold">No fog</Text>;
+    }
+    return <Box mt="6" className="daily-fog" id="daily-fog">
+        <Heading as="h3" size="3">Fog</Heading>
+        <Text>{detail}</Text>
+    </Box>;
+}
+
 // Wet hours for the day (from the stored wet minutes): total, spells and the midnight-to-midnight bar.
 // Hidden on dry days.
 function DailyWet({ datestamp }) {
@@ -486,6 +511,7 @@ export default function DailyReport() {
             <DailySummary summary={report.summary} date={selectedDate} />
             <DerivedSummary summary={report.summary} et0={report.et0} />
             <DailySunshine datestamp={datestamp} />
+            <DailyFog datestamp={datestamp} />
             <DailyWet datestamp={datestamp} />
             <DailyRainIntensity intensity={report.rain_intensity} />
 

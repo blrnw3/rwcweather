@@ -25,6 +25,7 @@ from rwcwx.util import DateStampConverter, DateUtil
 from rwcwx.wet import rate as wet_rate
 from rwcwx.wet import intensity_store
 from rwcwx.wet import store as wet_store
+from rwcwx.fog import api as fog_api
 from rwcwx.fog import derive as fog_derive
 from rwcwx.calc import day_profile
 from rwcwx.calc import day_of_year
@@ -108,6 +109,14 @@ def wet_day(d: date = None):
     if isinstance(d, datetime):
         d = d.date()
     return _wrap_result(wet_store.stored_day(d), date=d)
+
+
+def fog_day(d: date = None):
+    """Webcam fog for one local day: whether it was foggy, hours, and when it cleared (if known)."""
+    d = d or DateUtil.now().date()
+    if isinstance(d, datetime):
+        d = d.date()
+    return _wrap_result(fog_api.day_payload(d), date=d)
 
 
 def sun_day(d: date = None):

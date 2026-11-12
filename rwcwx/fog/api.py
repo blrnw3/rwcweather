@@ -15,7 +15,7 @@ from dateutil.tz import UTC
 from flask import jsonify, request
 
 from rwcwx import logger
-from rwcwx.fog import rules, store
+from rwcwx.fog import derive, rules, store
 from rwcwx.ingest_auth import TOKEN_ENV, authorized, check as check_auth, error as _err  # noqa: F401
 
 MAX_ROWS = 500
@@ -100,3 +100,16 @@ def post_fog():
                 f"model={parsed['model_version']} days={[d['d'] for d in res['days']]}")
     return jsonify(counts=counts, days=res["days"],
                    rows=[dict(r, t=r["t"].strftime("%Y-%m-%dT%H:%M:%SZ")) for r in res["rows"]])
+
+
+def day_payload(d):
+    """Read-only view of one local day's fog for the daily report. Never writes."""
+    try:
+        total = store.day_total(d)
+        rows = store.day_rows(d) if total is not None else []
+    except Exception:
+        # Missing table or a transient DB error: the report still loads; the fog section stays hidden.
+        from rwcwx import logger
+        logger.warning("fog day payload unavailable for %s", d)
+        return derive.report(d, None, [])
+    return derive.report(d, total, rows)

@@ -83,6 +83,8 @@ app.add_url_rule("/api/sun/day/<datestamp:d>", view_func=r.sun_day)
 app.add_url_rule("/api/sun/day/", view_func=r.sun_day)
 app.add_url_rule("/api/wet/day/<datestamp:d>", view_func=r.wet_day)
 app.add_url_rule("/api/wet/day/", view_func=r.wet_day)
+app.add_url_rule("/api/fog/day/<datestamp:d>", view_func=r.fog_day)
+app.add_url_rule("/api/fog/day/", view_func=r.fog_day)
 app.add_url_rule("/api/rain", view_func=r.rain_stats)
 
 # Ingest (bearer token from RWC_INGEST_TOKEN; disabled when unset)
