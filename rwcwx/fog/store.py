@@ -110,3 +110,14 @@ def update_day(d: date, now_utc: Optional[datetime] = None) -> dict:
     return dict(d=d.isoformat(), fog_h=fd.fog_h, judged=fd.judged, expected=fd.expected,
                 stored=fd.storable)
 
+
+def day_total(d: date) -> Optional[dict]:
+    """Stored fog hours for local day d, or None if the day was never written to avg_extreme."""
+    q = text("SELECT val, cnt, comment FROM avg_extreme "
+             "WHERE d = :d AND var = 'fog' AND type = 'total' AND period = 'day'")
+    row = db.execute(q, d=d).first()
+    if not row:
+        return None
+    val, cnt, comment = row
+    return dict(fog_h=None if val is None else float(val), judged=cnt, comment=comment)
+

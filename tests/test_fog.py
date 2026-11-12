@@ -145,3 +145,68 @@ def test_endpoint_validation(client, monkeypatch, bad):
     monkeypatch.setenv("RWC_INGEST_TOKEN", "s3cret")
     r = client.post("/api/inferred/fog", json=bad, headers={"Authorization": "Bearer s3cret"})
     assert r.status_code == 400 and not client.calls
+
+
+# ---- daily report payload (no DB) ----
+
+def _frame(t, value):
+    return dict(t=t, value=value)
+
+
+def test_cleared_at_after_last_fog_spell():
+    # 11 Nov 2026: fog 07:30–10:00 PT (15:30–18:00 UTC), first clear frame 10:30 PT.
+    rows = [
+        _frame(datetime(2026, 11, 11, 15, 30), 1),
+        _frame(datetime(2026, 11, 11, 16, 0), 1),
+        _frame(datetime(2026, 11, 11, 16, 30), 1),
+        _frame(datetime(2026, 11, 11, 17, 0), 1),
+        _frame(datetime(2026, 11, 11, 17, 30), 1),
+        _frame(datetime(2026, 11, 11, 18, 0), 1),
+        _frame(datetime(2026, 11, 11, 18, 30), 0),
+        _frame(datetime(2026, 11, 11, 19, 0), 0),
+    ]
+    from rwcwx.fog.derive import cleared_at
+    assert cleared_at(rows) == datetime(2026, 11, 11, 18, 30)
+    assert cleared_at(rows[:6]) is None          # still foggy; no later clear frame
+    assert cleared_at([_frame(datetime(2026, 11, 10, 16, 0), 0)]) is None
+
+
+def test_cleared_at_skips_ungjudged_gaps():
+    from rwcwx.fog.derive import cleared_at
+    rows = [
+        _frame(datetime(2026, 11, 9, 16, 30), 1),   # 08:30 PT fog (0.5 h)
+        _frame(datetime(2026, 11, 9, 17, 0), None),
+        _frame(datetime(2026, 11, 9, 17, 30), 0),
+    ]
+    assert cleared_at(rows) == datetime(2026, 11, 9, 17, 30)
+
+
+def test_day_report_payload_shapes_foggy_clear_and_missing():
+    from rwcwx.fog.derive import report
+    d = date(2026, 11, 11)
+    rows = [
+        _frame(datetime(2026, 11, 11, 15, 30), 1),
+        _frame(datetime(2026, 11, 11, 18, 0), 1),
+        _frame(datetime(2026, 11, 11, 18, 30), 0),
+    ]
+    foggy = report(d, dict(fog_h=3.0, judged=12), rows)
+    assert foggy["available"] and foggy["foggy"] is True
+    assert foggy["fog_h"] == 3.0 and foggy["cleared_at"] == "2026-11-11T18:30:00Z"
+    assert foggy["ended_foggy"] is False and foggy["judged"] == 12 and foggy["expected"] >= 1
+
+    clear = report(date(2026, 11, 10), dict(fog_h=0, judged=12),
+                   [_frame(datetime(2026, 11, 10, 16, 0), 0)])
+    assert clear["available"] and clear["foggy"] is False
+    assert clear["fog_h"] == 0 and clear["cleared_at"] is None and clear["ended_foggy"] is False
+
+    missing = report(date(2026, 11, 12), None, [])
+    assert missing["available"] is False and missing["foggy"] is None and missing["fog_h"] is None
+    assert missing["cleared_at"] is None
+
+
+def test_day_report_ended_foggy_when_last_frame_is_fog():
+    from rwcwx.fog.derive import report
+    d = date(2026, 6, 21)
+    rows = [_frame(datetime(2026, 6, 21, 19, 0), 1), _frame(datetime(2026, 6, 21, 19, 30), 1)]
+    rec = report(d, dict(fog_h=1.0, judged=2), rows)
+    assert rec["foggy"] and rec["cleared_at"] is None and rec["ended_foggy"] is True
