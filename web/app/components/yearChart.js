@@ -9,6 +9,7 @@ import { dailyNormal, hasClimate } from "./climate";
 import { dailyStatsFor, fetcher, fmatAggTypeOpt, fmatForObs, OBS } from "./conf";
 import { yAxisScale } from "./chart";
 import { UnitCtx } from "./Page";
+import { estQuery } from "./report";
 
 // arearange (the all-years band) lives in highcharts-more; it touches `window`, so only initialise it in the browser.
 if (typeof Highcharts === "object" && typeof window !== "undefined" && !Highcharts.seriesTypes.arearange) {
@@ -80,9 +81,9 @@ export function isMobile() {
 }
 const fontSize = (base) => Math.round(base * (isMobile() ? 0.75 : 1)) + "px";
 
-export function useYearDaily(obs, stat, year, waterYear, enabled = true) {
+export function useYearDaily(obs, stat, year, waterYear, enabled = true, est = false) {
     const [start, end] = periodBounds(year, waterYear);
-    const url = !enabled ? null : "/api/var/daily/" + obs + "/" + stat + "/?include_today=1&start=" + stamp(ymd(start)) + "&end=" + stamp(ymd(end));
+    const url = !enabled ? null : "/api/var/daily/" + obs + "/" + stat + "/?include_today=1&start=" + stamp(ymd(start)) + "&end=" + stamp(ymd(end)) + estQuery(est);
     const { data, error } = useSWR(url, fetcher, { refreshInterval: 300000, revalidateOnFocus: false });
     return { result: data?.result, server: data?.server, error, isLoading: !!url && !data && !error };
 }
@@ -95,9 +96,10 @@ export const hasDayStats = (obs) => !NO_DAY_STATS.includes(obs);
 export const ALL_YEARS_REF = 2024;
 
 /** All-years avg / min / max for each calendar day: running-total envelopes when cumulative. DB units. */
-export function useDayStats(obs, stat, cumulative, waterYear, enabled = true) {
-    const q = cumulative ? "?mode=cumulative" + (waterYear ? "&period=water" : "") : "";
-    const url = enabled && hasDayStats(obs) ? "/api/var/day_stats/" + obs + "/" + stat + "/" + q : null;
+export function useDayStats(obs, stat, cumulative, waterYear, enabled = true, est = false) {
+    const q0 = cumulative ? "mode=cumulative" + (waterYear ? "&period=water" : "") : "";
+    const q = (q0 + estQuery(est)).replace(/^&/, "");
+    const url = enabled && hasDayStats(obs) ? "/api/var/day_stats/" + obs + "/" + stat + "/" + (q ? "?" + q : "") : null;
     const { data, error } = useSWR(url, fetcher, { refreshInterval: 0, revalidateOnFocus: false });
     const byDay = data?.result ? new Map(data.result.map((r) => [r.m * 100 + r.d, r])) : null;
     return { byDay, error, isLoading: enabled && !!url && !data && !error };
@@ -110,17 +112,18 @@ export function useDayStats(obs, stat, cumulative, waterYear, enabled = true) {
  */
 export function buildSeries(rows, obs, stat, year, waterYear, cumulative, dayStats = null) {
     const [start, end] = periodBounds(year, waterYear);
-    const byDay = new Map((rows || []).map((r) => [stamp(r.d), r.val]));
+    const byDay = new Map((rows || []).map((r) => [stamp(r.d), r]));
     let lastObs = -1;
     const days = [];
     for (let t = start; t <= end; t += DAY_MS) {
         const [y, m, d] = ymd(t);
-        const v = byDay.get(stamp([y, m, d]));
+        const row = byDay.get(stamp([y, m, d]));
+        const v = row == null ? null : (typeof row === "object" && "val" in row ? row.val : row);
         if (v != null) {
             lastObs = days.length;
         }
         // all-years stats are already running totals in cumulative mode (from the API), so they are not summed here
-        days.push({ t, obs: v ?? null, normal: normalFor(obs, stat, y, m, d), stats: dayStats?.get(m * 100 + d) || null });
+        days.push({ t, obs: v ?? null, est: !!(row && row.est), normal: normalFor(obs, stat, y, m, d), stats: dayStats?.get(m * 100 + d) || null });
     }
     if (cumulative) {
         let run = 0, runN = 0;
@@ -139,7 +142,7 @@ const round = (v, p) => (v == null ? null : Number(v.toFixed(p)));
 export const STATS_MODES = ["off", "avg", "range"];
 
 export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, today, height, spacing,
-    stats = "off", allYears = false }) {
+    stats = "off", allYears = false, est = false }) {
     // Optional height / spacing override (the /charts/year page passes a taller height); the defaults are the
     // homepage's. stats overlays the all-years average for each calendar day ("avg": dashed line) or the average
     // plus the lowest-highest band ("range"); allYears draws only those ("off" counts as "range"), on a reference
@@ -155,8 +158,8 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
     const statsMode = allYears && stats === "off" ? "range" : stats;
     const statsOn = statsMode !== "off" && hasDayStats(obs);
     const rangeOn = statsOn && statsMode === "range";
-    const { result, isLoading: obsLoading } = useYearDaily(obs, stat, year, waterYear, !allYears);
-    const { byDay: dayStats, isLoading: statsLoading } = useDayStats(obs, stat, cumulative, waterYear, statsOn);
+    const { result, isLoading: obsLoading } = useYearDaily(obs, stat, year, waterYear, !allYears, est);
+    const { byDay: dayStats, isLoading: statsLoading } = useDayStats(obs, stat, cumulative, waterYear, statsOn, est);
     const isLoading = obsLoading || statsLoading;
     const normalOk = !allYears && showNormal && hasNormal(obs, stat);
     const days = buildSeries(result, obs, stat, year, waterYear, cumulative, statsOn ? dayStats : null);
@@ -189,12 +192,16 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
         });
     }
     if (!allYears) {
+        const estEnd = Date.UTC(2020, 11, 27); // first measured day; earlier points are estimated
+        const muted = Highcharts.color(color).setOpacity(0.65).get();
         series.push({
             id: "obs", type: columns ? "column" : "line",
             name: (cumulative ? "Cumulative " + name.toLowerCase().replace("et0", "ET0") : name),
             color, lineWidth: 2, marker: { enabled: false }, zIndex: 2,
             pointPadding: 0, groupPadding: 0, borderWidth: 0,
-            data: days.map((d) => [d.t, c(d.obs)]),
+            zoneAxis: est ? "x" : undefined,
+            zones: est ? [{ value: estEnd, dashStyle: "Dash", color: muted }, { dashStyle: "Solid" }] : undefined,
+            data: days.map((d) => ({ x: d.t, y: c(d.obs), est: d.est })),
         });
     }
     if (statsOn) {
@@ -255,6 +262,9 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
                         s += dot + p.series.name + ": " + v(p.y) + (p.point.n ? " (" + p.point.n + " yrs)" : "");
                     } else {
                         s += dot + p.series.name + ": " + v(p.y);
+                        if (id === "obs" && p.point.est) {
+                            s += " <span style=\"font-size:0.85em\">(estimated)</span>";
+                        }
                         if (id === "obs" && methods.size) {
                             const m = cumulative ? null : methods.get(this.x);
                             const how = !m ? "" : m.method === "pm" ? "Penman-Monteith"

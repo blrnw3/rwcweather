@@ -34,6 +34,13 @@ import {
     DAILY_VALUE_OBS_STATES,
     MULTIDAY_OBS_STATES,
     REPORT_YEAR_START,
+    dataYearStart,
+    EST_YEAR_START,
+    EstMark,
+    EstNote,
+    EstToggle,
+    estQuery,
+    isEstOn,
     SUMMARY_NAMES,
     summaryKey,
     summaryOptions,
@@ -221,7 +228,12 @@ const SPELL_TITLE_WORDS = {
     aqi: { above: "polluted", below: "clean" },
 };
 const SPELL_STATUS = { today: ", so far", pending: ", may continue today", yesterday: ", to yesterday" };
-const SPELL_START_YEARS = ["all", ...Array.from(Array(new Date().getFullYear() - 2021 + 1).keys()).map((i) => String(2021 + i))];
+const spellStartYears = (est) => {
+    const start = dataYearStart(est);
+    return ["all", ...Array.from(Array(new Date().getFullYear() - start + 1).keys()).map((i) => String(start + i))];
+};
+const SPELL_START_YEARS = spellStartYears("0");
+
 
 // Options shown for the unit preference ("uk" / "eu" = metric temperatures & rainfall; "eu" = kph wind).
 function spellThresholds(obs, stat, unit = "us") {
@@ -364,9 +376,9 @@ function formatWindowSuffix(window, centre) {
 }
 
 
-function useRankingData(obs, dailyAggregation) {
+function useRankingData(obs, dailyAggregation, est) {
     const url = "/api/var/all_periods/" + obs + "/" + dailyAggregation
-        + "/?start=" + REPORT_YEAR_START + "0101&include_today=1";
+        + "/?start=" + dataYearStart(est) + "0101&include_today=1" + estQuery(est);
     return useSWR(url, fetcher, { refreshInterval: 300000 });
 }
 
@@ -389,10 +401,13 @@ function monthlyCountRecords(dailyResults, threshold) {
         const [year, month] = result.d;
         const key = year + "-" + month;
         if (!counts.has(key)) {
-            counts.set(key, { date: [year, month], value: 0 });
+            counts.set(key, { date: [year, month], value: 0, est: false });
         }
         if (result.val > threshold) {
             counts.get(key).value++;
+        }
+        if (result.est) {
+            counts.get(key).est = true;
         }
     }
     return Array.from(counts.values());
@@ -400,11 +415,15 @@ function monthlyCountRecords(dailyResults, threshold) {
 
 function annualCountRecords(dailyResults, threshold) {
     const counts = new Map();
+    const estYears = new Set();
     for (const result of dailyResults) {
         const year = result.d[0];
         counts.set(year, (counts.get(year) || 0) + (result.val > threshold ? 1 : 0));
+        if (result.est) {
+            estYears.add(year);
+        }
     }
-    return Array.from(counts, ([year, value]) => ({ date: [year], value }));
+    return Array.from(counts, ([year, value]) => ({ date: [year], value, est: estYears.has(year) }));
 }
 
 // Annual and water-year rankings only include complete years: an in-progress
@@ -423,6 +442,7 @@ function annualRecords(results, server, summary, threshold) {
         : (results.yearly || []).map((result) => ({
             date: [result.m],
             value: result.summary[summaryKey(summary)],
+            est: !!result.est,
         }));
     return records.filter((record) => isComplete(record.date[0]));
 }
@@ -535,12 +555,12 @@ function waterYearRecords(waterYears) {
     }
     return Array.from(waterYears.waterYears)
         .filter(([, info]) => info.status === "complete")
-        .map(([waterYear, info]) => ({ date: [waterYear], value: info.value }));
+        .map(([waterYear, info]) => ({ date: [waterYear], value: info.value, est: !!info.est }));
 }
 
 function rankingRecords(results, server, period, summary, threshold, waterYears) {
     if (period === "daily") {
-        return (results.daily || []).map((result) => ({ date: result.d, value: result.val }));
+        return (results.daily || []).map((result) => ({ date: result.d, value: result.val, est: !!result.est }));
     }
     if (period === "annual") {
         return annualRecords(results, server, summary, threshold);
@@ -555,6 +575,7 @@ function rankingRecords(results, server, period, summary, threshold, waterYears)
     return (results.monthly || []).map((result) => ({
         date: result.m,
         value: result.summary[selectedSummaryKey],
+        est: !!result.est,
     }));
 }
 
@@ -575,12 +596,12 @@ function DayLink({ date, children }) {
     </NextLink>;
 }
 
-function RollingRankingTable({ obs, dailyAggregation, days, month, order, limit }) {
+function RollingRankingTable({ obs, dailyAggregation, days, month, order, limit, est }) {
     const unit = useContext(UnitCtx);
     const obsObj = OBS.get(obs);
     const fmat = fmatForObs(obs, dailyAggregation);
     const url = "/api/var/rolling/" + obs + "/" + dailyAggregation + "/?days=" + days + "&order=" + order
-        + "&month=" + (month === "all" ? 0 : month) + "&limit=" + limit;
+        + "&month=" + (month === "all" ? 0 : month) + "&limit=" + limit + estQuery(est);
     const { data: response, error, isValidating } = useSWR(url, fetcher, { refreshInterval: 300000 });
 
     if (error || response?.error) {
@@ -637,7 +658,7 @@ function RollingRankingTable({ obs, dailyAggregation, days, month, order, limit 
                                 {" "}({record.days} of {record.n} days with data)
                             </Text>}
                         </Td>
-                        <Td isNumeric backgroundColor={bg} color={col}>{formatObs(unit, record.val, fmat)}</Td>
+                        <Td isNumeric backgroundColor={bg} color={col}><EstMark est={record.est}>{formatObs(unit, record.val, fmat)}</EstMark></Td>
                     </Tr>;
                 })}
                 {showCurrentRow && <Tr id="ranking-current-row" borderTopWidth="3px" borderTopStyle="dashed">
@@ -647,11 +668,12 @@ function RollingRankingTable({ obs, dailyAggregation, days, month, order, limit 
                             {" "}({current.days} of {current.n} days with data)
                         </Text>}
                     </Td>
-                    <Td isNumeric bg="blue.50">{formatObs(unit, current.val, fmat)}</Td>
+                    <Td isNumeric bg="blue.50"><EstMark est={current.est}>{formatObs(unit, current.val, fmat)}</EstMark></Td>
                 </Tr>}
             </Tbody>
         </Table>
         {records.length === 0 && <Text py="4">No ranking data is available.</Text>}
+        <EstNote show={records.some((r) => r.est)} />
     </Box>;
 }
 
@@ -712,10 +734,10 @@ function AnomLevelSelector({ value, fn }) {
     </>;
 }
 
-function AnomSpellRankingTable({ dailyAggregation, dir, level, order, month, limit }) {
+function AnomSpellRankingTable({ dailyAggregation, dir, level, order, month, limit, est }) {
     const unit = useContext(UnitCtx);
     const url = "/api/var/anom_spells/temp/" + dailyAggregation + "/?dir=" + dir + "&level=" + level
-        + "&order=" + order + "&month=" + (month === "all" ? 0 : month) + "&limit=" + limit;
+        + "&order=" + order + "&month=" + (month === "all" ? 0 : month) + "&limit=" + limit + estQuery(est);
     const { data: response, error, isValidating } = useSWR(url, fetcher, { refreshInterval: 300000 });
 
     if (error || response?.error) {
@@ -772,7 +794,7 @@ function AnomSpellRankingTable({ dailyAggregation, dir, level, order, month, lim
                     return <Tr key={record.start.join("-") + "-" + record.end.join("-")} className={recent ? "recent-" + recent : undefined}
                         {...(isCurrent ? { bg: "blue.50" } : {})}>
                         <Td isNumeric fontWeight="bold" bg={hl.bg}>{displayedRank}</Td>
-                        <Td isNumeric bg={hl.bg} fontWeight="bold">{days(record.length)}</Td>
+                        <Td isNumeric bg={hl.bg} fontWeight="bold"><EstMark est={record.est}>{days(record.length)}</EstMark></Td>
                         <Td bg={hl.bg} fontWeight={hl.fontWeight}>{spanParts(record)}</Td>
                         <Td isNumeric>{formatAnomDep(unit, record.mean)}</Td>
                         <Td isNumeric>{record.mean_temp != null ? formatObs(unit, record.mean_temp, "temp") : "–"}</Td>
@@ -797,14 +819,16 @@ function AnomSpellRankingTable({ dailyAggregation, dir, level, order, month, lim
             Found {response.found} matching spell{response.found === 1 ? "" : "s"}; showing the top {Math.min(records.length, Number(limit))}.
         </Text>
         {records.length === 0 && <Text py="4">No spells match this rule.</Text>}
+        <EstNote show={records.some((r) => r.est)} />
     </Box>;
 }
 
-function SpellRankingTable({ obs, dailyAggregation, dir, threshold, month, startYear, limit }) {
+function SpellRankingTable({ obs, dailyAggregation, dir, threshold, month, startYear, limit, est }) {
     const unit = useContext(UnitCtx);
     const fmat = fmatForObs(obs, dailyAggregation);
     const url = "/api/var/spells/" + obs + "/" + dailyAggregation + "/?dir=" + dir + "&threshold=" + threshold
-        + "&month=" + (month === "all" ? 0 : month) + (startYear === "all" ? "" : "&start_year=" + startYear) + "&limit=" + limit;
+        + "&month=" + (month === "all" ? 0 : month) + (startYear === "all" ? "" : "&start_year=" + startYear)
+        + "&limit=" + limit + estQuery(est);
     const { data: response, error, isValidating } = useSWR(url, fetcher, { refreshInterval: 300000 });
 
     if (error || response?.error) {
@@ -859,7 +883,7 @@ function SpellRankingTable({ obs, dailyAggregation, dir, threshold, month, start
                     const hl = recent ? RECENT_STYLE[recent] : {};
                     return <Tr key={record.start.join("-")} className={"spell-row" + (recent ? " recent-" + recent : "") + (ongoing ? " ongoing" : "")}>
                         <Td isNumeric fontWeight="bold" bg={hl.bg}>{displayedRank}</Td>
-                        <Td isNumeric bg={hl.bg} fontWeight="bold">{days(record.length)}</Td>
+                        <Td isNumeric bg={hl.bg} fontWeight="bold"><EstMark est={record.est}>{days(record.length)}</EstMark></Td>
                         <Td bg={hl.bg} fontWeight={hl.fontWeight}>
                             {spanParts(record)}
                             {ongoing && <Text as="span" color="blue.700" fontSize="sm"> (ongoing)</Text>}
@@ -889,15 +913,16 @@ function SpellRankingTable({ obs, dailyAggregation, dir, threshold, month, start
             Found {response.found} matching spell{response.found === 1 ? "" : "s"}; showing the longest {Math.min(records.length, Number(limit))}.
         </Text>
         {records.length === 0 && <Text py="4">No spells match this rule.</Text>}
+        <EstNote show={records.some((r) => r.est)} />
     </Box>;
 }
 
-function RankingTable({ obs, dailyAggregation, period, summary, threshold, month, window = "all", centre, order, limit }) {
+function RankingTable({ obs, dailyAggregation, period, summary, threshold, month, window = "all", centre, order, limit, est }) {
     const unit = useContext(UnitCtx);
     const obsObj = OBS.get(obs);
     const fmat = fmatForObs(obs, dailyAggregation);
-    const { data: response, error, isValidating } = useRankingData(obs, dailyAggregation);
-    const waterYears = useWaterYears(period === "wateryear" ? obs : null, summary, threshold);
+    const { data: response, error, isValidating } = useRankingData(obs, dailyAggregation, est);
+    const waterYears = useWaterYears(period === "wateryear" ? obs : null, summary, threshold, est);
     const results = response?.result || {};
     const isSummaryPeriod = SUMMARY_PERIODS.includes(period);
     const byMonth = period === "daily" || period === "monthly";
@@ -1001,18 +1026,19 @@ function RankingTable({ obs, dailyAggregation, period, summary, threshold, month
                                 : formatPeriod(period, record.date)}
                             {isCurrent && <Text as="span" color="gray.600" fontSize="sm"> (so far)</Text>}
                         </Td>
-                        <Td isNumeric backgroundColor={bg} color={col}>{formattedValue}</Td>
+                        <Td isNumeric backgroundColor={bg} color={col}><EstMark est={record.est}>{formattedValue}</EstMark></Td>
                     </Tr>;
                 })}
                 {currentRanked && !currentInTop && <Tr id="ranking-current-row" borderTopWidth="3px" borderTopStyle="dashed">
                     <Td isNumeric fontWeight="bold" bg="blue.50">{currentRank}</Td>
                     <Td bg="blue.50">{CURRENT_LABEL[period]}: {currentPeriodLabel}
                         <Text as="span" color="gray.600" fontSize="sm"> (so far)</Text></Td>
-                    <Td isNumeric bg="blue.50">{fmtValue(current.value)}</Td>
+                    <Td isNumeric bg="blue.50"><EstMark est={current.est}>{fmtValue(current.value)}</EstMark></Td>
                 </Tr>}
             </Tbody>
         </Table>
         {records.length === 0 && <Text py="4">No ranking data is available.</Text>}
+        <EstNote show={records.some((r) => r.est)} />
     </Box>;
 }
 
@@ -1031,6 +1057,7 @@ const monthFromParam = (value) => {
 // or /reports/ranking?period=monthly&month=jul&order=lowest. Keys resolve in
 // order, so the period can depend on the variable (water years: rain only).
 const RANKING_URL_STATE = {
+    est: { def: () => "0", valid: (v) => v === "0" || v === "1" },
     obs: { param: "var", def: () => "temp", valid: inList(DAILY_VALUE_OBS_STATES) },
     period: { def: () => "daily", valid: (v, s) => periodOptions(s.obs).includes(v) },
     dailyAggregation: {
@@ -1076,7 +1103,7 @@ const RANKING_URL_STATE = {
         valid: (v, s) => spellThresholdsAny(s.obs, s.dailyAggregation).includes(v),
         use: (s) => s.period === "spells",
     },
-    startYear: { param: "from", def: () => "all", valid: inList(SPELL_START_YEARS), use: (s) => s.period === "spells" },
+    startYear: { param: "from", def: () => "all", valid: (v, s) => spellStartYears(s.est).includes(v), use: (s) => s.period === "spells" },
     days: { def: () => "3", valid: inList(ROLLING_DAYS), use: (s) => s.period === "rolling" },
     order: { def: () => "highest", valid: (v, s) => orderOptions(s.obs, s.period).includes(v) },
     limit: { param: "rows", def: () => "25", valid: inList(["10", "25", "50", "100"]) },
@@ -1084,7 +1111,7 @@ const RANKING_URL_STATE = {
 
 export default function RankingReport() {
     const [state, update] = useUrlState(RANKING_URL_STATE);
-    const { period, obs, dailyAggregation, summary, threshold, month, window, centre, days, order, limit, dir, spellThreshold, startYear, anomLevel, anomOrder } = state;
+    const { period, obs, dailyAggregation, summary, threshold, month, window, centre, days, order, limit, dir, spellThreshold, startYear, anomLevel, anomOrder, est } = state;
     const monthlySummaryOptions = summaryOptions(obs);
 
     const handleObsChange = (nextObs, nextStat) => {
@@ -1215,7 +1242,7 @@ export default function RankingReport() {
             <RadioButtonGroup name="dir" value={dir} options={["above", "below"]} optFormat={(value) => dirNames[value]} fn={setDir} />
             <SpellThresholdSelector obs={obs} dailyAggregation={dailyAggregation} value={spellThreshold} fn={setSpellThreshold} />
             <Text mt="1" fontWeight="bold">From:</Text>
-            <RadioButtonGroup name="from" value={startYear} options={SPELL_START_YEARS}
+            <RadioButtonGroup name="from" value={startYear} options={spellStartYears(est)}
                 optFormat={(value) => value === "all" ? "All years" : value} fn={setStartYear} />
         </> : period === "anom" ? <>
             <Text mt="1" fontWeight="bold">Type:</Text>
@@ -1230,6 +1257,11 @@ export default function RankingReport() {
         <Text mt="1" fontWeight="bold">Results:</Text>
         <RadioButtonGroup name="limit" value={limit} options={["10", "25", "50", "100"]} optFormat={(value) => value + " rows"} fn={setLimit} />
 
+        <EstToggle value={est} onChange={(v) => update({
+            est: v,
+            startYear: (v !== "1" && startYear !== "all" && Number(startYear) < REPORT_YEAR_START) ? "all" : startYear,
+        })} />
+
         {period === "spells" ? <SpellRankingTable
             obs={obs}
             dailyAggregation={dailyAggregation}
@@ -1238,6 +1270,7 @@ export default function RankingReport() {
             month={month}
             startYear={startYear}
             limit={limit}
+            est={est}
         /> : period === "anom" ? <AnomSpellRankingTable
             dailyAggregation={dailyAggregation}
             dir={dir}
@@ -1245,6 +1278,7 @@ export default function RankingReport() {
             order={anomOrder}
             month={month}
             limit={limit}
+            est={est}
         /> : period === "rolling" ? <RollingRankingTable
             obs={obs}
             dailyAggregation={dailyAggregation}
@@ -1252,6 +1286,7 @@ export default function RankingReport() {
             month={month}
             order={order}
             limit={limit}
+            est={est}
         /> : <RankingTable
             obs={obs}
             dailyAggregation={dailyAggregation}
@@ -1263,12 +1298,13 @@ export default function RankingReport() {
             centre={centre}
             order={order}
             limit={limit}
+            est={est}
         />}
         <Text mt="3">
             Daily rankings compare the selected daily series directly. A day window (±5 or ±15 days around a centre
             date) keeps only calendar days near that date in every year (for example 10–20 October for a centre of
             15 October); year-end wrap and 29 February are included when they fall in the window. Monthly rankings
-            first summarize that same daily series within each month. Rankings use records from {REPORT_YEAR_START} onward.
+            first summarize that same daily series within each month. Rankings use records from {dataYearStart(est)} onward{isEstOn(est) ? "; asterisks mark values that include estimated days before 27 December 2020" : ""}.
         </Text>
         <Text mt="2">
             Annual rankings use calendar years; water-year rankings (rainfall and wet hours only) use 1 October to 30 September,

@@ -30,6 +30,52 @@ from rwcwx.fog import derive as fog_derive
 from rwcwx.calc import day_profile
 from rwcwx.calc import day_of_year
 from rwcwx.calc import derived_daily
+from rwcwx.estimated import merge as est_merge
+from rwcwx.estimated import store as est_store
+
+
+def _est_wanted() -> bool:
+    """True only when the request explicitly turns estimated history on (est=1)."""
+    return request.args.get("est", "") in ("1", "true", "on", "yes")
+
+
+def _maybe_merge_estimated(var: str, typ: str, measured: list) -> list:
+    """Attach estimated days that have no measured value. No-op when the option is off."""
+    if not _est_wanted() or (var, typ) not in est_merge.ESTIMATED_VARS:
+        return measured
+    # Only the requested series is filled (Tmax, Tmin, rain). Derived variables
+    # that load parent rows through this function stay measured-only.
+    top_var = (request.view_args or {}).get("var")
+    top_typ = (request.view_args or {}).get("typ")
+    if top_var and (top_var, top_typ) != (var, typ):
+        return measured
+    start = end = None
+    if "year" in request.args:
+        try:
+            start, end = DateUtil.year_start_end_dates(int(request.args["year"]))
+        except (TypeError, ValueError):
+            start = end = None
+    elif "start" in request.args:
+        start = DateStampConverter.from_str(request.args["start"])
+        if "end" in request.args:
+            end = DateStampConverter.from_str(request.args["end"])
+    estimated = est_store.fetch(var, typ, start, end)
+    return est_merge.merge_rows(measured, estimated)
+
+
+def _mark_estimated_periods(var: str, typ: str, est: bool, rows, current=None):
+    """Flag ranking rows whose span includes an estimated day. Option-off path is untouched."""
+    if not est or (var, typ) not in est_merge.ESTIMATED_VARS:
+        return rows, current
+    dates = est_store.fetch_dates(var, typ)
+    rows = est_merge.mark_periods(rows, dates)
+    if isinstance(current, dict):
+        start = current.get("start") or current.get("d") or current.get("date")
+        end = current.get("end") or start
+        if est_merge.span_has_estimated(start, end, dates):
+            current = dict(current)
+            current["est"] = True
+    return rows, current
 
 
 def todo():
@@ -271,7 +317,9 @@ def var_rolling(var: str, typ: str):
                               order=["highest", "lowest"], month="0-12 or season", limit="1-100"),
         }, 400
     now = DateUtil.now()
-    ranking, current = _rolling_cached(var, typ, days, order, month, limit, now.date(), int(now.timestamp() // 300))
+    est = _est_wanted()
+    ranking, current = _rolling_cached(var, typ, days, order, month, limit, now.date(), int(now.timestamp() // 300), est)
+    ranking, current = _mark_estimated_periods(var, typ, est, ranking, current)
     return _wrap_result(
         ranking,
         var=var, type=typ, days=days, order=order, month=month, min_days=min_days_required(days), current=current,
@@ -279,9 +327,9 @@ def var_rolling(var: str, typ: str):
 
 
 @lru_cache(maxsize=64)
-def _rolling_cached(var: str, typ: str, days: int, order: str, month, limit: int, today: date, _bucket: int) -> tuple:
+def _rolling_cached(var: str, typ: str, days: int, order: str, month, limit: int, today: date, _bucket: int, est: bool = False) -> tuple:
     """Each ranking is computed at most once per 5 minutes per worker (the reports refresh every 5 minutes)."""
-    return rolling_ranking_with_current(_daily_values(var, typ), var, typ, days, order, limit, today, month=month)
+    return rolling_ranking_with_current(_daily_values(var, typ, est=est), var, typ, days, order, limit, today, month=month)
 
 
 def var_spells(var: str, typ: str):
@@ -311,14 +359,16 @@ def var_spells(var: str, typ: str):
             "supported": dict(vars=spells_supported(), dir=list(DIRECTIONS), month="0-12 or season", limit="1-100"),
         }, 400
     now = DateUtil.now()
-    res = _spells_cached(var, typ, threshold, direction, month, start_year, limit, now.date(), int(now.timestamp() // 300))
-    return _wrap_result(res["result"], var=var, type=typ, dir=direction, threshold=threshold, month=month,
-                        start_year=start_year, current=res["current"], found=res["found"], stat=res["stat"])
+    est = _est_wanted()
+    res = _spells_cached(var, typ, threshold, direction, month, start_year, limit, now.date(), int(now.timestamp() // 300), est)
+    result, current = _mark_estimated_periods(var, typ, est, res["result"], res["current"])
+    return _wrap_result(result, var=var, type=typ, dir=direction, threshold=threshold, month=month,
+                        start_year=start_year, current=current, found=res["found"], stat=res["stat"])
 
 
 @lru_cache(maxsize=128)
-def _spells_cached(var, typ, threshold, direction, month, start_year, limit, today: date, _bucket: int) -> dict:
-    return spell_ranking(_daily_values(var, typ), var, typ, threshold, direction, month, start_year, limit, today)
+def _spells_cached(var, typ, threshold, direction, month, start_year, limit, today: date, _bucket: int, est: bool = False) -> dict:
+    return spell_ranking(_daily_values(var, typ, est=est), var, typ, threshold, direction, month, start_year, limit, today)
 
 
 def var_anom_spells(var: str, typ: str):
@@ -352,15 +402,17 @@ def var_anom_spells(var: str, typ: str):
             ),
         }, 400
     now = DateUtil.now()
-    res = _anom_spells_cached(var, typ, level, direction, month, order, limit, now.date(), int(now.timestamp() // 300))
-    return _wrap_result(res["result"], var=var, type=typ, dir=direction, level=level, order=order,
-                        month=month, current=res["current"], found=res["found"])
+    est = _est_wanted()
+    res = _anom_spells_cached(var, typ, level, direction, month, order, limit, now.date(), int(now.timestamp() // 300), est)
+    result, current = _mark_estimated_periods(var, typ, est, res["result"], res["current"])
+    return _wrap_result(result, var=var, type=typ, dir=direction, level=level, order=order,
+                        month=month, current=current, found=res["found"])
 
 
 @lru_cache(maxsize=128)
-def _anom_spells_cached(var, typ, level, direction, month, order, limit, today: date, _bucket: int) -> dict:
+def _anom_spells_cached(var, typ, level, direction, month, order, limit, today: date, _bucket: int, est: bool = False) -> dict:
     return anom_spells_mod.anom_spell_ranking(
-        _daily_values(var, typ), typ, level, direction, month, order, limit, today)
+        _daily_values(var, typ, est=est), typ, level, direction, month, order, limit, today)
 
 
 # Variables with no meaningful all-years range per calendar day: wind direction is circular, a fog day is 0/1.
@@ -382,15 +434,16 @@ def var_day_stats(var: str, typ: str):
                                   excluded=list(DAY_STATS_EXCLUDED))}, 400
     now = DateUtil.now()
     # recomputed at most hourly (and on a new day), so late updates to yesterday's values show up
-    res = _day_stats_cached(var, typ, mode == "cumulative", period == "water", now.date(), int(now.timestamp() // 3600))
+    est = _est_wanted()
+    res = _day_stats_cached(var, typ, mode == "cumulative", period == "water", now.date(), int(now.timestamp() // 3600), est)
     if res is None:
         return {"error": f"No daily values for {var}/{typ}"}, 404
     return _wrap_result(res, var=var, type=typ, mode=mode, period=period)
 
 
 @lru_cache(maxsize=64)
-def _day_stats_cached(var: str, typ: str, cumulative: bool, water: bool, today: date, _bucket: int):
-    values = _daily_values(var, typ)
+def _day_stats_cached(var: str, typ: str, cumulative: bool, water: bool, today: date, _bucket: int, est: bool = False):
+    values = _daily_values(var, typ, est=est)
     if not values:
         return None
     if cumulative:
@@ -398,7 +451,7 @@ def _day_stats_cached(var: str, typ: str, cumulative: bool, water: bool, today: 
     return day_of_year.daily_stats(values, today)
 
 
-def _daily_values(var: str, typ: str):
+def _daily_values(var: str, typ: str, est: bool = False):
     if derived_daily.is_derived(var):
         if not derived_daily.is_derived(var, typ):
             return []
@@ -413,7 +466,10 @@ def _daily_values(var: str, typ: str):
         rain = dict(AvgExtQ.daily_values("rain", "total"))
         return [(d, wet_rate.rate(rain.get(d), w)) for d, w in AvgExtQ.daily_values("wet", "total")
                 if rain.get(d) and wet_rate.rate(rain.get(d), w) is not None]
-    return AvgExtQ.daily_values(var, typ)
+    values = AvgExtQ.daily_values(var, typ)
+    if est and (var, typ) in est_merge.ESTIMATED_VARS:
+        return est_merge.merge_values(values, est_store.fetch(var, typ))
+    return values
 
 
 def obs_latest():
@@ -538,4 +594,4 @@ def _var_avg_exts_from_request(var: str, typ: str) -> List[AvgExt]:
 
         avg_ext = AvgExtQ.for_var_between_dates(var, typ, start, end)
 
-    return avg_ext
+    return _maybe_merge_estimated(var, typ, avg_ext)
