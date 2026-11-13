@@ -1,4 +1,4 @@
-"""Build the v4 estimated daily series from IEM and ACIS, or from a local cache.
+"""Build the v5 estimated daily series from IEM and ACIS, or from a local cache.
 
 Writes a CSV (and optionally a batched INSERT SQL file). Does not connect to the
 production database unless --insert is given explicitly.
@@ -39,7 +39,7 @@ logger = logging.getLogger("rwcwx.estimated.generate")
 
 IEM_DAILY = "https://mesonet.agron.iastate.edu/cgi-bin/request/daily.py"
 ACIS_STNDATA = "https://data.rcc-acis.org/StnData"
-USER_AGENT = "rwcweather estimated-daily/v4 (https://rwcweather.com)"
+USER_AGENT = "rwcweather estimated-daily/v5 (https://rwcweather.com)"
 IEM_PAUSE = 2.2
 
 # Cache file names (also accepted from the backfill-research download layout).
@@ -290,7 +290,7 @@ def generate_rows(sources: Dict[str, Dict[date, dict]], start: date, end: date,
                 coop = cands.get("coop")
                 sfo = cands.get("sfo")
                 rejected, reason = pulgas_is_bogus(
-                    var,
+                    var, typ,
                     pug.get("raw_val"), pug.get("val"),
                     None if not coop else coop.get("raw_val"),
                     None if not coop else coop.get("val"),
@@ -525,14 +525,14 @@ def insert_mysql(sql_path: Path, mysql_url: str) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Generate v4 estimated daily history (Tmax, Tmin, rain) from Pulgas Ridge, with COOP/SFO gap-fill.")
+    p = argparse.ArgumentParser(description="Generate v5 estimated daily history (Tmax, Tmin, rain) from Pulgas Ridge, with COOP/SFO gap-fill and quality control.")
     p.add_argument("--cache-dir", type=Path, required=True, help="Directory of IEM/ACIS cache files (created if fetching).")
     p.add_argument("--fetch", action="store_true", help="Download missing source files from IEM and ACIS.")
     p.add_argument("--csv-out", type=Path, required=True, help="Destination CSV.")
     p.add_argument("--sql-out", type=Path, help="Optional batched INSERT SQL file.")
     p.add_argument("--summary-out", type=Path, help="Optional JSON summary (coverage, source mix, annual totals).")
-    p.add_argument("--start", default=PERIOD_START, help="Inclusive start date (default v4 window).")
-    p.add_argument("--end", default=PERIOD_END, help="Inclusive end date (default v4 window).")
+    p.add_argument("--start", default=PERIOD_START, help="Inclusive start date (default v5 window).")
+    p.add_argument("--end", default=PERIOD_END, help="Inclusive end date (default v5 window).")
     p.add_argument("--insert", action="store_true",
                    help="Apply --sql-out to MYSQL_URL. Refused unless this flag is set. Never used in a dry run.")
     return p

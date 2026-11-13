@@ -4,7 +4,7 @@
 -- Do NOT apply this file or load rows as part of a dry run. Apply only with
 -- explicit approval, after reviewing the generated CSV:
 --   mysql wx < data/migrations/20261112_daily_estimated.sql
---   mysql wx < path/to/daily_estimated_v4.sql
+--   mysql wx < path/to/daily_estimated_v5.sql
 -- Until the table exists, requests without est=1 are unchanged, and requests
 -- with est=1 simply have no estimated days to merge (or can use RWC_ESTIMATED_CSV).
 CREATE TABLE IF NOT EXISTS `daily_estimated` (
@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS `daily_estimated` (
   `type` enum('max','min','total') NOT NULL COMMENT 'Tmax, Tmin, or rain total',
   `val` float NOT NULL COMMENT 'native units: temp °C, rain inches (same as avg_extreme)',
   `source` varchar(16) NOT NULL COMMENT 'pugc1, coop, or sfo',
-  `method` varchar(32) NOT NULL COMMENT 'v4-linear, v4-offset, or v4-ratio',
-  `version` varchar(16) NOT NULL DEFAULT 'v4' COMMENT 'conversion set; see rwcwx.estimated.conversions',
+  `method` varchar(32) NOT NULL COMMENT 'v5-linear, v5-offset, or v5-ratio',
+  `version` varchar(16) NOT NULL DEFAULT 'v5' COMMENT 'conversion set; see rwcwx.estimated.conversions',
   `confidence` char(1) NOT NULL COMMENT 'A = Pulgas primary, B = COOP gap-fill, C = SFO gap-fill',
   `raw_val` float DEFAULT NULL COMMENT 'source value in native units before conversion (temp °C, rain inches)',
   `t_mod` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'UTC, when this row was last written',
