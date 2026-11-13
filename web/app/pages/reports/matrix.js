@@ -2,7 +2,7 @@ import { Box, Flex, Grid, Heading, Spinner, Text, useRadioGroup } from "@chakra-
 import { Fragment, useContext } from 'react';
 import useSWR from 'swr';
 import { baseObs, DERIVED_PARENT, fetcher, fmatAggTypeOpt, fmatForObs, fmatObsOpt, fmatYrOpt, isTotalObs, OBS } from '../../components/conf';
-import { DAILY_ONLY_OBS, DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, MINUTE_OBS_STATES, DerivedVarNote, StatButtons, SunViewToggle } from '../../components/report';
+import { DAILY_ONLY_OBS, DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, MINUTE_OBS_STATES, DerivedVarNote, EST_YEAR_START, EstMark, EstNote, EstToggle, estQuery, isEstOn, StatButtons, SunViewToggle } from '../../components/report';
 import { daysInMonth } from "../../components/dateUtil";
 import { Page, UnitCtx } from "../../components/Page";
 import { inList, useUrlState } from "../../components/urlState";
@@ -11,16 +11,21 @@ import { convFunction, formatObs, scaleForObsType } from '../../format';
 import { ClimateAnom, ClimateNormalsLink, ClimateNote, hasClimate, monthlyNormal } from "../../components/climate";
 import { hasWaterYears, WaterYearTotals } from "../../components/waterYear";
 
-const yrStart = 2020;
+const MEASURED_YR_START = 2020;
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const months = Array.from(Array(12).keys());
 const yrEnd = new Date().getFullYear();
-const years = Array.from(Array(yrEnd-yrStart+1).keys()).map(x => (x + yrStart).toString());
-years.reverse();
+const yearList = (est) => {
+    const start = isEstOn(est) ? EST_YEAR_START : MEASURED_YR_START;
+    const years = Array.from(Array(yrEnd - start + 1).keys()).map((x) => (x + start).toString());
+    years.reverse();
+    return years;
+};
+const years = yearList("0");
 let loading = true;
 
-function useSummary(obs, agg, year) {
-    const { data, error, isValidating } = useSWR("/api/var/all_periods/" + obs + "/" + agg + "?year=" + year, fetcher, { refreshInterval: 300000 })
+function useSummary(obs, agg, year, est) {
+    const { data, error, isValidating } = useSWR("/api/var/all_periods/" + obs + "/" + agg + "?year=" + year + estQuery(est), fetcher, { refreshInterval: 300000 })
     loading = true;
     if (error || !data) {
         //   console.log(error);
@@ -89,7 +94,7 @@ function DailyMatrix(props) {
     const obsObj = OBS.get(obs);
     const agg = props.aggType;
     const fmat = fmatForObs(obs, agg);
-    const summary = useSummary(obs, agg, props.year);
+    const summary = useSummary(obs, agg, props.year, props.est);
     const res = summary?.daily || [];
     let serverDateParts = summary?.["server"]?.["date"] || [2000, 1, 1];
     let today = new Date(serverDateParts[0], serverDateParts[1] - 1, serverDateParts[2]);
@@ -99,6 +104,7 @@ function DailyMatrix(props) {
     let data = new Map();
     // Sunshine days filled from the weather-API estimate (no webcam data): "month-day" keys, marked with *.
     const apiEst = new Set();
+    const histEst = new Set();
     for (let r of res) {
         let mon = months[r["d"][1] - 1];
         if (!data.has(mon)) {
@@ -107,6 +113,9 @@ function DailyMatrix(props) {
         data.get(mon)[r["d"][2]] = r["val"];
         if (r["api_est"]) {
             apiEst.add(mon + "-" + r["d"][2]);
+        }
+        if (r["est"]) {
+            histEst.add(mon + "-" + r["d"][2]);
         }
     }
 
@@ -153,7 +162,7 @@ function DailyMatrix(props) {
                             v = matrixValue(unit, data.get(m)[d], fmat);
                             ({ bg, col } = getStyleForObsValue(data.get(m)[d], fmat, unit));
                             hover = { border: "1px solid " + col };
-                            est = apiEst.has(m + "-" + d);
+                            est = apiEst.has(m + "-" + d) || histEst.has(m + "-" + d);
                         }
                         // Past days link to that day's report, keeping the variable where the daily report has it.
                         const href = v !== "" ? dayReportHref(props.year, m + 1, d, obs) : null;
@@ -161,7 +170,7 @@ function DailyMatrix(props) {
                         bg = "var(--chakra-colors-" + bgComps[0] + "-" + bgComps[1] + ") !important";
                         return <Box key={m.toString() + "-" + d.toString()} className={"cell" + (href ? " day-link" : "")}
                             as={href ? "a" : "div"} href={href || undefined} display="block"
-                            title={href ? "Daily report for " + href.slice(18, 28) + (est ? " (estimated, no webcam data)" : "") : undefined}
+                            title={href ? "Daily report for " + href.slice(18, 28) + (est ? (histEst.has(m + "-" + d) ? " (estimated from nearby stations)" : " (estimated, no webcam data)") : "") : undefined}
                             textAlign="center" backgroundColor={bg} color={col}
                             border="1px solid transparent"
                             _hover={href ? { ...hover, textDecoration: "underline", cursor: "pointer" } : hover} px={1}
@@ -177,6 +186,7 @@ function DailyMatrix(props) {
     {apiEst.size > 0 && <Text id="api-est-note" mt="2" fontSize="sm">
         * estimated from weather-model sunshine and airport cloud reports (no webcam data)
     </Text>}
+    <EstNote show={histEst.size > 0} />
     </>
 }
 
@@ -185,7 +195,7 @@ function MonthlyMatrix(props) {
     const obsObj = OBS.get(obs);
     const agg = props.aggType;
     const fmat = fmatForObs(obs, agg);
-    const summary = useSummary(obs, agg, props.year);
+    const summary = useSummary(obs, agg, props.year, props.est);
     const res = summary?.monthly || [];
     let unit = useContext(UnitCtx);
 
@@ -198,9 +208,13 @@ function MonthlyMatrix(props) {
 
     // Convert input to matrix structure (map of month->summary_obj)
     let data = new Map();
+    const estMonths = new Set();
     for (let r of res) {
         let mon = months[r["m"][1] - 1];
         data.set(mon, r["summary"]);
+        if (r.est) {
+            estMonths.add(mon);
+        }
     }
 
     return <Grid id="obs-matrix-months" key="obs-matrix-months"
@@ -234,7 +248,7 @@ function MonthlyMatrix(props) {
                         _hover={hover}
                         py="2" px="1"
                     >
-                        {v}
+                        <EstMark est={estMonths.has(m)}>{v}</EstMark>
                         {showClimate && k === obsObj.summary && data.has(m) &&
                             <ClimateAnom value={data.get(m)[k]} normal={monthlyNormal(obs, agg, m + 1)}
                                 obs={obs} stat={agg} unit={unit} />}
@@ -243,6 +257,7 @@ function MonthlyMatrix(props) {
             </Fragment>
         })}
         {showClimate && <ClimateNote gridColumn="1 / -1" />}
+        <EstNote show={estMonths.size > 0} gridColumn="1 / -1" />
     </Grid>
 
 }
@@ -251,11 +266,11 @@ function MonthlyMatrix(props) {
 // the water years (Oct-Sep) that overlap it.
 function RainTotals(props) {
     const stat = OBS.get(props.obs).summary;
-    const summary = useSummary(props.obs, stat, props.year);
+    const summary = useSummary(props.obs, stat, props.year, props.est);
     const unit = useContext(UnitCtx);
     const yearly = (summary?.yearly || []).find((r) => r["m"] === Number(props.year));
     return <WaterYearTotals year={props.year} calendarTotal={yearly ? yearly["summary"][stat === "avg" ? "avg" : "total"] : null}
-        serverDate={summary?.["server"]?.["date"]} unit={unit} obs={props.obs} />
+        serverDate={summary?.["server"]?.["date"]} unit={unit} obs={props.obs} est={props.est} />
 }
 
 const OBS_OPTIONS = DAILY_VALUE_OBS_OPTIONS;
@@ -263,13 +278,14 @@ const aggOptionsFor = (obs) => isTotalObs(obs) ? ["total"] : (OBS.get(obs).daily
 
 // Selections kept in the URL, e.g. /reports/matrix?var=rain&year=2023
 const MATRIX_URL_STATE = {
+    est: { def: () => "0", valid: (v) => v === "0" || v === "1" },
     obs: { param: "var", def: () => "temp", valid: inList(DAILY_VALUE_OBS_STATES) },
     aggType: { param: "daily", def: (s) => aggOptionsFor(s.obs)[0], valid: (v, s) => aggOptionsFor(s.obs).includes(v) },
-    year: { def: () => yrEnd.toString(), valid: inList(years) },
+    year: { def: () => yrEnd.toString(), valid: (v, s) => yearList(s.est).includes(v) },
 };
 
 export default function Obs() {
-    const [{ obs, aggType, year }, update] = useUrlState(MATRIX_URL_STATE);
+    const [{ obs, aggType, year, est }, update] = useUrlState(MATRIX_URL_STATE);
     const obsOptions = OBS_OPTIONS;
 
     // Rain only has daily totals; other variables keep their statistic.
@@ -292,11 +308,15 @@ export default function Obs() {
         <RadioButtonGroup name="obs" value={baseObs(obs)} options={obsOptions} optFormat={fmatObsOpt} fn={handleObsChange} />
         <SunViewToggle obs={obs} stat={aggType} fn={handleObsChange} Group={RadioButtonGroup} />
         <StatButtons name="agg" obs={obs} stat={aggType} options={aggOptionsFor} optFormat={fmatAggTypeOpt} fn={setAggType} onObs={handleObsChange} Group={RadioButtonGroup} />
-        <RadioButtonGroup name="yr" value={year} options={years} optFormat={fmatYrOpt} fn={setYear} />
-        
-        <DailyMatrix obs={obs} aggType={aggType} year={year} />
-        {!DAILY_ONLY_OBS.includes(obs) && <MonthlyMatrix obs={obs} aggType={aggType} year={year} />}
-        {hasWaterYears(obs) && <RainTotals year={year} obs={obs} />}
+        <RadioButtonGroup name="yr" value={year} options={yearList(est)} optFormat={fmatYrOpt} fn={setYear} />
+        <EstToggle value={est} onChange={(v) => {
+            const nextYears = yearList(v);
+            update({ est: v, year: nextYears.includes(year) ? year : nextYears[0] });
+        }} />
+
+        <DailyMatrix obs={obs} aggType={aggType} year={year} est={est} />
+        {!DAILY_ONLY_OBS.includes(obs) && <MonthlyMatrix obs={obs} aggType={aggType} year={year} est={est} />}
+        {hasWaterYears(obs) && <RainTotals year={year} obs={obs} est={est} />}
 
         <Text mt="3">
             Description: daily {DERIVED_PARENT[obs] ? "" : fmatAggTypeOpt(aggType) + " "}{OBS.get(obs).name} data for every day in the year {year}, along with

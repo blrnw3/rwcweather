@@ -4,7 +4,7 @@ import { baseObs, dailyStatsFor, defaultDailyStat, fmatAggTypeOpt, fmatObsOpt, i
 import { Page } from "../../components/Page";
 import RadioCard from "../../components/RadioCard";
 import { hasWaterYears } from "../../components/waterYear";
-import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, DerivedVarNote, REPORT_YEAR_START, StatButtons, SunViewToggle } from "../../components/report";
+import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, dataYearStart, DerivedVarNote, EstNote, EstToggle, isEstOn, StatButtons, SunViewToggle } from "../../components/report";
 import { inList, useUrlState } from "../../components/urlState";
 import { hasDayStats, hasNormal, isMobile, STATS_MODES, YearChart } from "../../components/yearChart";
 import { ClimateNormalsLink } from "../../components/climate";
@@ -22,23 +22,25 @@ function RadioButtonGroup(props) {
 
 const obsOptions = DAILY_VALUE_OBS_OPTIONS;
 const CURRENT_YEAR = new Date().getFullYear();
-const years = (water) => {
+const years = (water, est) => {
+  const start = dataYearStart(est);
   const ys = [];
-  for (let y = CURRENT_YEAR + (water ? 1 : 0); y >= REPORT_YEAR_START + (water ? 1 : 0); y--) ys.push(String(y));
+  for (let y = CURRENT_YEAR + (water ? 1 : 0); y >= start + (water ? 1 : 0); y--) ys.push(String(y));
   return ys;
 };
 const canCume = (obs) => isTotalObs(obs);
 
 // "all" = no single year: just the all-years average / lowest / highest for each calendar day
-const yearOptions = (water, obs) => (hasDayStats(obs) ? ["all"] : []).concat(years(water));
+const yearOptions = (water, obs, est) => (hasDayStats(obs) ? ["all"] : []).concat(years(water, est));
 
 // e.g. /charts/year?var=rain&period=water&year=2026 ; /charts/year?var=temp&daily=min&year=2024
 //      /charts/year?var=temp&daily=max&year=2025&stats=on ; /charts/year?var=rain&year=all
 const YEAR_URL_STATE = {
+  est: { def: () => "0", valid: (v) => v === "0" || v === "1" },
   obs: { param: "var", def: () => "temp", valid: inList(DAILY_VALUE_OBS_STATES) },
   stat: { param: "daily", def: (s) => defaultDailyStat(s.obs), valid: (v, s) => dailyStatsFor(s.obs).includes(v) },
   period: { param: "period", def: () => "calendar", valid: (v, s) => v === "calendar" || (v === "water" && hasWaterYears(s.obs)), use: (s) => hasWaterYears(s.obs) },
-  year: { param: "year", def: (s) => years(s.period === "water")[0], valid: (v, s) => yearOptions(s.period === "water", s.obs).includes(v) },
+  year: { param: "year", def: (s) => years(s.period === "water", s.est)[0], valid: (v, s) => yearOptions(s.period === "water", s.obs, s.est).includes(v) },
   cume: { param: "mode", def: (s) => (canCume(s.obs) ? "cumulative" : "daily"), valid: (v, s) => v === "daily" || (v === "cumulative" && canCume(s.obs)) },
   normal: { param: "normal", def: () => "on", valid: inList(["on", "off"]), use: (s) => s.year !== "all" },
   // all-years overlay: off | avg (average only) | range (average + lowest-highest band). year=all has no "off" and
@@ -58,7 +60,7 @@ const chartHeight = () => (isMobile() ? 440 : 690);
 const PERIOD_NAMES = { calendar: "Calendar year", water: "Water year (Oct–Sep)" };
 
 export default function YearCharts() {
-  const [{ obs, stat, period, year, cume, normal, stats }, update] = useUrlState(YEAR_URL_STATE);
+  const [{ obs, stat, period, year, cume, normal, stats, est }, update] = useUrlState(YEAR_URL_STATE);
   const water = period === "water";
   const all = year === "all";
   const [today, setToday] = useState(null);
@@ -69,12 +71,16 @@ export default function YearCharts() {
     stat: nextStat || (x === "wind" ? "max" : defaultDailyStat(x, stat)),
     cume: canCume(x) ? (canCume(obs) ? cume : "cumulative") : "daily",
     period: hasWaterYears(x) ? period : "calendar",
-    year: year === "all" ? (hasDayStats(x) ? "all" : years(false)[0])
+    year: year === "all" ? (hasDayStats(x) ? "all" : years(false, est)[0])
       : hasWaterYears(x) || !water ? year : String(Math.min(Number(year), CURRENT_YEAR)),
   });
   const handlePeriod = (p) => {
-    const ys = years(p === "water");
+    const ys = years(p === "water", est);
     update({ period: p, year: year === "all" || ys.includes(year) ? year : ys[0] });
+  };
+  const handleEst = (v) => {
+    const ys = yearOptions(water, obs, v);
+    update({ est: v, year: ys.includes(year) ? year : ys[0] });
   };
 
   return (
@@ -89,7 +95,8 @@ export default function YearCharts() {
         fn={(v) => update({ stat: v })} onObs={handleObsChange} Group={RadioButtonGroup} />
       {hasWaterYears(obs) && <RadioButtonGroup name="period" value={period} options={["calendar", "water"]} optFormat={(p) => PERIOD_NAMES[p]} fn={handlePeriod} />}
       <Text mt="1" fontWeight="bold">{water ? "Water year (ending):" : "Year:"}</Text>
-      <RadioButtonGroup name="year" value={year} options={yearOptions(water, obs)} optFormat={(y) => (y === "all" ? "All" : water ? "WY" + y : y)} fn={(v) => update({ year: v })} />
+      <RadioButtonGroup name="year" value={year} options={yearOptions(water, obs, est)} optFormat={(y) => (y === "all" ? "All" : water ? "WY" + y : y)} fn={(v) => update({ year: v })} />
+      <EstToggle value={est} onChange={handleEst} />
       <Flex wrap="wrap" gap="4">
         {canCume(obs) && <RadioButtonGroup name="mode" value={cume} options={["cumulative", "daily"]} optFormat={(v) => (v === "cumulative" ? "Cumulative" : "Daily")} fn={(v) => update({ cume: v })} />}
         {hasDayStats(obs) && <Flex align="center" wrap="wrap">
@@ -101,12 +108,13 @@ export default function YearCharts() {
 
       <Box my={4} mx={{ base: 0, md: 4, xl: 6 }}>
         <YearChart obs={obs} stat={stat} year={all ? null : Number(year)} waterYear={water} cumulative={cume === "cumulative"}
-          showNormal={normal === "on"} stats={stats} allYears={all} today={today} height={chartHeight()} />
+          showNormal={normal === "on"} stats={stats} allYears={all} today={today} height={chartHeight()} est={isEstOn(est)} />
+        <EstNote show={isEstOn(est) && !all && (obs === "rain" || (obs === "temp" && (stat === "max" || stat === "min")))} />
       </Box>
       {hasDayStats(obs) && stats !== "off" && <Text fontSize="sm" mb="1">
         {cume === "cumulative"
-          ? "All years: the " + (stats === "range" ? "average, lowest and highest " : "average ") + "running total reached by each date, over every complete " + (water ? "water" : "calendar") + " year in the record (from Dec 2020; sunshine from Sep 2021), plus the current one so far."
-          : "All years: the " + (stats === "range" ? "average, lowest and highest " : "average ") + (isTotalObs(obs) ? "daily total" : dailyStatsFor(obs).length < 2 ? "daily value" : "daily " + fmatAggTypeOpt(stat).toLowerCase()) + " recorded on each calendar day since records began (Dec 2020; sunshine Sep 2021), excluding today. 29 February pools 28 Feb–1 Mar."}
+          ? "All years: the " + (stats === "range" ? "average, lowest and highest " : "average ") + "running total reached by each date, over every complete " + (water ? "water" : "calendar") + " year in the record (from Dec 2020, or Jan 2009 when estimated history is included; sunshine from Sep 2021), plus the current one so far."
+          : "All years: the " + (stats === "range" ? "average, lowest and highest " : "average ") + (isTotalObs(obs) ? "daily total" : dailyStatsFor(obs).length < 2 ? "daily value" : "daily " + fmatAggTypeOpt(stat).toLowerCase()) + " recorded on each calendar day since records began (Dec 2020, or Jan 2009 when estimated history is included; sunshine Sep 2021), excluding today. 29 February pools 28 Feb–1 Mar."}
       </Text>}
       {all ? null : hasNormal(obs, stat)
         ? <><Text fontSize="sm">Daily normals are interpolated from the monthly normals (rainfall is spread evenly over each month's days; sunshine is smoothed between mid-months).</Text><ClimateNormalsLink mt="1" /></>

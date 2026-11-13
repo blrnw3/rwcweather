@@ -13,12 +13,17 @@ import {
     RadioButtonGroup,
     DAILY_VALUE_OBS_OPTIONS,
     MULTIDAY_OBS_STATES,
-    REPORT_YEAR_START,
     SUMMARY_NAMES,
     summaryKey,
     summaryOptions,
     styleForReportValue,
+    dataYearStart,
     DerivedVarNote,
+    EstMark,
+    EstNote,
+    EstToggle,
+    estQuery,
+    isEstOn,
     StatButtons,
     SunViewToggle,
 } from "../../components/report";
@@ -31,16 +36,16 @@ import {
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const months = Array.from(Array(12).keys());
 
-function useSummaries(obs, dailyAggregation) {
+function useSummaries(obs, dailyAggregation, est) {
     const url = "/api/var/all_periods/" + obs + "/" + dailyAggregation
-        + "/?start=" + REPORT_YEAR_START + "0101&include_today=1";
+        + "/?start=" + dataYearStart(est) + "0101&include_today=1" + estQuery(est);
     return useSWR(url, fetcher, { refreshInterval: 300000 });
 }
 
 // Shared by the year-by-month matrix and the all-time summary so both always
 // show the same underlying values for the selected variable and statistics.
-function useMatrixData(obs, dailyAggregation, summary, threshold) {
-    const { data: response, error, isValidating } = useSummaries(obs, dailyAggregation);
+function useMatrixData(obs, dailyAggregation, summary, threshold, est) {
+    const { data: response, error, isValidating } = useSummaries(obs, dailyAggregation, est);
     const results = response?.result || {};
     const serverDate = response?.server?.date || [new Date().getFullYear(), new Date().getMonth() + 1, 1];
     const currentYear = serverDate[0];
@@ -49,6 +54,15 @@ function useMatrixData(obs, dailyAggregation, summary, threshold) {
 
     const matrix = new Map();
     const annual = new Map();
+    const estMonths = new Map(); // year -> Set of month indices (0-11)
+    const estYears = new Set();
+
+    const markMonth = (year, monthIdx) => {
+        if (!estMonths.has(year)) {
+            estMonths.set(year, new Set());
+        }
+        estMonths.get(year).add(monthIdx);
+    };
 
     if (summary === "count") {
         const numericThreshold = Number(threshold);
@@ -67,6 +81,10 @@ function useMatrixData(obs, dailyAggregation, summary, threshold) {
                 matrix.get(year).set(month - 1, matrix.get(year).get(month - 1) + 1);
                 annual.set(year, annual.get(year) + 1);
             }
+            if (result.est) {
+                markMonth(year, month - 1);
+                estYears.add(year);
+            }
         }
     } else {
         for (const result of results.monthly || []) {
@@ -75,26 +93,32 @@ function useMatrixData(obs, dailyAggregation, summary, threshold) {
                 matrix.set(year, new Map());
             }
             matrix.get(year).set(month - 1, result.summary[selectedSummaryKey]);
+            if (result.est) {
+                markMonth(year, month - 1);
+            }
         }
         for (const result of results.yearly || []) {
             annual.set(result.m, result.summary[selectedSummaryKey]);
+            if (result.est) {
+                estYears.add(result.m);
+            }
         }
     }
 
-    return { matrix, annual, currentYear, currentMonth, response, error, isValidating };
+    return { matrix, annual, estMonths, estYears, currentYear, currentMonth, response, error, isValidating };
 }
 
-function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
+function MonthlyMatrix({ obs, dailyAggregation, summary, threshold, est }) {
     const obsObj = OBS.get(obs);
     const fmat = fmatForObs(obs, dailyAggregation);
     const unit = useContext(UnitCtx);
-    const { matrix, annual, currentYear, currentMonth, response, error, isValidating }
-        = useMatrixData(obs, dailyAggregation, summary, threshold);
+    const { matrix, annual, estMonths, estYears, currentYear, currentMonth, response, error, isValidating }
+        = useMatrixData(obs, dailyAggregation, summary, threshold, est);
     // Rain also gets a water-year column; from October the in-progress water
     // year ends next calendar year, so it needs its own (otherwise future) row.
-    const waterYears = useWaterYears(obs, summary, threshold);
+    const waterYears = useWaterYears(obs, summary, threshold, est);
     const lastYear = Math.max(currentYear, waterYears?.currentWaterYear || currentYear);
-    const years = Array.from(Array(lastYear - REPORT_YEAR_START + 1).keys())
+    const years = Array.from(Array(lastYear - dataYearStart(est) + 1).keys())
         .map((offset) => lastYear - offset);
     // Climate comparison (as on nw3weather) only for the mean / total summary
     // of a daily series that has normals, e.g. mean of daily highs, rain total.
@@ -139,7 +163,7 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
                         py="2"
                         px="1"
                     >
-                        {isFuture ? "" : formattedValue}
+                        {isFuture ? "" : <EstMark est={estMonths.get(year)?.has(month)}>{formattedValue}</EstMark>}
                         {showClimate && !isFuture && <ClimateAnom value={value} obs={obs} stat={dailyAggregation} unit={unit}
                             normal={monthlyNormal(obs, dailyAggregation, month + 1)} />}
                     </Box>;
@@ -167,7 +191,7 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
                         py="2"
                         px="1"
                     >
-                        {formattedValue}
+                        {formattedValue === "" ? "" : <EstMark est={estYears.has(year)}>{formattedValue}</EstMark>}
                         {showClimate && !isFuture && <ClimateAnom value={value} obs={obs} stat={dailyAggregation} unit={unit}
                             normal={annualNormal(obs, dailyAggregation)} />}
                     </Box>;
@@ -181,26 +205,34 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold }) {
         {waterYears && <Box gridColumn="1 / -1"><WaterYearNote data={waterYears} obs={obs} unit={unit} summary={summary}
             showClimate={showClimate} /></Box>}
         {showClimate && <ClimateNote gridColumn="1 / -1" />}
+        <EstNote show={isEstOn(est) && (estYears.size > 0 || [...estMonths.values()].some((s) => s.size))} gridColumn="1 / -1" />
     </Grid>;
 }
 
 function calcStats(values) {
-    const valid = values.filter((v) => v != null && !Number.isNaN(v));
-    if (valid.length === 0) {
+    const items = values.map((v) => (v != null && typeof v === "object" && "value" in v) ? v : { value: v, est: false })
+        .filter((v) => v.value != null && !Number.isNaN(v.value));
+    if (items.length === 0) {
         return null;
     }
+    const nums = items.map((v) => v.value);
+    const min = Math.min(...nums);
+    const max = Math.max(...nums);
     return {
-        min: Math.min(...valid),
-        max: Math.max(...valid),
-        avg: valid.reduce((a, b) => a + b, 0) / valid.length,
-        n: valid.length,
+        min,
+        max,
+        avg: nums.reduce((a, b) => a + b, 0) / nums.length,
+        n: nums.length,
+        minEst: items.some((v) => v.value === min && v.est),
+        maxEst: items.some((v) => v.value === max && v.est),
+        avgEst: items.some((v) => v.est),
     };
 }
 
 // Per-month and annual min/max/avg across years. Years without a value are
 // skipped (not counted as zero). The in-progress month and year are left out
 // because their partial totals/means would skew the all-time figures.
-function allTimeStats(matrix, annual, currentYear, currentMonth) {
+function allTimeStats(matrix, annual, currentYear, currentMonth, estMonths, estYears) {
     const byMonth = months.map((month) => {
         const values = [];
         for (const [year, monthMap] of matrix) {
@@ -208,7 +240,7 @@ function allTimeStats(matrix, annual, currentYear, currentMonth) {
                 continue;
             }
             if (monthMap.has(month)) {
-                values.push(monthMap.get(month));
+                values.push({ value: monthMap.get(month), est: !!estMonths?.get(year)?.has(month) });
             }
         }
         return calcStats(values);
@@ -217,23 +249,23 @@ function allTimeStats(matrix, annual, currentYear, currentMonth) {
     const annualValues = [];
     for (const [year, value] of annual) {
         if (year !== currentYear) {
-            annualValues.push(value);
+            annualValues.push({ value, est: !!estYears?.has(year) });
         }
     }
 
     return { byMonth, annual: calcStats(annualValues) };
 }
 
-function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
+function AllTimeSummary({ obs, dailyAggregation, summary, threshold, est }) {
     const obsObj = OBS.get(obs);
     const fmat = fmatForObs(obs, dailyAggregation);
     const unit = useContext(UnitCtx);
-    const { matrix, annual, currentYear, currentMonth, response, error, isValidating }
-        = useMatrixData(obs, dailyAggregation, summary, threshold);
-    const stats = allTimeStats(matrix, annual, currentYear, currentMonth);
+    const { matrix, annual, estMonths, estYears, currentYear, currentMonth, response, error, isValidating }
+        = useMatrixData(obs, dailyAggregation, summary, threshold, est);
+    const stats = allTimeStats(matrix, annual, currentYear, currentMonth, estMonths, estYears);
     // Same water-year column as the matrix (rain only), over complete water
     // years: the in-progress and any partial first water year are left out.
-    const waterYears = useWaterYears(obs, summary, threshold);
+    const waterYears = useWaterYears(obs, summary, threshold, est);
     const waterYearStats = waterYears ? completeWaterYearStats(waterYears.waterYears) : null;
 
     // Anomalies against the climate normal, same rule as the matrix (mean / total summary with normals).
@@ -278,6 +310,9 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
                 {months.map((month) => {
                     const value = stats.byMonth[month]?.[key] ?? null;
                     const { bg, col } = styleForReportValue(value, fmat, unit, summary, false, true);
+                    const cellEst = key === "min" ? stats.byMonth[month]?.minEst
+                        : key === "max" ? stats.byMonth[month]?.maxEst
+                            : stats.byMonth[month]?.avgEst;
 
                     return <Box key={month + "-" + key}
                         className="cell"
@@ -289,13 +324,16 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
                         py="2"
                         px="1"
                     >
-                        {formatValue(value, key)}
+                        <EstMark est={cellEst}>{formatValue(value, key)}</EstMark>
                         {anom(value, monthlyNormal(obs, dailyAggregation, month + 1))}
                     </Box>;
                 })}
                 {(() => {
                     const value = stats.annual?.[key] ?? null;
                     const { bg, col } = styleForReportValue(value, fmat, unit, summary, true);
+                    const cellEst = key === "min" ? stats.annual?.minEst
+                        : key === "max" ? stats.annual?.maxEst
+                            : stats.annual?.avgEst;
 
                     return <Box key={key + "-annual"}
                         className="cell annual"
@@ -309,7 +347,7 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
                         py="2"
                         px="1"
                     >
-                        {formatValue(value, key)}
+                        <EstMark est={cellEst}>{formatValue(value, key)}</EstMark>
                         {anom(value, annualNormal(obs, dailyAggregation))}
                     </Box>;
                 })()}
@@ -317,6 +355,9 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
                     const entry = waterYearStats?.[key];
                     const value = entry == null ? null : key === "avg" ? entry : entry.value;
                     const { bg, col } = styleForReportValue(value, obsObj.fmat, unit, summary, true);
+                    const wyEst = key === "avg"
+                        ? Array.from(waterYears?.waterYears || []).some(([, info]) => info.status === "complete" && info.est)
+                        : entry?.waterYear != null && !!waterYears?.waterYears.get(entry.waterYear)?.est;
 
                     return <Box key={key + "-water-year"}
                         className="cell annual water-year-summary"
@@ -333,7 +374,7 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold }) {
                         py="2"
                         px="1"
                     >
-                        {formatValue(value, key)}
+                        <EstMark est={wyEst}>{formatValue(value, key)}</EstMark>
                         {anom(value, waterYearNormal(obs, "total"), "total")}
                     </Box>;
                 })()}
@@ -353,10 +394,11 @@ const ALLTIME_URL_STATE = {
     threshold: {
         def: () => "0", valid: (v, s) => countThresholdsAny(s.obs).includes(v), use: (s) => s.summary === "count",
     },
+    est: { def: () => "0", valid: (v) => v === "0" || v === "1" },
 };
 
 export default function AllTimeReport() {
-    const [{ obs, dailyAggregation, summary, threshold }, update] = useUrlState(ALLTIME_URL_STATE);
+    const [{ obs, dailyAggregation, summary, threshold, est }, update] = useUrlState(ALLTIME_URL_STATE);
     const monthlySummaryOptions = summaryOptions(obs);
 
     // Switching variable resets the daily statistic and threshold; a Mean/Total
@@ -388,11 +430,12 @@ export default function AllTimeReport() {
         <Text mt="1" fontWeight="bold">Monthly and annual summary:</Text>
         <RadioButtonGroup name="summary" value={summary} options={monthlySummaryOptions} optFormat={(value) => SUMMARY_NAMES[value]} fn={setSummary} />
         {summary === "count" && <CountThresholdSelector obs={obs} value={threshold} fn={setThreshold} />}
+        <EstToggle value={est} onChange={(v) => update({ est: v })} />
 
-        <MonthlyMatrix obs={obs} dailyAggregation={dailyAggregation} summary={summary} threshold={threshold} />
+        <MonthlyMatrix obs={obs} dailyAggregation={dailyAggregation} summary={summary} threshold={threshold} est={est} />
 
         <Heading as="h3" size="3" mt="6">Min, max and average across all years</Heading>
-        <AllTimeSummary obs={obs} dailyAggregation={dailyAggregation} summary={summary} threshold={threshold} />
+        <AllTimeSummary obs={obs} dailyAggregation={dailyAggregation} summary={summary} threshold={threshold} est={est} />
 
         <Text mt="3">
             Choose a daily series first, then summarize those daily values independently for each month and year.

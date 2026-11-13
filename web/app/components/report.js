@@ -1,4 +1,4 @@
-import { Box, Flex, Text, useRadioGroup } from "@chakra-ui/react";
+import { Box, Checkbox, Flex, Text, useRadioGroup } from "@chakra-ui/react";
 import { useContext, useEffect } from "react";
 import { convFunction, formatObs, scaleForObsType } from "../format";
 import { baseObs, DERIVED_PARENT, DERIVED_STATS, dailyStatsFor, OBS, statButtonValue, VIEW_GROUPS } from "./conf";
@@ -6,6 +6,56 @@ import { UnitCtx } from "./Page";
 import RadioCard from "./RadioCard";
 
 export const REPORT_YEAR_START = 2021;
+// First calendar year of the optional estimated daily series (Tmax, Tmin, rain).
+export const EST_YEAR_START = 2009;
+
+// URL field for the "Include estimated history" option. Default off is omitted from the URL.
+export const EST_URL_FIELD = { def: () => "0", valid: (v) => v === "0" || v === "1" };
+
+export function isEstOn(est) {
+    return est === "1" || est === true;
+}
+
+export function hasEstimatedHistory(obs, stat) {
+    return (obs === "temp" && (stat === "max" || stat === "min")) || obs === "rain";
+}
+
+export function dataYearStart(est) {
+    return isEstOn(est) ? EST_YEAR_START : REPORT_YEAR_START;
+}
+
+// Appended to an API query string (which already has ?...); empty when the option is off
+// so existing request URLs stay byte-for-byte the same.
+export function estQuery(est) {
+    return isEstOn(est) ? "&est=1" : "";
+}
+
+export function EstMark({ children, est }) {
+    if (!est) {
+        return children;
+    }
+    return <Box as="span" position="relative" className="est-hist-wrap">{children}
+        <Box as="sup" className="est-hist" position="absolute" left="100%" top="-0.1em" fontSize="0.7em" lineHeight="1">*</Box>
+    </Box>;
+}
+
+export function EstNote({ show, mt = "2", ...props }) {
+    if (!show) {
+        return null;
+    }
+    return <Text id="est-hist-note" mt={mt} fontSize="sm" {...props}>
+        * estimated from nearby stations (Pulgas Ridge, Redwood City COOP or SFO) for dates before 27 December 2020
+    </Text>;
+}
+
+export function EstToggle({ value, onChange }) {
+    return <Box id="est-history-toggle" mt="3">
+        <Checkbox isChecked={isEstOn(value)} onChange={(e) => onChange(e.target.checked ? "1" : "0")}>
+            Include estimated history
+        </Checkbox>
+    </Box>;
+}
+
 
 // Unit conversion helpers for threshold options (stored in DB base units: °C, inches, mph, mb).
 export const cToF = (c) => String(c * 9 / 5 + 32);

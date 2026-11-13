@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { formatObs } from "../format";
 import { annualNormal, ClimateAnom, waterYearNormal } from "./climate";
 import { fetcher, OBS } from "./conf";
-import { REPORT_YEAR_START, styleForReportValue } from "./report";
+import { dataYearStart, EstMark, estQuery, isEstOn, REPORT_YEAR_START, styleForReportValue } from "./report";
 
 // Water years (Oct 1 - Sep 30) are labelled by the calendar year they end in,
 // following the California / USGS convention: WY2026 = 1 Oct 2025 - 30 Sep 2026.
@@ -78,7 +78,8 @@ export function waterYearSummaries(response, summary, threshold) {
     const byYear = new Map();
     let firstDate = null;
     const weightsByYear = new Map();
-    for (const { d, val, w } of daily) {
+    const estYears = new Set();
+    for (const { d, val, w, est } of daily) {
         if (val == null || Number.isNaN(val)) {
             continue;
         }
@@ -89,6 +90,9 @@ export function waterYearSummaries(response, summary, threshold) {
         }
         byYear.get(waterYear).push(val);
         weightsByYear.get(waterYear).push(w);
+        if (est) {
+            estYears.add(waterYear);
+        }
         if (firstDate == null || dateNum(...d) < dateNum(...firstDate)) {
             firstDate = d;
         }
@@ -112,6 +116,7 @@ export function waterYearSummaries(response, summary, threshold) {
             days: values.length,
             status,
             note,
+            est: estYears.has(waterYear),
         });
     }
 
@@ -142,9 +147,10 @@ export function completeWaterYearStats(waterYears) {
 
 // Water-year summaries of daily rain totals (shared SWR key, so every report
 // page reuses one request). Returns null for variables without water years.
-export function useWaterYears(obs, summary, threshold) {
+export function useWaterYears(obs, summary, threshold, est) {
+    const start = isEstOn(est) ? dataYearStart(est) + "0101" : WATER_YEAR_DATA_START;
     const url = hasWaterYears(obs)
-        ? "/api/var/all_periods/" + obs + "/" + OBS.get(obs).summary + "/?start=" + WATER_YEAR_DATA_START + "&include_today=1"
+        ? "/api/var/all_periods/" + obs + "/" + OBS.get(obs).summary + "/?start=" + start + "&include_today=1" + estQuery(est)
         : null;
     const { data: response, error } = useSWR(url, fetcher, { refreshInterval: 300000 });
     if (!url) {
@@ -204,7 +210,7 @@ export function WaterYearCell({ waterYear, data, obs, unit, summary, showClimate
         py="2"
         px="1"
     >
-        {formatWaterYearValue(value, obs, unit, summary)}{flagged ? "*" : ""}
+        <EstMark est={!flagged && info?.est}>{formatWaterYearValue(value, obs, unit, summary)}{flagged ? "*" : ""}</EstMark>
         {showClimate && <ClimateAnom value={value} normal={waterYearClimateNormal(info, obs)} obs={obs} stat="total" unit={unit} />}
     </Box>;
 }
@@ -242,10 +248,10 @@ export function WaterYearNote({ data, obs, unit, summary, showClimate = false })
 
 // Annual page: calendar-year total alongside the two water years that overlap
 // the selected calendar year (the one ending in it and the one starting in it).
-export function WaterYearTotals({ year, calendarTotal, serverDate, unit, obs = "rain" }) {
+export function WaterYearTotals({ year, calendarTotal, serverDate, unit, obs = "rain", est }) {
     const obsObj = OBS.get(obs);
     const stat = obsObj.summary;    // total, or avg for the rain rate
-    const data = useWaterYears(obs, stat, 0);
+    const data = useWaterYears(obs, stat, 0, est);
     const yearNum = Number(year);
     const calendarInProgress = serverDate != null && serverDate[0] === yearNum;
     const firstDate = data?.firstDate;

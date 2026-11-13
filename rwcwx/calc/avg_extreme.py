@@ -520,10 +520,7 @@ class AvgExtAggregator:
             by_month[(ae.d.year, ae.d.month)].append(ae)
 
         return [
-            dict(
-                summary=OBS_VAR_MAP[var].multiday_summary(aes).as_dict,
-                m=period
-            )
+            _period_summary(aes, var, period)
             for period, aes in by_month.items()
         ]
 
@@ -536,10 +533,7 @@ class AvgExtAggregator:
             by_yr[ae.d.year].append(ae)
 
         return [
-            dict(
-                summary=OBS_VAR_MAP[var].multiday_summary(aes).as_dict,
-                m=yr
-            )
+            _period_summary(aes, var, yr)
             for yr, aes in by_yr.items()
         ]
 
@@ -550,3 +544,13 @@ class AvgExtAggregator:
             monthly=AvgExtAggregator.monthly(avg_ext, var),
             yearly=AvgExtAggregator.annual(avg_ext, var),
         )
+
+
+def _period_summary(aes, var, period) -> dict:
+    """Monthly / yearly summary; est is set only when the period includes estimated days."""
+    out = dict(summary=OBS_VAR_MAP[var].multiday_summary(aes).as_dict, m=period)
+    est_n = sum(1 for ae in aes if getattr(ae, "is_estimated", False))
+    if est_n:
+        out["est"] = True
+        out["est_n"] = est_n
+    return out
