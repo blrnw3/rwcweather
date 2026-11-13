@@ -113,8 +113,8 @@ export default function YearCharts() {
       </Box>
       {hasDayStats(obs) && stats !== "off" && <Text fontSize="sm" mb="1">
         {cume === "cumulative"
-          ? "All years: the " + (stats === "range" ? "average, lowest and highest " : "average ") + "running total reached by each date, over every complete " + (water ? "water" : "calendar") + " year in the record (from Dec 2020, or Jan 2009 when estimated history is included; sunshine from Sep 2021), plus the current one so far."
-          : "All years: the " + (stats === "range" ? "average, lowest and highest " : "average ") + (isTotalObs(obs) ? "daily total" : dailyStatsFor(obs).length < 2 ? "daily value" : "daily " + fmatAggTypeOpt(stat).toLowerCase()) + " recorded on each calendar day since records began (Dec 2020, or Jan 2009 when estimated history is included; sunshine Sep 2021), excluding today. 29 February pools 28 Feb–1 Mar."}
+          ? "All years: the " + (stats === "range" ? "average, lowest and highest " : "average ") + "running total reached by each date, over every complete " + (water ? "water" : "calendar") + " year in the record (from Dec 2020, or Jan 2011 when estimated history is included; sunshine from Sep 2021), plus the current one so far."
+          : "All years: the " + (stats === "range" ? "average, lowest and highest " : "average ") + (isTotalObs(obs) ? "daily total" : dailyStatsFor(obs).length < 2 ? "daily value" : "daily " + fmatAggTypeOpt(stat).toLowerCase()) + " recorded on each calendar day since records began (Dec 2020, or Jan 2011 when estimated history is included; sunshine Sep 2021), excluding today. 29 February pools 28 Feb–1 Mar."}
       </Text>}
       {all ? null : hasNormal(obs, stat)
         ? <><Text fontSize="sm">Daily normals are interpolated from the monthly normals (rainfall is spread evenly over each month's days; sunshine is smoothed between mid-months).</Text><ClimateNormalsLink mt="1" /></>

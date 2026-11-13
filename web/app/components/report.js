@@ -7,7 +7,7 @@ import RadioCard from "./RadioCard";
 
 export const REPORT_YEAR_START = 2021;
 // First calendar year of the optional estimated daily series (Tmax, Tmin, rain).
-export const EST_YEAR_START = 2009;
+export const EST_YEAR_START = 2011;
 
 // URL field for the "Include estimated history" option. Default off is omitted from the URL.
 export const EST_URL_FIELD = { def: () => "0", valid: (v) => v === "0" || v === "1" };
@@ -44,7 +44,7 @@ export function EstNote({ show, mt = "2", ...props }) {
         return null;
     }
     return <Text id="est-hist-note" mt={mt} fontSize="sm" {...props}>
-        * estimated from nearby stations (Pulgas Ridge, Redwood City COOP or SFO) for dates before 27 December 2020
+        * estimated from Pulgas Ridge RAWS (monthly conversion, IEM) for dates before 27 December 2020
     </Text>;
 }
 

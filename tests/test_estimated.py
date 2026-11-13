@@ -4,26 +4,22 @@ These tests do not need MySQL. They run under both process zones via RWC_TEST_TZ
 """
 from __future__ import annotations
 
-import csv
-import json
 from datetime import date
 from pathlib import Path
 
 import pytest
 
 from rwcwx.estimated.conversions import (
-    COOP_TMAX_LINEAR,
     PUGC1_RAIN_RATIO,
+    PUGC1_TMAX_LINEAR,
     PUGC1_TMIN_LINEAR,
-    SFO_RAIN_RATIO,
     VERSION,
     apply,
     apply_linear,
     f_to_c,
 )
-from rwcwx.estimated.generate import generate_rows, load_acis_coop, load_iem_daily, summarize, write_csv
+from rwcwx.estimated.generate import generate_rows, load_iem_daily, summarize, write_csv
 from rwcwx.estimated.merge import (
-    estimated_dates,
     mark_periods,
     merge_rows,
     merge_values,
@@ -34,17 +30,17 @@ from rwcwx.estimated.store import EstimatedDay, fetch
 
 # ---- conversions ----
 
-def test_version_is_v1():
-    assert VERSION == "v1"
+def test_version_is_v2():
+    assert VERSION == "v2"
 
 
-def test_coop_tmax_linear_january():
-    # 54 F = 12.222... C; Jan slope/intercept from the v1 table.
-    src = f_to_c(54.0)
-    out = apply("coop", "temp", "max", "linear", src, 1)
-    expected = round(apply_linear(src, 1, COOP_TMAX_LINEAR), 2)
+def test_pugc1_tmax_linear_january():
+    # 60 F = 15.555... C; Jan slope/intercept from the v2 table.
+    src = f_to_c(60.0)
+    out = apply("pugc1", "temp", "max", "linear", src, 1)
+    expected = round(apply_linear(src, 1, PUGC1_TMAX_LINEAR), 2)
     assert out == expected
-    assert out == pytest.approx(11.71, abs=0.01)
+    assert out == pytest.approx(14.10, abs=0.01)
 
 
 def test_pugc1_tmin_linear_july():
@@ -56,20 +52,19 @@ def test_pugc1_tmin_linear_july():
 def test_pugc1_rain_annual_ratio():
     assert apply("pugc1", "rain", "total", "ratio", 1.00, 1) == round(1.00 * PUGC1_RAIN_RATIO, 3)
     assert apply("pugc1", "rain", "total", "ratio", 0.0, 6) == 0.0
-    assert apply("sfo", "rain", "total", "ratio", 1.00, 12) == round(SFO_RAIN_RATIO, 3)
 
 
 def test_apply_skips_missing():
-    assert apply("coop", "temp", "max", "linear", None, 1) is None
-    assert apply("coop", "temp", "max", "linear", "M", 1) is None
+    assert apply("pugc1", "temp", "max", "linear", None, 1) is None
+    assert apply("pugc1", "temp", "max", "linear", "M", 1) is None
 
 
 # ---- merge: measured always wins; option-off path is a no-op ----
 
-def _est(day, var="temp", typ="max", val=20.0, source="coop"):
+def _est(day, var="temp", typ="max", val=20.0, source="pugc1"):
     return EstimatedDay(
         d=day, var=var, typ=typ, val=val, source=source,
-        method="v1-linear", version="v1", confidence="A" if source != "sfo" else "B",
+        method="v2-linear", version="v2", confidence="A",
     )
 
 
@@ -144,10 +139,10 @@ def test_mark_periods_and_span():
 
 
 def test_estimated_day_simple_dict_marks_est():
-    row = _est(date(2015, 3, 4), val=18.25, source="sfo")
+    row = _est(date(2015, 3, 4), val=18.25, source="pugc1")
     d = row.simple_dict_
     assert d["est"] is True
-    assert d["src"] == "sfo"
+    assert d["src"] == "pugc1"
     assert d["val"] == 18.25
     assert d["d"] == (2015, 3, 4)
 
@@ -162,68 +157,51 @@ def _write_iem(path: Path, rows):
     )
 
 
-def _write_acis(path: Path, rows):
-    payload = {
-        "meta": {"sids": ["USC00047339 6"]},
-        "data": [[d, [tx, 24], [tn, 24], [p, 24], "M"] for d, tx, tn, p in rows],
-    }
-    path.write_text(json.dumps(payload))
-
-
-def test_generate_blend_and_gap_fill(tmp_path):
-    # One COOP Tmax day, one missing COOP day filled from SFO; PUGC1 Tmin/rain; SFO fills a later Tmin/rain gap.
-    _write_acis(tmp_path / "acis_rwc_coop.json", [
-        ("2015-01-10", "54.0", "33.0", "0.00"),
-        # 2015-01-11 missing Tmax
-    ])
+def test_generate_from_pulgas_only(tmp_path):
+    # One complete Pulgas day; the next day is missing Tmax (and the day after is absent entirely).
     _write_iem(tmp_path / "iem_daily_CA_DCP_PUGC1.csv", [
         ("PUGC1", "2015-01-10", "60", "40", "0.50"),
-        # 2015-01-11 missing Tmin/rain
+        ("PUGC1", "2015-01-11", "M", "44", "0.10"),
     ])
-    _write_iem(tmp_path / "iem_daily_CA_ASOS_SFO.csv", [
-        ("SFO", "2015-01-10", "58", "45", "0.20"),
-        ("SFO", "2015-01-11", "57", "44", "0.10"),
-    ])
-    from rwcwx.estimated.generate import load_acis_coop, load_iem_daily, generate_rows
     sources = {
-        "coop": load_acis_coop(tmp_path / "acis_rwc_coop.json"),
         "pugc1": load_iem_daily(tmp_path / "iem_daily_CA_DCP_PUGC1.csv"),
-        "sfo": load_iem_daily(tmp_path / "iem_daily_CA_ASOS_SFO.csv"),
     }
-    rows = generate_rows(sources, date(2015, 1, 10), date(2015, 1, 11))
+    rows = generate_rows(sources, date(2015, 1, 10), date(2015, 1, 12))
     by = {(r["d"], r["var"], r["type"]): r for r in rows}
 
     tmax10 = by[("2015-01-10", "temp", "max")]
-    assert tmax10["source"] == "coop"
+    assert tmax10["source"] == "pugc1"
     assert tmax10["confidence"] == "A"
-    assert tmax10["method"] == "v1-linear"
-    assert tmax10["version"] == "v1"
-
-    tmax11 = by[("2015-01-11", "temp", "max")]
-    assert tmax11["source"] == "sfo"
-    assert tmax11["confidence"] == "B"
-    assert tmax11["method"] == "v1-offset"
+    assert tmax10["method"] == "v2-linear"
+    assert tmax10["version"] == "v2"
+    assert tmax10["val"] == apply("pugc1", "temp", "max", "linear", f_to_c(60.0), 1)
 
     tmin10 = by[("2015-01-10", "temp", "min")]
     assert tmin10["source"] == "pugc1"
-    tmin11 = by[("2015-01-11", "temp", "min")]
-    assert tmin11["source"] == "sfo"
-    assert tmin11["confidence"] == "B"
+    assert tmin10["method"] == "v2-linear"
 
     rain10 = by[("2015-01-10", "rain", "total")]
     assert rain10["source"] == "pugc1"
+    assert rain10["method"] == "v2-ratio"
     assert rain10["val"] == round(0.50 * PUGC1_RAIN_RATIO, 3)
+
+    # Missing Tmax on the 11th is left unestimated; Tmin and rain are still written.
+    assert ("2015-01-11", "temp", "max") not in by
+    tmin11 = by[("2015-01-11", "temp", "min")]
+    assert tmin11["source"] == "pugc1"
     rain11 = by[("2015-01-11", "rain", "total")]
-    assert rain11["source"] == "sfo"
-    assert rain11["val"] == round(0.10 * SFO_RAIN_RATIO, 3)
+    assert rain11["val"] == round(0.10 * PUGC1_RAIN_RATIO, 3)
+
+    # A day with no Pulgas observations at all produces no rows.
+    assert not any(r["d"] == "2015-01-12" for r in rows)
 
 
 def test_write_csv_and_store_fetch(tmp_path, monkeypatch):
     rows = [
         {"d": "2012-06-01", "var": "temp", "type": "max", "val": 22.5,
-         "source": "coop", "method": "v1-linear", "version": "v1", "confidence": "A", "raw_val": 24.1},
+         "source": "pugc1", "method": "v2-linear", "version": "v2", "confidence": "A", "raw_val": 24.1},
         {"d": "2012-06-01", "var": "rain", "type": "total", "val": 0.12,
-         "source": "pugc1", "method": "v1-ratio", "version": "v1", "confidence": "A", "raw_val": 0.13},
+         "source": "pugc1", "method": "v2-ratio", "version": "v2", "confidence": "A", "raw_val": 0.13},
     ]
     path = tmp_path / "est.csv"
     write_csv(rows, path)
@@ -235,7 +213,7 @@ def test_write_csv_and_store_fetch(tmp_path, monkeypatch):
     assert len(got) == 1
     assert got[0].d == date(2012, 6, 1)
     assert got[0].val == 22.5
-    assert got[0].source == "coop"
+    assert got[0].source == "pugc1"
     assert fetch("temp", "min") == []
     rain = fetch("rain", "total", start=date(2012, 6, 1), end=date(2012, 6, 1))
     assert rain[0].val == 0.12
@@ -244,17 +222,20 @@ def test_write_csv_and_store_fetch(tmp_path, monkeypatch):
 def test_summarize_annual_totals():
     rows = [
         {"d": "2011-01-01", "var": "temp", "type": "max", "val": 10.0,
-         "source": "coop", "method": "v1-linear", "version": "v1", "confidence": "A", "raw_val": 12.0},
+         "source": "pugc1", "method": "v2-linear", "version": "v2", "confidence": "A", "raw_val": 12.0},
         {"d": "2011-01-01", "var": "temp", "type": "min", "val": 4.0,
-         "source": "pugc1", "method": "v1-linear", "version": "v1", "confidence": "A", "raw_val": 3.0},
+         "source": "pugc1", "method": "v2-linear", "version": "v2", "confidence": "A", "raw_val": 3.0},
         {"d": "2011-01-01", "var": "rain", "type": "total", "val": 1.25,
-         "source": "pugc1", "method": "v1-ratio", "version": "v1", "confidence": "A", "raw_val": 1.34},
+         "source": "pugc1", "method": "v2-ratio", "version": "v2", "confidence": "A", "raw_val": 1.34},
     ]
-    summary = summarize(rows)
-    assert summary["version"] == "v1"
+    summary = summarize(rows, date(2011, 1, 1), date(2011, 1, 2))
+    assert summary["version"] == "v2"
     assert summary["n_rows"] == 3
     assert summary["annual"]["2011"]["rain_in"] == 1.25
     assert summary["annual"]["2011"]["mean_tmax_c"] == 10.0
+    assert summary["annual"]["2011"]["missing_tmax"] == 1
+    assert summary["annual"]["2011"]["missing_tmin"] == 1
+    assert summary["annual"]["2011"]["missing_rain"] == 1
     assert summary["source_mix"]["rain/total"]["pugc1"] == 1
 
 
