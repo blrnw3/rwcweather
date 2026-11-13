@@ -193,7 +193,11 @@ export function YearChart({ obs, stat, year, waterYear, cumulative, showNormal, 
     }
     if (!allYears) {
         const estEnd = Date.UTC(2020, 11, 27); // first measured day; earlier points are estimated
-        const muted = Highcharts.color(color).setOpacity(0.65).get();
+        // Highcharts' CJS build is { default: api } under Next SSR; only needed when est is on.
+        const HC = Highcharts.default || Highcharts;
+        const muted = est && typeof HC.color === "function"
+            ? HC.color(color).setOpacity(0.65).get()
+            : color;
         series.push({
             id: "obs", type: columns ? "column" : "line",
             name: (cumulative ? "Cumulative " + name.toLowerCase().replace("et0", "ET0") : name),
