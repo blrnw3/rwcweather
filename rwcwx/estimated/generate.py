@@ -1,4 +1,4 @@
-"""Build the v3 estimated daily series from IEM and ACIS, or from a local cache.
+"""Build the v4 estimated daily series from IEM and ACIS, or from a local cache.
 
 Writes a CSV (and optionally a batched INSERT SQL file). Does not connect to the
 production database unless --insert is given explicitly.
@@ -33,12 +33,13 @@ from rwcwx.estimated.conversions import (
     f_to_c,
     method_label,
 )
+from rwcwx.estimated.qc import pulgas_is_bogus
 
 logger = logging.getLogger("rwcwx.estimated.generate")
 
 IEM_DAILY = "https://mesonet.agron.iastate.edu/cgi-bin/request/daily.py"
 ACIS_STNDATA = "https://data.rcc-acis.org/StnData"
-USER_AGENT = "rwcweather estimated-daily/v3 (https://rwcweather.com)"
+USER_AGENT = "rwcweather estimated-daily/v4 (https://rwcweather.com)"
 IEM_PAUSE = 2.2
 
 # Cache file names (also accepted from the backfill-research download layout).
@@ -242,33 +243,86 @@ def ensure_sources(cache_dir: Path, start: date, end: date, fetch: bool) -> Dict
     return sources
 
 
-def generate_rows(sources: Dict[str, Dict[date, dict]], start: date, end: date) -> List[dict]:
+def _candidate(sources: Dict[str, Dict[date, dict]], source_id: str, method: str,
+               var: str, typ: str, d: date) -> Optional[dict]:
+    """Converted row for one source on one day, or None if missing."""
+    series = sources.get(source_id) or {}
+    day = series.get(d)
+    if not day:
+        return None
+    key = "tmax" if typ == "max" else "tmin" if typ == "min" else "rain"
+    raw = day.get(key)
+    val = apply(source_id, var, typ, method, raw, d.month)
+    if val is None:
+        return None
+    return {
+        "d": d.isoformat(),
+        "var": var,
+        "type": typ,
+        "val": val,
+        "source": source_id,
+        "method": method_label(method),
+        "version": VERSION,
+        "confidence": confidence_for(source_id),
+        "raw_val": None if raw is None else round(raw, 4),
+    }
+
+
+def generate_rows(sources: Dict[str, Dict[date, dict]], start: date, end: date,
+                  rejections: Optional[List[dict]] = None) -> List[dict]:
+    """Build the estimated series, rejecting bogus Pulgas values via quality control.
+
+    If `rejections` is provided, each discarded Pulgas value is appended as a
+    dict with the date, variable, raw Pulgas value, reason, and the replacement
+    (or None if no secondary was available).
+    """
     rows: List[dict] = []
     for d in _daterange(start, end):
         for (var, typ), chain in BLEND.items():
-            chosen = None
+            cands = {}
             for source_id, method in chain:
-                series = sources.get(source_id) or {}
-                day = series.get(d)
-                if not day:
-                    continue
-                key = "tmax" if typ == "max" else "tmin" if typ == "min" else "rain"
-                raw = day.get(key)
-                val = apply(source_id, var, typ, method, raw, d.month)
-                if val is None:
-                    continue
-                chosen = {
-                    "d": d.isoformat(),
-                    "var": var,
-                    "type": typ,
-                    "val": val,
-                    "source": source_id,
-                    "method": method_label(method),
-                    "version": VERSION,
-                    "confidence": confidence_for(source_id),
-                    "raw_val": None if raw is None else (round(raw, 4) if var != "rain" else round(raw, 4)),
-                }
-                break
+                cand = _candidate(sources, source_id, method, var, typ, d)
+                if cand:
+                    cands[source_id] = cand
+            chosen = cands.get("pugc1")
+            if chosen:
+                pug = cands["pugc1"]
+                coop = cands.get("coop")
+                sfo = cands.get("sfo")
+                rejected, reason = pulgas_is_bogus(
+                    var,
+                    pug.get("raw_val"), pug.get("val"),
+                    None if not coop else coop.get("raw_val"),
+                    None if not coop else coop.get("val"),
+                    None if not sfo else sfo.get("raw_val"),
+                    None if not sfo else sfo.get("val"),
+                )
+                if rejected:
+                    chosen = cands.get("coop") or cands.get("sfo")
+                    if rejections is not None:
+                        repl = chosen
+                        rejections.append({
+                            "d": pug["d"],
+                            "var": var,
+                            "type": typ,
+                            "rejected_source": "pugc1",
+                            "rejected_raw": pug.get("raw_val"),
+                            "rejected_val": pug.get("val"),
+                            "reason": reason,
+                            "replacement_source": None if not repl else repl["source"],
+                            "replacement_val": None if not repl else repl["val"],
+                            "replacement_raw": None if not repl else repl.get("raw_val"),
+                            "replacement_confidence": None if not repl else repl["confidence"],
+                        })
+                    logger.info(
+                        "QC rejected Pulgas %s %s on %s (raw=%s, est=%s, reason=%s); "
+                        "replacement %s %s",
+                        var, typ, pug["d"], pug.get("raw_val"), pug.get("val"), reason,
+                        None if not chosen else chosen["source"],
+                        None if not chosen else chosen["val"],
+                    )
+            else:
+                chosen = cands.get("coop") or cands.get("sfo")
             if chosen:
                 rows.append(chosen)
     return rows
@@ -333,7 +387,8 @@ def write_sql(rows: List[dict], path: Path, batch: int = 200) -> None:
     logger.info("wrote %s", path)
 
 
-def summarize(rows: List[dict], start: Optional[date] = None, end: Optional[date] = None) -> dict:
+def summarize(rows: List[dict], start: Optional[date] = None, end: Optional[date] = None,
+              rejections: Optional[List[dict]] = None) -> dict:
     """Coverage, source mix, secondary fill share, and annual totals for a review summary."""
     from collections import defaultdict
     start = start or _parse_iso(PERIOD_START)
@@ -439,6 +494,8 @@ def summarize(rows: List[dict], start: Optional[date] = None, end: Optional[date
             "sfo_tmin_linear_c": CV_RMSE[("sfo", "tmin", "linear")],
             "sfo_rain_ratio_in": CV_RMSE[("sfo", "rain", "ratio")],
         },
+        "rejections": list(rejections or []),
+        "n_rejections": len(rejections or []),
     }
 
 
@@ -468,14 +525,14 @@ def insert_mysql(sql_path: Path, mysql_url: str) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Generate v3 estimated daily history (Tmax, Tmin, rain) from Pulgas Ridge, with COOP/SFO gap-fill.")
+    p = argparse.ArgumentParser(description="Generate v4 estimated daily history (Tmax, Tmin, rain) from Pulgas Ridge, with COOP/SFO gap-fill.")
     p.add_argument("--cache-dir", type=Path, required=True, help="Directory of IEM/ACIS cache files (created if fetching).")
     p.add_argument("--fetch", action="store_true", help="Download missing source files from IEM and ACIS.")
     p.add_argument("--csv-out", type=Path, required=True, help="Destination CSV.")
     p.add_argument("--sql-out", type=Path, help="Optional batched INSERT SQL file.")
     p.add_argument("--summary-out", type=Path, help="Optional JSON summary (coverage, source mix, annual totals).")
-    p.add_argument("--start", default=PERIOD_START, help="Inclusive start date (default v3 window).")
-    p.add_argument("--end", default=PERIOD_END, help="Inclusive end date (default v3 window).")
+    p.add_argument("--start", default=PERIOD_START, help="Inclusive start date (default v4 window).")
+    p.add_argument("--end", default=PERIOD_END, help="Inclusive end date (default v4 window).")
     p.add_argument("--insert", action="store_true",
                    help="Apply --sql-out to MYSQL_URL. Refused unless this flag is set. Never used in a dry run.")
     return p
@@ -488,12 +545,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     if start > end:
         raise SystemExit("start is after end")
     sources = ensure_sources(args.cache_dir, start, end, fetch=args.fetch)
-    rows = generate_rows(sources, start, end)
+    rejections: List[dict] = []
+    rows = generate_rows(sources, start, end, rejections)
     write_csv(rows, args.csv_out)
     if args.sql_out:
         write_sql(rows, args.sql_out)
     if args.summary_out:
-        summary = summarize(rows, start, end)
+        summary = summarize(rows, start, end, rejections)
         args.summary_out.parent.mkdir(parents=True, exist_ok=True)
         args.summary_out.write_text(json.dumps(summary, indent=2))
         logger.info("wrote %s", args.summary_out)

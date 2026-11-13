@@ -34,8 +34,8 @@ from rwcwx.estimated.store import EstimatedDay, fetch
 
 # ---- conversions ----
 
-def test_version_is_v3():
-    assert VERSION == "v3"
+def test_version_is_v4():
+    assert VERSION == "v4"
 
 
 def test_pugc1_tmax_linear_january():
@@ -84,7 +84,7 @@ def _est(day, var="temp", typ="max", val=20.0, source="pugc1"):
     conf = {"pugc1": "A", "coop": "B", "sfo": "C"}.get(source, "A")
     return EstimatedDay(
         d=day, var=var, typ=typ, val=val, source=source,
-        method="v3-linear", version="v3", confidence=conf,
+        method="v4-linear", version="v4", confidence=conf,
     )
 
 
@@ -210,8 +210,8 @@ def test_generate_pulgas_primary_then_gap_fill(tmp_path):
     tmax10 = by[("2015-01-10", "temp", "max")]
     assert tmax10["source"] == "pugc1"
     assert tmax10["confidence"] == "A"
-    assert tmax10["method"] == "v3-linear"
-    assert tmax10["version"] == "v3"
+    assert tmax10["method"] == "v4-linear"
+    assert tmax10["version"] == "v4"
     assert tmax10["val"] == apply("pugc1", "temp", "max", "linear", f_to_c(60.0), 1)
 
     tmin10 = by[("2015-01-10", "temp", "min")]
@@ -223,7 +223,7 @@ def test_generate_pulgas_primary_then_gap_fill(tmp_path):
     tmax11 = by[("2015-01-11", "temp", "max")]
     assert tmax11["source"] == "coop"
     assert tmax11["confidence"] == "B"
-    assert tmax11["method"] == "v3-linear"
+    assert tmax11["method"] == "v4-linear"
     tmin11 = by[("2015-01-11", "temp", "min")]
     assert tmin11["source"] == "coop"
     assert tmin11["confidence"] == "B"
@@ -234,11 +234,11 @@ def test_generate_pulgas_primary_then_gap_fill(tmp_path):
     tmax12 = by[("2015-01-12", "temp", "max")]
     assert tmax12["source"] == "sfo"
     assert tmax12["confidence"] == "C"
-    assert tmax12["method"] == "v3-offset"
+    assert tmax12["method"] == "v4-offset"
     tmin12 = by[("2015-01-12", "temp", "min")]
     assert tmin12["source"] == "sfo"
     assert tmin12["confidence"] == "C"
-    assert tmin12["method"] == "v3-linear"
+    assert tmin12["method"] == "v4-linear"
     rain12 = by[("2015-01-12", "rain", "total")]
     assert rain12["source"] == "sfo"
     assert rain12["val"] == round(0.10 * SFO_RAIN_RATIO, 3)
@@ -249,9 +249,9 @@ def test_generate_pulgas_primary_then_gap_fill(tmp_path):
 def test_write_csv_and_store_fetch(tmp_path, monkeypatch):
     rows = [
         {"d": "2012-06-01", "var": "temp", "type": "max", "val": 22.5,
-         "source": "pugc1", "method": "v3-linear", "version": "v3", "confidence": "A", "raw_val": 24.1},
+         "source": "pugc1", "method": "v4-linear", "version": "v4", "confidence": "A", "raw_val": 24.1},
         {"d": "2012-06-01", "var": "rain", "type": "total", "val": 0.12,
-         "source": "coop", "method": "v3-ratio", "version": "v3", "confidence": "B", "raw_val": 0.10},
+         "source": "coop", "method": "v4-ratio", "version": "v4", "confidence": "B", "raw_val": 0.10},
     ]
     path = tmp_path / "est.csv"
     write_csv(rows, path)
@@ -273,16 +273,16 @@ def test_write_csv_and_store_fetch(tmp_path, monkeypatch):
 def test_summarize_annual_totals_and_fill_share():
     rows = [
         {"d": "2011-01-01", "var": "temp", "type": "max", "val": 10.0,
-         "source": "pugc1", "method": "v3-linear", "version": "v3", "confidence": "A", "raw_val": 12.0},
+         "source": "pugc1", "method": "v4-linear", "version": "v4", "confidence": "A", "raw_val": 12.0},
         {"d": "2011-01-02", "var": "temp", "type": "max", "val": 11.0,
-         "source": "coop", "method": "v3-linear", "version": "v3", "confidence": "B", "raw_val": 13.0},
+         "source": "coop", "method": "v4-linear", "version": "v4", "confidence": "B", "raw_val": 13.0},
         {"d": "2011-01-01", "var": "temp", "type": "min", "val": 4.0,
-         "source": "pugc1", "method": "v3-linear", "version": "v3", "confidence": "A", "raw_val": 3.0},
+         "source": "pugc1", "method": "v4-linear", "version": "v4", "confidence": "A", "raw_val": 3.0},
         {"d": "2011-01-01", "var": "rain", "type": "total", "val": 1.25,
-         "source": "pugc1", "method": "v3-ratio", "version": "v3", "confidence": "A", "raw_val": 1.34},
+         "source": "pugc1", "method": "v4-ratio", "version": "v4", "confidence": "A", "raw_val": 1.34},
     ]
     summary = summarize(rows, date(2011, 1, 1), date(2011, 1, 2))
-    assert summary["version"] == "v3"
+    assert summary["version"] == "v4"
     assert summary["n_rows"] == 4
     assert summary["annual"]["2011"]["rain_in"] == 1.25
     assert summary["annual"]["2011"]["mean_tmax_c"] == 10.5
@@ -305,3 +305,123 @@ def test_est_query_param_values():
         assert wanted(v)
     for v in rejected:
         assert not wanted(v)
+
+
+# ---- quality control of Pulgas primaries ----
+
+from rwcwx.estimated.qc import rain_is_bogus, temp_is_bogus
+
+
+def test_qc_rain_rules():
+    # Spike vs dry peers
+    assert rain_is_bogus(9.54, 0.0, 0.0)
+    assert rain_is_bogus(5.75, 0.0, 0.0)
+    # Greater than 3× the larger peer
+    assert rain_is_bogus(1.09, 0.30, 0.29)
+    # Real storm: peers agree
+    assert not rain_is_bogus(4.18, 4.19, 3.43)
+    # Below the 1 in threshold, even if peers are dry
+    assert not rain_is_bogus(0.90, 0.0, 0.0)
+    # No comparators: cannot reject
+    assert not rain_is_bogus(5.75, None, None)
+    # Exactly at 3× is kept (rule is strictly greater than)
+    assert not rain_is_bogus(1.50, 0.50, 0.40)
+
+
+def test_qc_temp_rules():
+    assert temp_is_bogus(-5.79, 8.09, 7.5)
+    assert not temp_is_bogus(14.1, 12.0, 13.0)
+    # Prefer COOP even if SFO also exists
+    assert not temp_is_bogus(20.0, 16.0, 1.0)
+    assert temp_is_bogus(20.0, 11.9, 20.0)
+    # No comparators: cannot reject
+    assert not temp_is_bogus(30.0, None, None)
+    # Exactly 8 °C is kept
+    assert not temp_is_bogus(20.0, 12.0, None)
+
+
+def test_generate_rejects_bogus_pulgas_rain_and_temp(tmp_path):
+    # 10th: huge Pulgas rain while COOP/SFO are dry; also a wild Pulgas Tmin.
+    # 11th: a real storm (peers agree) and ordinary temperatures, kept.
+    # 12th: modest Pulgas rain below 1 in on a dry day, kept.
+    _write_iem(tmp_path / "iem_daily_CA_DCP_PUGC1.csv", [
+        ("PUGC1", "2015-01-10", "60", "14", "9.54"),   # 14 F ≈ -10 °C
+        ("PUGC1", "2015-01-11", "60", "40", "4.18"),
+        ("PUGC1", "2015-01-12", "60", "40", "0.90"),
+    ])
+    _write_acis(tmp_path / "acis_rwc_coop.json", [
+        ("2015-01-10", "54.0", "42.0", "0.00"),
+        ("2015-01-11", "54.0", "42.0", "4.19"),
+        ("2015-01-12", "54.0", "42.0", "0.00"),
+    ])
+    _write_iem(tmp_path / "iem_daily_CA_ASOS_SFO.csv", [
+        ("SFO", "2015-01-10", "58", "45", "0.00"),
+        ("SFO", "2015-01-11", "58", "45", "3.43"),
+        ("SFO", "2015-01-12", "58", "45", "0.00"),
+    ])
+    sources = {
+        "pugc1": load_iem_daily(tmp_path / "iem_daily_CA_DCP_PUGC1.csv"),
+        "coop": load_acis_coop(tmp_path / "acis_rwc_coop.json"),
+        "sfo": load_iem_daily(tmp_path / "iem_daily_CA_ASOS_SFO.csv"),
+    }
+    rejections = []
+    rows = generate_rows(sources, date(2015, 1, 10), date(2015, 1, 12), rejections)
+    by = {(r["d"], r["var"], r["type"]): r for r in rows}
+
+    rain10 = by[("2015-01-10", "rain", "total")]
+    assert rain10["source"] == "coop"
+    assert rain10["confidence"] == "B"
+    assert rain10["val"] == 0.0
+    assert rain10["version"] == "v4"
+
+    tmin10 = by[("2015-01-10", "temp", "min")]
+    assert tmin10["source"] == "coop"
+    assert tmin10["confidence"] == "B"
+    assert tmin10["val"] == apply("coop", "temp", "min", "linear", f_to_c(42.0), 1)
+
+    tmax10 = by[("2015-01-10", "temp", "max")]
+    assert tmax10["source"] == "pugc1"
+    assert tmax10["confidence"] == "A"
+
+    rain11 = by[("2015-01-11", "rain", "total")]
+    assert rain11["source"] == "pugc1"
+    assert rain11["val"] == round(4.18 * PUGC1_RAIN_RATIO, 3)
+
+    rain12 = by[("2015-01-12", "rain", "total")]
+    assert rain12["source"] == "pugc1"
+    assert rain12["val"] == round(0.90 * PUGC1_RAIN_RATIO, 3)
+
+    by_rej = {(r["d"], r["var"], r["type"]): r for r in rejections}
+    assert set(by_rej) == {("2015-01-10", "rain", "total"), ("2015-01-10", "temp", "min")}
+    rain_rej = by_rej[("2015-01-10", "rain", "total")]
+    assert rain_rej["rejected_raw"] == 9.54
+    assert rain_rej["rejected_val"] == round(9.54 * PUGC1_RAIN_RATIO, 3)
+    assert rain_rej["reason"] == "rain_spike"
+    assert rain_rej["replacement_source"] == "coop"
+    assert rain_rej["replacement_val"] == 0.0
+    assert rain_rej["replacement_confidence"] == "B"
+    tmin_rej = by_rej[("2015-01-10", "temp", "min")]
+    assert tmin_rej["reason"] == "temp_outlier"
+    assert tmin_rej["replacement_source"] == "coop"
+    assert tmin_rej["rejected_raw"] == f_to_c(14.0)
+
+    summary = summarize(rows, date(2015, 1, 10), date(2015, 1, 12), rejections)
+    assert summary["n_rejections"] == 2
+    assert len(summary["rejections"]) == 2
+
+
+def test_generate_keeps_pulgas_rain_when_no_comparators(tmp_path):
+    _write_iem(tmp_path / "iem_daily_CA_DCP_PUGC1.csv", [
+        ("PUGC1", "2015-01-10", "60", "40", "5.75"),
+    ])
+    sources = {
+        "pugc1": load_iem_daily(tmp_path / "iem_daily_CA_DCP_PUGC1.csv"),
+        "coop": {},
+        "sfo": {},
+    }
+    rejections = []
+    rows = generate_rows(sources, date(2015, 1, 10), date(2015, 1, 10), rejections)
+    rain = [r for r in rows if r["var"] == "rain"][0]
+    assert rain["source"] == "pugc1"
+    assert rain["val"] == round(5.75 * PUGC1_RAIN_RATIO, 3)
+    assert rejections == []

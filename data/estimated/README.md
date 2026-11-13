@@ -1,4 +1,4 @@
-# Estimated daily history (v3)
+# Estimated daily history (v4)
 
 Daily maximum temperature, minimum temperature and rainfall for 1 January 2011
 through 26 December 2020, estimated from nearby stations and stored separately
@@ -9,10 +9,11 @@ measured-only. Default reports (option off) do not read this table.
 
 ## Sources and conversions
 
-Documented and versioned in `rwcwx/estimated/conversions.py` (`VERSION = "v3"`).
+Documented and versioned in `rwcwx/estimated/conversions.py` (`VERSION = "v4"`).
 
 Pulgas Ridge RAWS (PUGC1, IEM daily) is the primary source for every variable.
-Days or variables missing from Pulgas are filled from a calibrated secondary:
+Days or variables missing from Pulgas, or rejected by quality control, are
+filled from a calibrated secondary:
 
 | Variable | Primary | First fill | Last fill |
 | --- | --- | --- | --- |
@@ -26,21 +27,27 @@ daily values (leave-one-year-out cross-validation). Each row records its
 IEM temperatures are missing for all of 2013 and parts of 2012 and 2014;
 those gaps are filled where the COOP or SFO has a value.
 
+Quality control rejects a Pulgas rain total above 1 in when it is more than
+3× the larger of the same-day COOP and SFO raw totals, or when both of those
+stations are dry. A Pulgas temperature is rejected when it differs by more
+than 8 °C from the COOP (else SFO) converted estimate for that day. Rejected
+days are filled from the same secondary chain and marked confidence B or C.
+
 ## Regenerating
 
 From a cache of IEM/ACIS files, or with `--fetch` to download missing files:
 
 ```
 PYTHONPATH=. python -m rwcwx.estimated.generate \
-  --cache-dir /path/to/cache --csv-out daily_estimated_v3.csv \
-  --sql-out daily_estimated_v3.sql --summary-out summary.json
+  --cache-dir /path/to/cache --csv-out daily_estimated_v4.csv \
+  --sql-out daily_estimated_v4.sql --summary-out summary.json
 ```
 
 ## Loading (not part of a dry run)
 
 ```
 mysql wx < data/migrations/20261112_daily_estimated.sql
-mysql wx < daily_estimated_v3.sql
+mysql wx < daily_estimated_v4.sql
 ```
 
 A local or test process can also point at the CSV with `RWC_ESTIMATED_CSV`

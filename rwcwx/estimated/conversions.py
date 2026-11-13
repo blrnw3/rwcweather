@@ -1,16 +1,22 @@
 """Versioned conversions from nearby daily observations to this site.
 
-Version v3 was fitted on the overlap of our measured daily series (from 27 Dec 2020)
+Version v4 uses the same conversions as v3, fitted on the overlap of our measured daily series (from 27 Dec 2020)
 with Pulgas Ridge RAWS (PUGC1, IEM daily), Redwood City COOP (USC00047339, ACIS/GHCND)
 and San Francisco International (SFO, IEM daily), using leave-one-year-out
 cross-validation on calendar years 2021-2026. Full comparison tables live with the
 research that produced these coefficients.
 
-Blend (v3), 1 Jan 2011 through 26 Dec 2020 only — Pulgas Ridge PUGC1 first for every
-variable; days or variables missing from Pulgas are filled from a calibrated secondary:
+Blend (v4), 1 Jan 2011 through 26 Dec 2020 only — Pulgas Ridge PUGC1 first for every
+variable; days or variables missing from Pulgas, or rejected by quality control, are
+filled from a calibrated secondary:
   Tmax  — PUGC1 monthly linear, else COOP monthly linear (confidence B), else SFO monthly offset (C)
   Tmin  — PUGC1 monthly linear, else COOP monthly linear (confidence B), else SFO monthly linear (C)
   rain  — PUGC1 annual ratio, else COOP annual ratio (confidence B), else SFO annual ratio (C)
+
+Quality control (see rwcwx.estimated.qc): a Pulgas rain total above 1 in is rejected
+if it is more than 3× the larger of the same-day COOP and SFO raw totals, or if both
+are dry. A Pulgas temperature is rejected if it differs by more than 8 °C from the
+COOP (else SFO) converted estimate for that day.
 
 Inputs and outputs are in this site's native units: temperature in °C, rain in inches.
 Source temperatures published in °F must be converted to °C before apply().
@@ -21,7 +27,7 @@ from __future__ import annotations
 from typing import Dict, Mapping, Optional, Tuple
 
 # Bump this and add a new param set when the models are refitted.
-VERSION = "v3"
+VERSION = "v4"
 
 # Inclusive generation window for this version.
 PERIOD_START = "2011-01-01"
