@@ -44,7 +44,7 @@ export function EstNote({ show, mt = "2", ...props }) {
         return null;
     }
     return <Text id="est-hist-note" mt={mt} fontSize="sm" {...props}>
-        * estimated from Pulgas Ridge RAWS (monthly conversion, IEM) for dates before 27 December 2020
+        * estimated from Pulgas Ridge RAWS (monthly conversion, IEM) for dates before 27 December 2020; gaps filled from the Redwood City COOP or SFO
     </Text>;
 }
 
