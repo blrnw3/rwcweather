@@ -97,21 +97,39 @@ function daysInMonth(year, month) {
 const WATER_YEAR_FIRST_MONTH = 10;
 
 /**
+ * Normal total expected by the end of `day` of `month`: the month's
+ * normal x (day / days in month). Totals only (rain/sun); null for
+ * variables without monthly normals.
+ */
+export function monthlyNormalToDate(obs, stat, year, month, day) {
+    const entry = normalsFor(obs, stat);
+    if (!entry || !isTotal(stat)) {
+        return null;
+    }
+    return entry.monthly[month - 1] * (day / daysInMonth(year, month));
+}
+
+/**
  * Normal total expected by the end of `day` of `month` in the water year
  * containing that date: the monthly normals of the water year's completed
- * months, plus the current month's normal x (day / days in month).
- * Totals only (rain); null for variables without monthly normals.
+ * months, plus the current month's normal to date (same pro-rata as
+ * monthlyNormalToDate). Totals only (rain); null for variables without
+ * monthly normals.
  */
 export function waterYearNormalToDate(obs, stat, year, month, day) {
     const entry = normalsFor(obs, stat);
     if (!entry || !isTotal(stat)) {
         return null;
     }
+    const current = monthlyNormalToDate(obs, stat, year, month, day);
+    if (current == null) {
+        return null;
+    }
     let expected = 0;
     for (let m = WATER_YEAR_FIRST_MONTH; m !== month; m = m % 12 + 1) {
         expected += entry.monthly[m - 1];
     }
-    return expected + entry.monthly[month - 1] * (day / daysInMonth(year, month));
+    return expected + current;
 }
 
 /**

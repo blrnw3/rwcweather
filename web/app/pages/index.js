@@ -26,7 +26,7 @@ import { waterYearOf } from '../components/waterYear';
 import { NearbyCard } from '../components/nearby';
 import { aqiStatus, formatObs, moonPhase, prettySecs, timeOf } from '../format';
 import {
-  CLIMATE_PAGE, ClimateAnom, annualNormal, dailyNormal, monthlyNormal,
+  CLIMATE_PAGE, ClimateAnom, annualNormal, dailyNormal, monthlyNormalToDate,
   periodToDateTempNormal, periodToDateTotalNormal, signedPctDeparture,
   waterYearNormal, waterYearNormalToDate,
 } from '../components/climate';
@@ -494,6 +494,7 @@ function RainHomeCard(props) {
   const monthTotal = props.summary?.["month"]?.["rain_total"]?.["total"];
   const wyTotal = props.summary?.["water_year"]?.["rain_total"]?.["total"];
   const date = serverDate(props.summary, dash);
+  const monthExpected = date ? monthlyNormalToDate("rain", "total", ...date) : null;
   let last = dash ? prettySecs(new Date(dash["now"]["t"]) - new Date(dash["last_rain"])) : "-";
 
   const wetDisc = useDisclosure();
@@ -510,9 +511,9 @@ function RainHomeCard(props) {
     {show10m && <Text borderBottom="1px solid #ccc" className="rain-past-10m">Past 10m: <Text as="span" fontWeight="bold">{rn10}</Text></Text>}
     <Text>Hourly: <Text as="span" fontWeight="bold">{rnhr}</Text></Text>
     <Text borderBottom="1px solid #ccc">Past 24hrs: <Text as="span" fontWeight="bold">{rn24}</Text></Text>
-    <Text>
+    <Text className="rain-month-line">
       Monthly: <Text as="span" fontWeight="bold">{monthly}</Text>
-      {date && <ClimateAnom inline value={monthTotal} normal={monthlyNormal("rain", "total", date[1])} obs="rain" stat="total" unit={unit} />}
+      {date && <ClimateAnom inline value={monthTotal} normal={monthExpected >= 0.005 ? monthExpected : null} obs="rain" stat="total" unit={unit} />}
     </Text>
     <WaterYearLine value={water_yr} total={wyTotal} date={date} />
   </HomeCard>
