@@ -19,7 +19,7 @@ MODELS = {
     "ecmwf": dict(
         id="ecmwf_ifs025",
         name="ECMWF ENS (IFS 0.25°)",
-        control_label="ECMWF operational / control",
+        control_label="ECMWF control",
         previous_model="ecmwf_ifs025",
         previous_label="ECMWF IFS 0.25° operational",
     ),

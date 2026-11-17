@@ -1,15 +1,22 @@
-import { Box, Spinner, Table, Tbody, Td, Text, Th, Thead, Tr } from "@chakra-ui/react";
-import { useContext, useEffect, useRef } from "react";
+import { Box, Spinner, Text } from "@chakra-ui/react";
+import { useContext, useEffect, useRef, useState } from "react";
 import HighchartsImport from "highcharts";
+import {
+  WiCloudy, WiDayCloudy, WiDaySunny, WiFog, WiRain, WiRainWind, WiShowers,
+  WiSprinkle, WiStrongWind, WiThunderstorm,
+} from "react-icons/wi";
 import useSWR from "swr";
 import { convFunction, formatObs, unitForObsType } from "../format";
 import { fetcher } from "./conf";
 import { UnitCtx } from "./Page";
 import { fmtRain } from "./forecast";
 
-// Stacked 10-day meteogram, modelled on nw3weather's forecast page: daily table, then
-// aligned panels for temperature & dew point, precipitation, cloud, wind & gusts, and pressure.
+// Stacked 10-day meteogram, modelled on nw3weather's forecast page: a per-day
+// summary strip aligned to each day's span on the chart, then panels for
+// temperature & dew point, precipitation, cloud, wind & gusts, and pressure.
 // Charts are created only in the browser (Highcharts touches `window`).
+// Day icons are Weather Icons by Erik Flowers (SIL Open Font License), the same
+// set already used on the home page via react-icons/wi.
 
 const HC = HighchartsImport.default || HighchartsImport;
 
@@ -23,6 +30,155 @@ const COLORS = {
   gust: "#c23b86",
   pressure: "#5b3fb0",
 };
+
+const WINDY_MPH = 25;
+
+const DAY_ICONS = {
+  sunny: WiDaySunny,
+  partlycloudy: WiDayCloudy,
+  cloudy: WiCloudy,
+  fog: WiFog,
+  drizzle: WiSprinkle,
+  rain: WiRain,
+  heavyrain: WiRainWind,
+  showers: WiShowers,
+  thunder: WiThunderstorm,
+  wind: WiStrongWind,
+};
+
+export function iconForDay(day) {
+  const n = day && day.weather_code != null && day.weather_code !== ""
+    ? Number(day.weather_code) : null;
+  let key = null;
+  let label = (day && day.weather) || "Conditions";
+  if (n === 0 || n === 1) key = "sunny";
+  else if (n === 2) key = "partlycloudy";
+  else if (n === 3) key = "cloudy";
+  else if (n === 45 || n === 48) key = "fog";
+  else if (n >= 51 && n <= 57) key = "drizzle";
+  else if (n === 61 || n === 63 || n === 66) key = "rain";
+  else if (n === 65 || n === 67 || n === 82) key = "heavyrain";
+  else if (n === 80 || n === 81 || n === 85 || n === 86) key = "showers";
+  else if (n === 95 || n === 96 || n === 99) key = "thunder";
+  else if (n >= 71 && n <= 77) key = "rain";
+  if (!key && day) {
+    const p = day.precip;
+    if (p >= 15) { key = "heavyrain"; label = "Heavy rain"; }
+    else if (p >= 2) { key = "rain"; label = "Rain"; }
+    else if (p > 0) { key = "drizzle"; label = "Light rain"; }
+    else key = "cloudy";
+  }
+  if (!key) key = "cloudy";
+  const windy = day && day.wind_max != null && day.wind_max >= WINDY_MPH;
+  if (windy && (key === "sunny" || key === "partlycloudy" || key === "cloudy")) {
+    key = "wind";
+    label = (label && label !== "Conditions" ? label + ", windy" : "Windy");
+  }
+  return { key, label, Icon: DAY_ICONS[key] || WiCloudy };
+}
+
+function DayIcon({ day, size }) {
+  const { Icon, label } = iconForDay(day);
+  return (
+    <Box as="span" title={label} role="img" aria-label={label} lineHeight="1"
+      color="gray.700" display="inline-flex">
+      <Icon size={size} aria-hidden="true" />
+    </Box>
+  );
+}
+
+function dayLabelShort(d, tight) {
+  const raw = d.label || d.date || "";
+  const parts = raw.split(/\s+/);
+  if (tight) return parts[0] || raw;
+  if (parts.length >= 2) return parts[0] + " " + parts[1];
+  return raw;
+}
+
+export function computeDayCols(chart, daily) {
+  if (!chart || !chart.xAxis || !chart.xAxis[0] || !daily || !daily.length) return [];
+  const axis = chart.xAxis[0];
+  const min = axis.min;
+  const max = axis.max;
+  if (!isFinite(min) || !isFinite(max) || max <= min) return [];
+  const out = [];
+  daily.forEach((d) => {
+    const start = d.start;
+    const end = d.end != null ? d.end : (start + 24 * 3600 * 1000);
+    if (start == null || end <= min || start >= max) return;
+    const t0 = Math.max(start, min);
+    const t1 = Math.min(end, max);
+    const left = axis.toPixels(t0, false);
+    const right = axis.toPixels(t1, false);
+    const width = right - left;
+    if (!isFinite(left) || !isFinite(width) || width < 2) return;
+    out.push({
+      date: d.date,
+      left,
+      width,
+      narrow: width < 72,
+      tight: width < 44,
+      day: d,
+    });
+  });
+  return out;
+}
+
+function DailyStrip({ cols, unit }) {
+  if (!cols || !cols.length) return null;
+  const tUnit = unitForObsType(unit, "temp");
+  const toTemp = convFunction(unit, "temp");
+  return (
+    <Box className="fc-mg-daystrip" position="relative" h={{ base: "118px", md: "126px" }} mb="1"
+      fontSize="11px" color="gray.800" borderBottom="1px solid #ddd">
+      {cols.map((c) => {
+        const d = c.day;
+        const hi = d.tmax != null ? Math.round(toTemp(d.tmax)) : null;
+        const lo = d.tmin != null ? Math.round(toTemp(d.tmin)) : null;
+        const rain = d.precip != null ? fmtRain(unit, d.precip, true) : null;
+        const wind = d.wind_max != null ? formatObs(unit, d.wind_max, "wind") : null;
+        const gustNum = d.gust_max != null ? formatObs(unit, d.gust_max, "wind", false, false) : null;
+        const iconSize = c.tight ? 18 : (c.narrow ? 24 : 30);
+        return (
+          <Box key={d.date} className="fc-mg-daycol" position="absolute" top="0" bottom="0"
+            left={c.left + "px"} width={c.width + "px"}
+            textAlign="center" overflow="hidden" px="1px"
+            borderLeft="1px solid #d8d8d8"
+            display="flex" flexDir="column" alignItems="center" justifyContent="flex-start"
+            pt="2px">
+            <Text fontWeight="semibold" fontSize={c.tight ? "9px" : "11px"} lineHeight="1.2"
+              whiteSpace="nowrap" title={d.label}>
+              {dayLabelShort(d, c.tight)}
+            </Text>
+            <DayIcon day={d} size={iconSize} />
+            <Text lineHeight="1.25" whiteSpace="nowrap" title={"High / low " + tUnit}>
+              {hi != null
+                ? <Text as="span" color="red.700">{hi}°</Text>
+                : "–"}
+              {!c.tight && lo != null
+                ? <Text as="span"> / <Text as="span" color="blue.700">{lo}°</Text></Text>
+                : null}
+            </Text>
+            {!c.tight && (
+              <Text lineHeight="1.25" color="blue.700" whiteSpace="nowrap"
+                title={rain ? rain + (d.pop != null ? " · " + d.pop + "% chance" : "") : ""}>
+                {rain || "–"}
+                {d.pop != null && !c.narrow ? <Text as="span" color="gray.600"> · {d.pop}%</Text> : null}
+                {d.pop != null && c.narrow ? <Text as="span" color="gray.600"> {d.pop}%</Text> : null}
+              </Text>
+            )}
+            {!c.narrow && wind && (
+              <Text lineHeight="1.2" color="gray.700" whiteSpace="nowrap"
+                title={wind + (gustNum ? " gust " + gustNum : "")}>
+                {wind}{gustNum ? <Text as="span" color="gray.500"> g{gustNum}</Text> : null}
+              </Text>
+            )}
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
 
 function convertSeries(points, conv) {
   if (!points) return [];
@@ -42,65 +198,6 @@ function rainConv(unit) {
 export function useMeteogram() {
   const { data, error } = useSWR("/api/forecast/meteogram", fetcher, { refreshInterval: 600000 });
   return { mg: data?.result, error, loading: !data && !error };
-}
-
-function DailyTable({ daily, unit }) {
-  if (!daily || !daily.length) return null;
-  const tUnit = unitForObsType(unit, "temp");
-  return (
-    <Box className="fc-mg-daily" mb="3">
-      <Box className="fc-mg-daily-list" display={{ base: "block", md: "none" }} fontSize="sm">
-        {daily.map((d) => {
-          const rain = d.precip != null ? fmtRain(unit, d.precip, true) : "–";
-          const wind = d.wind_max != null ? formatObs(unit, d.wind_max, "wind") : "–";
-          return (
-            <Box key={d.date} py="1" borderBottom="1px solid #e2e2e2">
-              <Text fontWeight="semibold">{d.label}{" "}
-                <Text as="span" color="red.700">{d.tmax != null ? Math.round(convFunction(unit, "temp")(d.tmax)) + tUnit : "–"}</Text>
-                {" / "}
-                <Text as="span" color="blue.700">{d.tmin != null ? Math.round(convFunction(unit, "temp")(d.tmin)) + tUnit : "–"}</Text>
-              </Text>
-              <Text color="gray.700">{d.weather || "–"}{d.pop != null ? ` · ${d.pop}% chance` : ""} · {rain} · {wind}</Text>
-            </Box>
-          );
-        })}
-      </Box>
-      <Box overflowX="auto" display={{ base: "none", md: "block" }}>
-      <Table size="sm" variant="simple" className="fc-mg-daily-table">
-        <Thead>
-          <Tr>
-            <Th>Day</Th>
-            <Th>Conditions</Th>
-            <Th isNumeric>High / Low</Th>
-            <Th isNumeric>Rain</Th>
-            <Th isNumeric>Wind</Th>
-          </Tr>
-        </Thead>
-        <Tbody>
-          {daily.map((d) => {
-            const rain = d.precip != null ? fmtRain(unit, d.precip, true) : "–";
-            const wind = d.wind_max != null
-              ? formatObs(unit, d.wind_max, "wind") + (d.gust_max != null ? " gust " + formatObs(unit, d.gust_max, "wind") : "")
-              : "–";
-            return (
-              <Tr key={d.date}>
-                <Td whiteSpace="nowrap" fontWeight="semibold">{d.label}</Td>
-                <Td>{d.weather || "–"}{d.pop != null ? <Text as="span" color="gray.600"> · {d.pop}% chance</Text> : null}</Td>
-                <Td isNumeric whiteSpace="nowrap">
-                  <Text as="span" color="red.700">{d.tmax != null ? Math.round(convFunction(unit, "temp")(d.tmax)) + tUnit : "–"}</Text>
-                  {" / "}
-                  <Text as="span" color="blue.700">{d.tmin != null ? Math.round(convFunction(unit, "temp")(d.tmin)) + tUnit : "–"}</Text>
-                </Td>
-                <Td isNumeric color="blue.700">{rain}</Td>
-                <Td isNumeric>{wind}</Td>
-              </Tr>
-            );
-          })}
-        </Tbody>
-      </Table>
-      </Box>
-    </Box>
-  );
 }
 
 function axisRange(seriesList) {
@@ -138,6 +235,13 @@ function nowAnnot(withLabel, xMin, xMax) {
   };
 }
 
+function localMidnightTicks(daily, xMin, xMax) {
+  if (!isFinite(xMin) || !isFinite(xMax) || !daily) return [];
+  return daily
+    .map((d) => d.start)
+    .filter((t) => t != null && t >= xMin && t <= xMax);
+}
+
 function buildCharts(el, series, unit) {
   const HCAPI = HC;
   const tConv = convFunction(unit, "temp");
@@ -159,12 +263,7 @@ function buildCharts(el, series, unit) {
   const pressure = convertSeries(series.pressure, pConv);
   const { min: xMin, max: xMax } = axisRange([temp, dew, precip, wind, gust, pressure, cloud, pop]);
 
-  const dayMs = 24 * 3600 * 1000;
-  const ticks = [];
-  if (isFinite(xMin) && isFinite(xMax)) {
-    let t = Math.ceil(xMin / dayMs) * dayMs;
-    for (; t <= xMax; t += dayMs) ticks.push(t);
-  }
+  const ticks = localMidnightTicks(series.daily, xMin, xMax);
 
   el.innerHTML = ["temp", "precip", "cloud", "wind", "pres"].map(
     (id) => `<div class="fc-mg-panel" id="${el.id}-${id}"></div>`
@@ -260,17 +359,53 @@ export function Meteogram() {
   const unit = useContext(UnitCtx);
   const { mg, error, loading } = useMeteogram();
   const hostRef = useRef(null);
+  const innerRef = useRef(null);
   const chartsRef = useRef([]);
+  const [cols, setCols] = useState([]);
 
   useEffect(() => {
     chartsRef.current.forEach((c) => { try { c.destroy(); } catch (e) { /* already gone */ } });
     chartsRef.current = [];
+    setCols([]);
     const el = hostRef.current;
     const series = mg && mg.series;
     if (!el || !series || !series.temp || !series.temp.length) return undefined;
     if (typeof window === "undefined") return undefined;
     chartsRef.current = buildCharts(el, series, unit);
+
+    let raf = 0;
+    const layout = () => {
+      const chart = chartsRef.current[0];
+      if (!chart) return;
+      setCols(computeDayCols(chart, series.daily || []));
+    };
+    const layoutSoon = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(layout);
+    };
+    const unbind = chartsRef.current.map((c) => HC.addEvent(c, "redraw", layoutSoon));
+    const inner = innerRef.current;
+    let ro = null;
+    let lastW = 0;
+    const onResizeSafe = () => {
+      const w = inner ? inner.clientWidth : 0;
+      if (w && w !== lastW) {
+        lastW = w;
+        chartsRef.current.forEach((c) => { try { c.reflow(); } catch (e) { /* ignore */ } });
+      }
+      layoutSoon();
+    };
+    if (inner && typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(onResizeSafe);
+      ro.observe(inner);
+    }
+    window.addEventListener("resize", onResizeSafe);
+    raf = requestAnimationFrame(layout);
     return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResizeSafe);
+      if (ro) ro.disconnect();
+      unbind.forEach((fn) => { try { fn(); } catch (e) { /* ignore */ } });
       chartsRef.current.forEach((c) => { try { c.destroy(); } catch (e) { /* ignore */ } });
       chartsRef.current = [];
     };
@@ -287,9 +422,11 @@ export function Meteogram() {
       {loading && <Spinner size="sm" />}
       {error && !mg && <Text fontSize="sm" color="gray.600">Meteogram unavailable right now.</Text>}
       {mg && !mg.series && <Text fontSize="sm" color="gray.600">Meteogram data is temporarily unavailable.</Text>}
-      {mg && mg.series && <DailyTable daily={mg.series.daily} unit={unit} />}
       <Box className="fc-mg-scroll" overflowX="auto">
-        <Box ref={hostRef} id="fc-meteogram-charts" className="fc-meteogram-stack" minW={{ base: "960px", md: "100%" }} />
+        <Box ref={innerRef} className="fc-mg-scroll-inner" minW={{ base: "960px", md: "100%" }}>
+          {mg && mg.series && <DailyStrip cols={cols} unit={unit} />}
+          <Box ref={hostRef} id="fc-meteogram-charts" className="fc-meteogram-stack" />
+        </Box>
       </Box>
       <Text fontSize="xs" color="gray.600" mt="1" display={{ base: "block", md: "none" }}>
         Swipe the charts sideways to see the full 10 days.

@@ -66,6 +66,12 @@ def test_daily_rows_and_weather_codes():
     assert rows[0]["weather"] == "Rain"
     assert rows[1]["weather"] == "Mainly clear"
     assert "Nov" in rows[0]["label"]
+    t0 = datetime(2026, 11, 17, 0, 0, tzinfo=TZ)
+    t1 = datetime(2026, 11, 18, 0, 0, tzinfo=TZ)
+    t2 = datetime(2026, 11, 19, 0, 0, tzinfo=TZ)
+    assert rows[0]["start"] == int(t0.timestamp() * 1000)
+    assert rows[0]["end"] == rows[1]["start"] == int(t1.timestamp() * 1000)
+    assert rows[1]["end"] == int(t2.timestamp() * 1000)
 
 
 def test_series_missing_or_empty():

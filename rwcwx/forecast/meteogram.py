@@ -1,5 +1,5 @@
 """Shape an Open-Meteo forecast payload into the 10-day meteogram series (no I/O)."""
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
 from rwcwx.config import TZ, TZ_NAME
@@ -73,6 +73,7 @@ def daily_rows(data: dict) -> List[dict]:
         out.append(dict(
             date=start.date().isoformat(),
             start=ms(start),
+            end=None,
             label=start.strftime("%a ") + str(start.day) + start.strftime(" %b"),
             tmax=col("temperature_2m_max"),
             tmin=col("temperature_2m_min"),
@@ -83,6 +84,13 @@ def daily_rows(data: dict) -> List[dict]:
             weather_code=code,
             weather=weather_desc(code),
         ))
+    # End is the next calendar midnight in the station zone (handles DST).
+    for i, row in enumerate(out):
+        if i + 1 < len(out):
+            row["end"] = out[i + 1]["start"]
+        else:
+            last = datetime.fromisoformat(row["date"]).date() + timedelta(days=1)
+            row["end"] = ms(datetime(last.year, last.month, last.day, tzinfo=TZ))
     return out
 
 
