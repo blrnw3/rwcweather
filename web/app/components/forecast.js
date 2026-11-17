@@ -48,6 +48,17 @@ export function fmtWhen(iso) {
     .format(d) + " PT";
 }
 
+export function StaleNote({ stale, fetchedAt }) {
+  if (!stale || !fetchedAt) return null;
+  const when = fmtWhen(fetchedAt);
+  if (!when) return null;
+  return (
+    <Text className="forecast-stale" fontSize="xs" color="gray.600" mb="2">
+      Showing cached data, updated {when}.
+    </Text>
+  );
+}
+
 const ALERT_COLOURS = {
   Extreme: { bg: "red.600", color: "white" },
   Severe: { bg: "red.500", color: "white" },
@@ -160,6 +171,7 @@ export function ForecastCard() {
     {loading && <Spinner size="sm" />}
     {error && !fc && <Text className="forecast-unavailable" fontSize="sm" color="gray.600">Forecast unavailable right now.</Text>}
     {fc && <>
+      <StaleNote stale={fc.stale} fetchedAt={fc.fetched_at} />
       <Alerts alerts={fc.alerts} />
       <Periods periods={fc.periods} unit={unit} />
       <RainTotal periods={fc.periods} total={fc.qpf_total_mm} unit={unit} />

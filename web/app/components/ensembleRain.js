@@ -6,7 +6,8 @@ import useSWR from "swr";
 import { unitForObsType } from "../format";
 import { fetcher } from "./conf";
 import { UnitCtx } from "./Page";
-import { fmtRain } from "./forecast";
+import { fmtRain, StaleNote } from "./forecast";
+import { PT, STATION_CHART_TIME, stationAxisDay, stationSharedTooltip } from "./stationTime";
 
 // Ensemble rain totals (GEFS and ECMWF ENS): spread, operational/control, cumulative plume,
 // and how the operational total for a fixed valid window has changed across recent runs.
@@ -52,39 +53,101 @@ function TotalsTable({ model, hours, unit }) {
   );
 }
 
-function accumOptions(model, hours, unit) {
-  const acc = model.accumulation;
-  if (!acc || !acc.times || !acc.times.length) return null;
-  const conv = rainConv(unit);
-  const rUnit = unitForObsType(unit, "rain");
+const MODEL_COLORS = {
+  gefs: {
+    main: "#1f6aa5",
+    band: "rgba(31,106,165,0.25)",
+    member: "rgba(31,106,165,0.14)",
+  },
+  ecmwf: {
+    main: "#c45c16",
+    band: "rgba(196,92,22,0.25)",
+    member: "rgba(196,92,22,0.14)",
+  },
+};
+
+function modelColor(key) {
+  return MODEL_COLORS[key] || MODEL_COLORS.gefs;
+}
+
+function sliceAcc(acc, hours, conv, arr) {
+  if (!acc || !acc.times || !acc.times.length || !arr) return [];
   const end = acc.times[0] + hours * 3600 * 1000;
   const last = acc.times.findIndex((t) => t >= end);
-  const slice = (arr) => {
-    if (!arr) return [];
-    const cut = last < 0 ? arr : arr.slice(0, last + 1);
-    return acc.times.slice(0, cut.length).map((t, i) => [t, conv(cut[i])]);
-  };
+  const cut = last < 0 ? arr : arr.slice(0, last + 1);
+  return acc.times.slice(0, cut.length).map((t, i) => [t, conv(cut[i])]);
+}
+
+
+function stationMidnightTicks(times) {
+  if (!times || !times.length) return undefined;
+  const ticks = [];
+  let prev = null;
+  times.forEach((ms) => {
+    const key = new Intl.DateTimeFormat("en-CA", { timeZone: PT, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+    if (key !== prev) {
+      prev = key;
+      ticks.push(ms);
+    }
+  });
+  return ticks;
+}
+
+function bandAcc(acc, hours, conv) {
+  if (!acc || !acc.times || !acc.times.length) return [];
+  const end = acc.times[0] + hours * 3600 * 1000;
+  const last = acc.times.findIndex((t) => t >= end);
   const xs = last < 0 ? acc.times : acc.times.slice(0, last + 1);
-  const band = xs.map((t, i) => [t, conv((acc.p10 || [])[i]), conv((acc.p90 || [])[i])]);
-  const memberSeries = Object.keys(acc.members || {}).slice(0, 50).map((name) => ({
-    name, type: "line", data: slice(acc.members[name]), color: "#2554c7", opacity: 0.12,
-    lineWidth: 1, enableMouseTracking: false, showInLegend: false, zIndex: 1,
-  }));
+  return xs.map((t, i) => [t, conv((acc.p10 || [])[i]), conv((acc.p90 || [])[i])]);
+}
+
+function accumOptions(models, hours, unit) {
+  const conv = rainConv(unit);
+  const rUnit = unitForObsType(unit, "rain");
+  const dec = unit === "us" ? 2 : 1;
+  const series = [];
+  const keys = ["gefs", "ecmwf"].filter((k) => models[k] && models[k].accumulation && models[k].accumulation.times);
+  keys.forEach((key) => {
+    const model = models[key];
+    const acc = model.accumulation;
+    const col = modelColor(key);
+    const short = key === "ecmwf" ? "ECMWF" : "GEFS";
+    Object.keys(acc.members || {}).slice(0, 50).forEach((name) => {
+      series.push({
+        name: short + " " + name, type: "line", data: sliceAcc(acc, hours, conv, acc.members[name]),
+        color: col.member, lineWidth: 1, enableMouseTracking: false, showInLegend: false, zIndex: 1,
+      });
+    });
+    series.push({
+      name: short + " 10th–90th", type: "arearange", data: bandAcc(acc, hours, conv),
+      color: col.band, zIndex: 2, fillOpacity: 0.55, tooltip: { valueDecimals: dec, valueSuffix: " " + rUnit },
+    });
+    series.push({
+      name: short + " mean", type: "line", data: sliceAcc(acc, hours, conv, acc.mean),
+      color: col.main, lineWidth: 2.25, zIndex: 3, tooltip: { valueDecimals: dec, valueSuffix: " " + rUnit },
+    });
+    series.push({
+      name: model.control_label || (short + " control"), type: "line",
+      data: sliceAcc(acc, hours, conv, acc.control),
+      color: col.main, lineWidth: 2, dashStyle: "ShortDash", zIndex: 4,
+      tooltip: { valueDecimals: dec, valueSuffix: " " + rUnit },
+    });
+  });
+  if (!series.length) return null;
   return {
-    chart: { height: 280, backgroundColor: "#ffffff", marginLeft: 56, marginRight: 16, style: { fontFamily: "inherit" } },
+    chart: { height: 340, backgroundColor: "#ffffff", marginLeft: 56, marginRight: 16, style: { fontFamily: "inherit" }, time: STATION_CHART_TIME },
     title: { text: "Accumulated rain", align: "left", style: { fontSize: "0.9rem", fontWeight: "normal" } },
     credits: { enabled: false },
     legend: { itemStyle: { fontSize: "0.75rem", fontWeight: "normal" } },
-    xAxis: { type: "datetime", gridLineWidth: 1, gridLineColor: "#eee", labels: { style: { fontSize: "0.72rem" } } },
+    xAxis: {
+      type: "datetime", gridLineWidth: 1, gridLineColor: "#eee",
+      tickPositions: stationMidnightTicks((models[keys[0]] && models[keys[0]].accumulation && models[keys[0]].accumulation.times) || []),
+      labels: { style: { fontSize: "0.72rem" }, formatter: function () { return stationAxisDay(this.value); } },
+    },
     yAxis: { title: { text: rUnit, style: { fontSize: "0.75rem" } }, min: 0, gridLineColor: "#eee", labels: { style: { fontSize: "0.72rem" } } },
-    tooltip: { shared: true, xDateFormat: "%a %e %b %H:%M", valueDecimals: unit === "us" ? 2 : 1, valueSuffix: " " + rUnit },
+    tooltip: stationSharedTooltip(),
     plotOptions: { series: { animation: false, marker: { enabled: false } }, arearange: { lineWidth: 0 } },
-    series: [
-      ...memberSeries,
-      { name: "10th–90th percentile", type: "arearange", data: band, color: "rgba(37,84,199,0.22)", zIndex: 2, tooltip: { pointFormat: "<span style=\"color:{point.color}\">●</span> {series.name}: <b>{point.low}</b> – <b>{point.high}</b> " + rUnit + "<br/>" } },
-      { name: "Ensemble mean", type: "line", data: slice(acc.mean), color: "#2554c7", lineWidth: 2, zIndex: 3 },
-      { name: model.control_label || "Operational", type: "line", data: slice(acc.control), color: "#d34f00", lineWidth: 2, zIndex: 4 },
-    ],
+    series,
   };
 }
 
@@ -92,7 +155,7 @@ function runsOptions(models, hours, unit) {
   const rUnit = unitForObsType(unit, "rain");
   const conv = rainConv(unit);
   const series = [];
-  const colors = { gefs: "#c01717", ecmwf: "#2554c7" };
+  const colors = { gefs: MODEL_COLORS.gefs.main, ecmwf: MODEL_COLORS.ecmwf.main };
   Object.entries(models).forEach(([key, model]) => {
     const runs = (model.runs && model.runs[String(hours)]) || [];
     if (!runs.length) return;
@@ -107,7 +170,7 @@ function runsOptions(models, hours, unit) {
   });
   if (!series.length) return null;
   return {
-    chart: { height: 280, backgroundColor: "#ffffff", marginLeft: 56, marginRight: 16, style: { fontFamily: "inherit" } },
+    chart: { height: 280, backgroundColor: "#ffffff", marginLeft: 56, marginRight: 16, style: { fontFamily: "inherit" }, time: STATION_CHART_TIME },
     title: { text: "Operational total across recent runs", align: "left", style: { fontSize: "0.9rem", fontWeight: "normal" } },
     subtitle: { text: "Same valid window; “0” is the latest run, “−1” is about 24 hours earlier", align: "left", style: { fontSize: "0.72rem", color: "#555" } },
     credits: { enabled: false },
@@ -159,17 +222,18 @@ export function EnsembleRain() {
               onClick={() => setHours(w.hours)}>{w.label}</Button>
           ))}
         </Flex>
+        {ens && <StaleNote stale={ens.stale} fetchedAt={ens.fetched_at} />}
         <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={{ base: 4, md: 6 }} mb="4">
           {modelList.map((m) => (
             <Box key={m.id} className={"ens-model ens-model-" + m.id} bg="white" borderRadius="8px" p="3">
               <Text fontWeight="bold" mb="1">{m.name}</Text>
               <TotalsTable model={m} hours={hours} unit={unit} />
-              <Box mt="3" overflowX="auto">
-                <ChartHost id={"ens-acc-" + m.id + "-" + hours} options={accumOptions(m, hours, unit)} />
-              </Box>
             </Box>
           ))}
         </Grid>
+        <Box bg="white" borderRadius="8px" p="3" overflowX="auto" mb="4">
+          <ChartHost id={"ens-acc-" + hours} options={accumOptions(models, hours, unit)} />
+        </Box>
         <Box bg="white" borderRadius="8px" p="3" overflowX="auto">
           <ChartHost id={"ens-runs-" + hours} options={runsOpts} />
           <Text fontSize="xs" color="gray.600" mt="2">

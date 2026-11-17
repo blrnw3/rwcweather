@@ -94,3 +94,47 @@ def test_openmeteo_urls_are_keyless_and_point_at_the_station():
     assert "previous-runs-api.open-meteo.com" in openmeteo.PREV_URL
     assert "gfs_seamless" in openmeteo.METEO_HOURLY or True
     assert "precipitation_previous_day7" in openmeteo.PREV_HOURLY
+
+
+def test_openmeteo_cache_serves_stale_on_timeout():
+    openmeteo.clear()
+    t = [1000.0]
+    calls = []
+
+    def ok():
+        calls.append("ok")
+        return {"hourly": {"time": ["2026-11-17T00:00"]}}
+
+    def boom():
+        calls.append("boom")
+        raise TimeoutError("read")
+
+    now = lambda: t[0]
+    assert openmeteo._safe("meteogram", 600, ok, now)["hourly"]["time"] == ["2026-11-17T00:00"]
+    t[0] += 601
+    assert openmeteo._safe("meteogram", 600, boom, now)["hourly"]["time"] == ["2026-11-17T00:00"]
+    assert openmeteo.status("meteogram")["stale"] is True
+    t[0] += openmeteo.TTL_FAILED - 1
+    assert openmeteo._safe("meteogram", 600, boom, now)
+    assert calls == ["ok", "boom"]
+    t[0] += 2
+    assert openmeteo._safe("meteogram", 600, ok, now)
+    assert calls == ["ok", "boom", "ok"]
+    assert openmeteo.status("meteogram")["stale"] is False
+    openmeteo.clear()
+
+
+def test_openmeteo_disk_fallback_after_clear(tmp_path, monkeypatch):
+    monkeypatch.setenv("RWCWX_FORECAST_CACHE_DIR", str(tmp_path))
+    openmeteo.clear()
+    clock = [0.0]
+    wall = [1_700_000_000.0]
+    now = lambda: clock[0]
+    wall_fn = lambda: wall[0]
+    openmeteo._safe("ens", 600, lambda: {"ok": True}, now=now, wall=wall_fn)
+    openmeteo.clear()
+    def boom():
+        raise IOError("x")
+    assert openmeteo._safe("ens", 600, boom, now=now, wall=wall_fn) == {"ok": True}
+    assert openmeteo.status("ens")["stale"] is True
+    openmeteo.clear()

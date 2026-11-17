@@ -1,10 +1,11 @@
-import { Box, Grid, Link, Spinner, Text } from "@chakra-ui/react";
-import { useContext } from "react";
+import { Box, Button, Collapse, Link, Spinner, Text } from "@chakra-ui/react";
+import { useContext, useState } from "react";
+import { FiChevronDown } from "react-icons/fi";
 import useSWR from "swr";
 import { fetcher } from "./conf";
 import { UnitCtx } from "./Page";
 import {
-  Alerts, Discussion, Periods, RainTotal, fmtRain, fmtTemp, fmtWhen, fmtWind, NWS_HOME, SAFE_HREF, PT,
+  Alerts, Discussion, Periods, RainTotal, StaleNote, fmtRain, fmtTemp, fmtWhen, fmtWind, NWS_HOME, SAFE_HREF, PT,
 } from "./forecast";
 
 // 72-hour NWS forecast, summary (today–day 3 periods, QPF, Peninsula highlights) and the full
@@ -49,10 +50,20 @@ function HourlyTable({ hourly, unit }) {
   if (!hourly.length) {
     return <Text fontSize="sm" color="gray.600">No hourly periods in the next 72 hours.</Text>;
   }
+  return <HourlyDisclosure hourly={hourly} unit={unit} />;
+}
+
+function HourlyDisclosure({ hourly, unit }) {
+  const [open, setOpen] = useState(false);
   return (
     <Box id="forecast-hourly" className="forecast-hourly" mt="3">
-      <Text fontWeight="bold" mb="1">Next 72 hours</Text>
-      <Box overflowX="auto" maxH={{ base: "420px", md: "520px" }} overflowY="auto" bg="white" borderRadius="8px">
+      <Button className="forecast-hourly-toggle" variant="ghost" size="sm" fontWeight="bold" px="0"
+        onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="forecast-hourly-body"
+        rightIcon={<Box as={FiChevronDown} transition="transform 0.2s" transform={open ? "rotate(180deg)" : undefined} />}>
+        {open ? "Hide 72-hour hourly forecast" : "Show 72-hour hourly forecast"}
+      </Button>
+      <Collapse in={open} animateOpacity>
+      <Box id="forecast-hourly-body" overflowX="auto" maxH={{ base: "420px", md: "520px" }} overflowY="auto" bg="white" borderRadius="8px">
         {groupHourly(hourly).map((g) => (
           <Box key={g.day} className="forecast-hourly-day" px="2" py="2" borderBottom="1px solid #e2e2e2">
             <Text fontWeight="semibold" fontSize="sm" mb="1">{g.day}</Text>
@@ -73,6 +84,33 @@ function HourlyTable({ hourly, unit }) {
           </Box>
         ))}
       </Box>
+      </Collapse>
+    </Box>
+  );
+}
+
+
+function FullAfdDisclosure({ office, sections }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Box className="forecast-afd-full" mt="3">
+      <Button className="forecast-afd-full-toggle" variant="ghost" size="sm" fontWeight="semibold" px="0"
+        onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="forecast-afd-full-body"
+        rightIcon={<Box as={FiChevronDown} transition="transform 0.2s" transform={open ? "rotate(180deg)" : undefined} />}>
+        {open ? "Hide full discussion" : "Show full discussion (NWS " + (office || "MTR") + ")"}
+      </Button>
+      <Collapse in={open} animateOpacity>
+        <Box id="forecast-afd-full-body" bg="white" borderRadius="8px" p="3">
+          {sections.map((s) => (
+            <Box key={s.name} className="forecast-afd-section" mb="3">
+              <Text fontWeight="bold" fontSize="sm" textTransform="capitalize">
+                {s.name.toLowerCase()}
+              </Text>
+              <Text fontSize="sm" whiteSpace="pre-wrap" color="gray.700" lineHeight="short">{s.body}</Text>
+            </Box>
+          ))}
+        </Box>
+      </Collapse>
     </Box>
   );
 }
@@ -88,19 +126,7 @@ function FullAfd({ afd, discussion }) {
     <Box id="forecast-afd" className="forecast-afd" mt="4">
       <Text fontSize={{ base: "md", md: "lg" }} fontWeight="bold" mb="1">Area Forecast Discussion</Text>
       <Discussion d={discussion || { ...d, sections: undefined, product_text: undefined }} />
-      {sections.length > 0 && (
-        <Box className="forecast-afd-full" mt="3" bg="white" borderRadius="8px" p="3">
-          <Text fontWeight="semibold" mb="2">Full discussion (NWS {d.office || "MTR"})</Text>
-          {sections.map((s) => (
-            <Box key={s.name} className="forecast-afd-section" mb="3">
-              <Text fontWeight="bold" fontSize="sm" textTransform="capitalize">
-                {s.name.toLowerCase()}
-              </Text>
-              <Text fontSize="sm" whiteSpace="pre-wrap" color="gray.700" lineHeight="short">{s.body}</Text>
-            </Box>
-          ))}
-        </Box>
-      )}
+      {sections.length > 0 && <FullAfdDisclosure office={d.office} sections={sections} />}
       {url && <Text fontSize="xs" mt="2"><Link href={url} isExternal textDecoration="underline">NWS product page</Link></Text>}
     </Box>
   );
@@ -119,6 +145,7 @@ export function NwsForecastSection() {
       {loading && <Spinner size="sm" />}
       {error && !fc && <Text fontSize="sm" color="gray.600">NWS forecast unavailable right now.</Text>}
       {fc && <>
+        <StaleNote stale={fc.stale} fetchedAt={fc.fetched_at} />
         <Alerts alerts={fc.alerts} />
         <Periods periods={fc.periods} unit={unit} />
         <RainTotal periods={fc.periods} total={fc.qpf_total_mm} unit={unit} />

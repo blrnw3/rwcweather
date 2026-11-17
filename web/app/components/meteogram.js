@@ -9,7 +9,8 @@ import useSWR from "swr";
 import { convFunction, formatObs, unitForObsType } from "../format";
 import { fetcher } from "./conf";
 import { UnitCtx } from "./Page";
-import { fmtRain } from "./forecast";
+import { fmtRain, StaleNote } from "./forecast";
+import { STATION_CHART_TIME, stationAxisDay, stationSharedTooltip } from "./stationTime";
 
 // Stacked 10-day meteogram, modelled on nw3weather's forecast page: a per-day
 // summary strip aligned to each day's span on the chart, then panels for
@@ -286,7 +287,7 @@ function buildCharts(el, series, unit) {
     labels: {
       autoRotation: false,
       style: { fontSize: "0.72rem" },
-      formatter: function () { return HCAPI.dateFormat("%a %e", this.value); },
+      formatter: function () { return stationAxisDay(this.value); },
     },
   };
   const baseChart = {
@@ -295,8 +296,9 @@ function buildCharts(el, series, unit) {
     marginRight: 48,
     spacing: [6, 10, 4, 8],
     style: { fontFamily: "inherit" },
+    time: STATION_CHART_TIME,
   };
-  const tip = { shared: true, xDateFormat: "%a %e %b %H:%M", style: { fontSize: "0.75rem" } };
+  const tip = stationSharedTooltip();
 
   const charts = [];
   function panel(suffix, height, yAxis, seriesOpts, xLabels, title) {
@@ -419,6 +421,7 @@ export function Meteogram() {
         Hourly temperature and dew point, precipitation amount and chance, cloud cover, wind and gusts, and pressure
         at the station (37.470, −122.265, ~125 m). Data: Open-Meteo GFS seamless (HRRR in the near term, GFS thereafter).
       </Text>
+      {mg && <StaleNote stale={mg.stale} fetchedAt={mg.fetched_at} />}
       {loading && <Spinner size="sm" />}
       {error && !mg && <Text fontSize="sm" color="gray.600">Meteogram unavailable right now.</Text>}
       {mg && !mg.series && <Text fontSize="sm" color="gray.600">Meteogram data is temporarily unavailable.</Text>}

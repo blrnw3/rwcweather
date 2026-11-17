@@ -171,7 +171,8 @@ def test_point_failure_after_long_success_serves_stale_then_none():
 def test_forecast_survives_hours_after_point_lookup(monkeypatch):
     nws.clear()
     t = [5000.0]
-    monkeypatch.setattr(nws.time, "monotonic", lambda: t[0])
+    from rwcwx.forecast import cache as fc_cache
+    monkeypatch.setattr(fc_cache.time, "monotonic", lambda: t[0])
     point = {"forecast": "https://example/forecast", "forecastGridData": "https://example/grid", "gridId": "MTR"}
     monkeypatch.setattr(nws, "get_json", lambda url, accept=None: {"properties": point} if "points" in url
                         else {"properties": FORECAST})
@@ -372,3 +373,68 @@ def test_nws_page_endpoint(monkeypatch):
     res = app.test_client().get("/api/forecast/nws").get_json()["result"]
     assert [p["name"] for p in res["periods"]] == [
         "Today", "Tonight", "Tuesday", "Tuesday Night", "Wednesday", "Wednesday Night"]
+
+
+# ---------------------------------------------------------------- last-good disk fallback
+
+def test_disk_last_good_survives_memory_clear(tmp_path, monkeypatch):
+    # After a worker reload the in-process cache is empty; a failed fetch should still
+    # serve the last good payload persisted on disk, marked stale, and retry after backoff.
+    monkeypatch.setenv("RWCWX_FORECAST_CACHE_DIR", str(tmp_path))
+    nws.clear()
+    clock = [1000.0]
+    wall = [1_700_000_000.0]
+    calls = []
+
+    def ok():
+        calls.append("ok")
+        return {"v": 1}
+
+    def boom():
+        calls.append("boom")
+        raise IOError("timeout")
+
+    now = lambda: clock[0]
+    wall_fn = lambda: wall[0]
+    assert nws._safe("diskx", 600, ok, now=now, wall=wall_fn) == {"v": 1}
+    assert nws.status("diskx")["stale"] is False
+    nws.clear()                                          # like a new uWSGI worker
+    clock[0] += 1
+    wall[0] += 1
+    assert nws._safe("diskx", 600, boom, now=now, wall=wall_fn) == {"v": 1}
+    assert calls == ["ok", "boom"]
+    st = nws.status("diskx")
+    assert st["stale"] is True and st["fetched_at"] == 1_700_000_000.0
+    clock[0] += 30
+    wall[0] += 30
+    assert nws._safe("diskx", 600, boom, now=now, wall=wall_fn) == {"v": 1}
+    assert calls == ["ok", "boom"]                       # backing off
+    clock[0] += nws.TTL_FAILED
+    wall[0] += nws.TTL_FAILED
+    assert nws._safe("diskx", 600, ok, now=now, wall=wall_fn) == {"v": 1}
+    assert calls == ["ok", "boom", "ok"]
+    assert nws.status("diskx")["stale"] is False
+    nws.clear()
+
+
+def test_merge_status_and_endpoint_flags(monkeypatch):
+    from rwcwx.forecast.cache import merge_status, iso_utc
+    assert merge_status() == dict(stale=False, fetched_at=None)
+    assert merge_status(None, {"stale": False, "fetched_at": 100.0})["fetched_at"] == iso_utc(100.0)
+    mixed = merge_status({"stale": False, "fetched_at": 200.0}, {"stale": True, "fetched_at": 50.0})
+    assert mixed["stale"] is True and mixed["fetched_at"] == iso_utc(50.0)
+
+    nws.clear()
+    # status is empty until a real _safe fetch; mocked nws.forecast in the endpoint does not populate it
+    from flask import Flask
+    from rwcwx.forecast import api as fc_api
+    app = Flask(__name__)
+    app.add_url_rule("/api/forecast", view_func=fc_api.get_forecast)
+    monkeypatch.setattr(fc_api, "_now", lambda: datetime(2026, 11, 17, 20, 0, tzinfo=timezone.utc))
+    monkeypatch.setattr(nws, "forecast", lambda: FORECAST)
+    monkeypatch.setattr(nws, "gridpoint", lambda: None)
+    monkeypatch.setattr(nws, "afd", lambda: AFD)
+    monkeypatch.setattr(nws, "alerts", lambda: [])
+    res = app.test_client().get("/api/forecast").get_json()["result"]
+    assert "stale" in res and "fetched_at" in res
+    assert res["stale"] is False

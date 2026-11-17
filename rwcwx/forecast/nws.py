@@ -1,17 +1,15 @@
 """NWS (api.weather.gov) client for the home-page forecast card.
 
-Everything is fetched server-side with an identifying User-Agent and cached per process, so browsers never hit
-NWS directly. Each part (forecast, discussion, alerts) is cached and fails on its own: a failure returns None and
-is retried after a short back-off rather than on every request.
+Everything is fetched server-side with an identifying User-Agent and cached per process (and last-good on disk),
+so browsers never hit NWS directly. Each part (forecast, discussion, alerts) is cached and fails on its own:
+a failed fetch is retried after a short back-off, and the last good payload is served in the meantime.
 """
 import os
-import threading
-import time
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Optional
 
 import requests
 
-from rwcwx import logger
+from rwcwx.forecast.cache import STALE_MAX, UpstreamCache
 
 LAT, LON = 37.470, -122.265
 BASE = "https://api.weather.gov"
@@ -31,45 +29,27 @@ def get_json(url: str, accept: str = "application/geo+json") -> Any:
     return resp.json()
 
 
-_lock = threading.Lock()
-_cache: Dict[str, Tuple[float, Any]] = {}     # name -> (next fetch due, value to serve until then)
-_good: Dict[str, Tuple[float, Any]] = {}      # name -> (time of last successful fetch, its value)
-STALE_MAX = 3 * 3600
+# Last-good stale window after a failure. A successful fetch is served for its full ttl even when
+# that is longer (the 24 h /points lookup).
+_store = UpstreamCache("nws", "NWS")
 
 
-def _safe(name: str, ttl: float, fn: Callable[[], Any], now: Optional[Callable[[], float]] = None) -> Optional[Any]:
+def _safe(name: str, ttl: float, fn: Callable[[], Any], now: Optional[Callable[[], float]] = None,
+          wall: Optional[Callable[[], float]] = None) -> Optional[Any]:
     """fn()'s value, cached for ttl seconds. A failed fetch is retried after TTL_FAILED, and meanwhile the last
     good value (if under STALE_MAX old) is served, so a brief NWS outage doesn't blank the card.
 
     STALE_MAX only limits how long a last-good value is served *after a failure*; a successful fetch is served for
     its full ttl even when that is longer (the 24 h /points lookup)."""
-    t = (now or time.monotonic)()
-    with _lock:
-        hit = _cache.get(name)
-    if hit is not None and t < hit[0]:
-        return hit[1]
-    try:
-        val = fn()
-        entry = (t + ttl, val)
-        with _lock:
-            _good[name] = (t, val)
-    except Exception as e:      # network, HTTP, JSON or shape errors; never echo the response
-        logger.warning(f"NWS {name} fetch failed: {type(e).__name__}")
-        with _lock:
-            good = _good.get(name)
-        if good is not None and t - good[0] < STALE_MAX:
-            entry = (min(t + TTL_FAILED, good[0] + STALE_MAX), good[1])
-        else:
-            entry = (t + TTL_FAILED, None)
-    with _lock:
-        _cache[name] = entry
-    return entry[1]
+    return _store.safe(name, ttl, fn, now=now, wall=wall, failed_ttl=TTL_FAILED, stale_max=STALE_MAX)
 
 
 def clear() -> None:
-    with _lock:
-        _cache.clear()
-        _good.clear()
+    _store.clear()
+
+
+def status(name: str) -> Optional[dict]:
+    return _store.status(name)
 
 
 def point() -> Optional[dict]:

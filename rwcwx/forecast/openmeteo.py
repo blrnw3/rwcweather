@@ -1,20 +1,18 @@
 """Open-Meteo client for the forecast page (10-day meteogram, ensembles, previous runs).
 
-Keyless public APIs, fetched server-side with an identifying User-Agent and cached per process so
-the page does not hammer upstream. Each request fails on its own: a failure returns None and is
-retried after a short back-off; a recent good value is served meanwhile.
+Keyless public APIs, fetched server-side with an identifying User-Agent and cached per process
+(and last-good on disk) so the page does not hammer upstream. A failed or timed-out fetch is
+retried after a short back-off; the last good payload is served in the meantime instead of None.
 """
 import os
-import threading
-import time
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Optional
 from urllib.parse import urlencode
 
 import requests
 
-from rwcwx import logger
 from rwcwx.config import TZ_NAME
 from rwcwx.forecast import nws as nws_mod
+from rwcwx.forecast.cache import STALE_MAX, UpstreamCache
 
 LAT, LON, ELEV = nws_mod.LAT, nws_mod.LON, 125
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
@@ -25,12 +23,9 @@ TIMEOUT = 15
 
 TTL_FORECAST = 20 * 60
 TTL_ENSEMBLE = 30 * 60
-TTL_FAILED = 3 * 60
-STALE_MAX = 3 * 3600
+TTL_FAILED = 60
 
-_lock = threading.Lock()
-_cache: Dict[str, Tuple[float, Any]] = {}
-_good: Dict[str, Tuple[float, Any]] = {}
+_store = UpstreamCache("openmeteo", "Open-Meteo")
 
 
 def get_json(url: str) -> Any:
@@ -42,34 +37,17 @@ def get_json(url: str) -> Any:
     return data
 
 
-def _safe(name: str, ttl: float, fn: Callable[[], Any], now: Optional[Callable[[], float]] = None) -> Optional[Any]:
-    t = (now or time.monotonic)()
-    with _lock:
-        hit = _cache.get(name)
-    if hit is not None and t < hit[0]:
-        return hit[1]
-    try:
-        val = fn()
-        entry = (t + ttl, val)
-        with _lock:
-            _good[name] = (t, val)
-    except Exception as e:
-        logger.warning(f"Open-Meteo {name} fetch failed: {type(e).__name__}")
-        with _lock:
-            good = _good.get(name)
-        if good is not None and t - good[0] < STALE_MAX:
-            entry = (min(t + TTL_FAILED, good[0] + STALE_MAX), good[1])
-        else:
-            entry = (t + TTL_FAILED, None)
-    with _lock:
-        _cache[name] = entry
-    return entry[1]
+def _safe(name: str, ttl: float, fn: Callable[[], Any], now: Optional[Callable[[], float]] = None,
+          wall: Optional[Callable[[], float]] = None) -> Optional[Any]:
+    return _store.safe(name, ttl, fn, now=now, wall=wall, failed_ttl=TTL_FAILED, stale_max=STALE_MAX)
 
 
 def clear() -> None:
-    with _lock:
-        _cache.clear()
-        _good.clear()
+    _store.clear()
+
+
+def status(name: str) -> Optional[dict]:
+    return _store.status(name)
 
 
 def _url(base: str, params: dict) -> str:
