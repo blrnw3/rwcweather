@@ -131,7 +131,9 @@ export function Discussion({ d }) {
     <Text fontWeight="bold">
       Forecast discussion
       {hasMore && <Button className="forecast-afd-toggle" variant="ghost" size="xs" minW="auto" h="auto" px="1" py="0" ml="1"
-        verticalAlign="baseline" fontWeight="normal" color="gray.600" onClick={() => setOpen(!isOpen)}
+        verticalAlign="baseline" fontWeight="normal" color="#1A365D"
+        _hover={{ color: "#12284c", bg: "blue.50" }} _active={{ color: "#12284c", bg: "blue.50" }}
+        onClick={() => setOpen(!isOpen)}
         aria-expanded={isOpen} aria-controls="forecast-afd-details"
         aria-label={isOpen ? "Hide discussion details" : "Show discussion details"} title={isOpen ? "Hide details" : "More from the discussion"}>
         <Box as={FiChevronDown} transition="transform 0.2s" transform={isOpen ? "rotate(180deg)" : undefined} />

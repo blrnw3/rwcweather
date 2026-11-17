@@ -6,10 +6,11 @@ import {
   WiSprinkle, WiStrongWind, WiThunderstorm,
 } from "react-icons/wi";
 import useSWR from "swr";
-import { convFunction, formatObs, unitForObsType } from "../format";
+import { convFunction, unitForObsType } from "../format";
 import { fetcher } from "./conf";
 import { UnitCtx } from "./Page";
 import { fmtRain, StaleNote } from "./forecast";
+import { dayAlerts } from "./forecastDayAlerts";
 import { STATION_CHART_TIME, sortedUniquePoints, stationAxisDay, stationSharedTooltip } from "./stationTime";
 
 // Stacked 10-day meteogram, modelled on nw3weather's forecast page: a per-day
@@ -33,6 +34,56 @@ const COLORS = {
 };
 
 const WINDY_MPH = 25;
+
+// Meteogram number formatting. Metric rain is 1 dp; wind, gust and pressure
+// (mb) are 0 dp. US inches and inHg keep 2 dp (0 dp would be unusable).
+function meteogramDecimals(unit, kind) {
+  if (kind === "rain") return unit === "us" ? 2 : 1;
+  if (kind === "pres") return unit === "us" ? 2 : 0;
+  if (kind === "wind" || kind === "gust") return 0;
+  return 1;
+}
+
+function axisDecimalsFormatter(decimals) {
+  return function () {
+    const n = Number(this.value);
+    if (!Number.isFinite(n)) return "";
+    if (decimals === 0) return String(Math.round(n));
+    if (Number.isInteger(n) || Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+    return n.toFixed(decimals);
+  };
+}
+
+const ALERT_TONE = {
+  "wind-high": { bg: "#9b2c2c", color: "#fff" },
+  wind: { bg: "#c05621", color: "#fff" },
+  "rain-heavy": { bg: "#2a4365", color: "#fff" },
+  rain: { bg: "#2b6cb0", color: "#fff" },
+  hot: { bg: "#c53030", color: "#fff" },
+  frost: { bg: "#2c5282", color: "#fff" },
+  cold: { bg: "#4c6b8a", color: "#fff" },
+};
+
+function alertTitle(a) {
+  const bits = [];
+  if (a.gustKmh != null) bits.push("gusts " + Math.round(a.gustKmh) + " km/h");
+  if (a.windKmh != null) bits.push("sustained " + Math.round(a.windKmh) + " km/h");
+  if (a.rainMm != null) bits.push(a.rainMm.toFixed(1) + " mm");
+  if (a.tmax != null && a.normalTmax != null) {
+    bits.push("high " + a.tmax.toFixed(1) + "°C vs normal " + a.normalTmax.toFixed(1) + "°C");
+  }
+  if (a.tmin != null) {
+    bits.push("low " + a.tmin.toFixed(1) + "°C" + (a.normalTmin != null ? " vs normal " + a.normalTmin.toFixed(1) + "°C" : ""));
+  }
+  return a.label + (bits.length ? ": " + bits.join(", ") : "");
+}
+
+function fmtStripWind(unit, mph, withUnit) {
+  if (mph == null) return null;
+  const n = Math.round(convFunction(unit, "wind")(mph));
+  return withUnit === false ? String(n) : (n + " " + unitForObsType(unit, "wind"));
+}
+
 
 const DAY_ICONS = {
   sunny: WiDaySunny,
@@ -129,17 +180,22 @@ function DailyStrip({ cols, unit }) {
   if (!cols || !cols.length) return null;
   const tUnit = unitForObsType(unit, "temp");
   const toTemp = convFunction(unit, "temp");
+  const alertsByI = cols.map((c) => dayAlerts(c.day));
+  const maxAlerts = alertsByI.reduce((m, a) => Math.max(m, a.length), 0);
+  const baseH = { base: 90, md: 92 };
+  const h = { base: `${baseH.base + maxAlerts * 14}px`, md: `${baseH.md + maxAlerts * 14}px` };
   return (
-    <Box className="fc-mg-daystrip" position="relative" h={{ base: "118px", md: "126px" }} mb="1"
+    <Box className="fc-mg-daystrip" position="relative" h={h} mb="0"
       fontSize="11px" color="gray.800" borderBottom="1px solid #ddd">
-      {cols.map((c) => {
+      {cols.map((c, i) => {
         const d = c.day;
         const hi = d.tmax != null ? Math.round(toTemp(d.tmax)) : null;
         const lo = d.tmin != null ? Math.round(toTemp(d.tmin)) : null;
         const rain = d.precip != null ? fmtRain(unit, d.precip, true) : null;
-        const wind = d.wind_max != null ? formatObs(unit, d.wind_max, "wind") : null;
-        const gustNum = d.gust_max != null ? formatObs(unit, d.gust_max, "wind", false, false) : null;
+        const wind = fmtStripWind(unit, d.wind_max, true);
+        const gustNum = fmtStripWind(unit, d.gust_max, false);
         const iconSize = c.tight ? 18 : (c.narrow ? 24 : 30);
+        const alerts = alertsByI[i];
         return (
           <Box key={d.date} className="fc-mg-daycol" position="absolute" top="0" bottom="0"
             left={c.left + "px"} width={c.width + "px"}
@@ -174,6 +230,29 @@ function DailyStrip({ cols, unit }) {
                 {wind}{gustNum ? <Text as="span" color="gray.500"> g{gustNum}</Text> : null}
               </Text>
             )}
+            {alerts.map((a) => {
+              const tone = ALERT_TONE[a.tone] || ALERT_TONE.wind;
+              const text = c.tight || c.narrow ? (a.shortLabel || a.label) : a.label;
+              return (
+                <Text
+                  key={a.key}
+                  className="fc-mg-day-alert"
+                  title={alertTitle(a)}
+                  fontSize="9px"
+                  fontWeight="semibold"
+                  lineHeight="1.2"
+                  px="1"
+                  mt="0.5"
+                  borderRadius="sm"
+                  bg={tone.bg}
+                  color={tone.color}
+                  maxW="100%"
+                  isTruncated
+                >
+                  {text}
+                </Text>
+              );
+            })}
           </Box>
         );
       })}
@@ -290,6 +369,9 @@ function buildCharts(el, series, unit) {
       formatter: function () { return stationAxisDay(this.value); },
     },
   };
+  const rainDp = meteogramDecimals(unit, "rain");
+  const windDp = meteogramDecimals(unit, "wind");
+  const presDp = meteogramDecimals(unit, "pres");
   const baseChart = {
     backgroundColor: "#ffffff",
     marginLeft: 56,
@@ -303,9 +385,10 @@ function buildCharts(el, series, unit) {
   const charts = [];
   function panel(suffix, height, yAxis, seriesOpts, xLabels, title) {
     const annot = nowAnnot(suffix === "temp", xMin, xMax);
+    const tightTop = suffix === "temp";
     charts.push(HCAPI.chart(el.id + "-" + suffix, {
-      chart: { ...baseChart, height },
-      title: { text: title, align: "left", margin: 6, style: { fontSize: "0.85rem", fontWeight: "normal", color: "#333" } },
+      chart: { ...baseChart, height, spacing: tightTop ? [2, 10, 4, 8] : baseChart.spacing },
+      title: { text: title, align: "left", margin: tightTop ? 2 : 6, style: { fontSize: "0.85rem", fontWeight: "normal", color: "#333" } },
       credits: { enabled: false },
       legend: { enabled: seriesOpts.length > 1, align: "right", verticalAlign: "top", floating: true, itemStyle: { fontSize: "0.72rem", fontWeight: "normal" } },
       xAxis: { ...xCommon, ...annot, labels: { ...xCommon.labels, enabled: !!xLabels }, tickLength: xLabels ? 4 : 0, lineWidth: xLabels ? 1 : 0 },
@@ -328,11 +411,11 @@ function buildCharts(el, series, unit) {
   ], false, "Temperature and dew point");
 
   panel("precip", 160, [
-    { title: { text: rUnit, style: { color: COLORS.precip, fontSize: "0.75rem" } }, labels: { style: { color: COLORS.precip, fontSize: "0.72rem" } }, min: 0, gridLineColor: "#eee", softMax: rConv(1) },
+    { title: { text: rUnit, style: { color: COLORS.precip, fontSize: "0.75rem" } }, labels: { style: { color: COLORS.precip, fontSize: "0.72rem" }, formatter: axisDecimalsFormatter(rainDp) }, min: 0, gridLineColor: "#eee", softMax: rConv(1) },
     { title: { text: "%", style: { color: COLORS.precip, fontSize: "0.75rem" } }, labels: { style: { color: "#2554c7", fontSize: "0.72rem" } }, min: 0, max: 100, opposite: true, gridLineWidth: 0 },
   ], [
     { name: "Rain chance", type: "spline", data: pop, color: "rgba(37,84,199,0.55)", lineWidth: 1.5, dashStyle: "ShortDash", yAxis: 1, tooltip: { valueSuffix: "%" }, zIndex: 1 },
-    { name: "Precipitation", type: "column", data: precip, color: COLORS.precip, tooltip: { valueDecimals: 2, valueSuffix: " " + rUnit }, zIndex: 2 },
+    { name: "Precipitation", type: "column", data: precip, color: COLORS.precip, tooltip: { valueDecimals: rainDp, valueSuffix: " " + rUnit }, zIndex: 2 },
   ], false, "Precipitation");
 
   panel("cloud", 130, [
@@ -342,16 +425,16 @@ function buildCharts(el, series, unit) {
   ], false, "Cloud cover");
 
   panel("wind", 160, [
-    { title: { text: wUnit, style: { color: COLORS.wind, fontSize: "0.75rem" } }, labels: { style: { color: COLORS.wind, fontSize: "0.72rem" } }, min: 0, softMax: 5, gridLineColor: "#eee" },
+    { title: { text: wUnit, style: { color: COLORS.wind, fontSize: "0.75rem" } }, labels: { style: { color: COLORS.wind, fontSize: "0.72rem" }, formatter: axisDecimalsFormatter(windDp) }, min: 0, softMax: 5, gridLineColor: "#eee" },
   ], [
-    { name: "Wind", type: "spline", data: wind, color: COLORS.wind, lineWidth: 1.75, tooltip: { valueDecimals: 1, valueSuffix: " " + wUnit } },
-    { name: "Gusts", type: "spline", data: gust, color: COLORS.gust, lineWidth: 1.25, dashStyle: "ShortDash", tooltip: { valueDecimals: 1, valueSuffix: " " + wUnit } },
+    { name: "Wind", type: "spline", data: wind, color: COLORS.wind, lineWidth: 1.75, tooltip: { valueDecimals: windDp, valueSuffix: " " + wUnit } },
+    { name: "Gusts", type: "spline", data: gust, color: COLORS.gust, lineWidth: 1.25, dashStyle: "ShortDash", tooltip: { valueDecimals: windDp, valueSuffix: " " + wUnit } },
   ], false, "Wind");
 
   panel("pres", 140, [
-    { title: { text: pUnit, style: { color: COLORS.pressure, fontSize: "0.75rem" } }, labels: { style: { color: COLORS.pressure, fontSize: "0.72rem" } }, gridLineColor: "#eee" },
+    { title: { text: pUnit, style: { color: COLORS.pressure, fontSize: "0.75rem" } }, labels: { style: { color: COLORS.pressure, fontSize: "0.72rem" }, formatter: axisDecimalsFormatter(presDp) }, gridLineColor: "#eee" },
   ], [
-    { name: "Pressure", type: "spline", data: pressure, color: COLORS.pressure, lineWidth: 1.75, tooltip: { valueDecimals: unit === "us" ? 2 : 1, valueSuffix: " " + pUnit } },
+    { name: "Pressure", type: "spline", data: pressure, color: COLORS.pressure, lineWidth: 1.75, tooltip: { valueDecimals: presDp, valueSuffix: " " + pUnit } },
   ], true, "Pressure");
 
   return charts;

@@ -57,7 +57,9 @@ function HourlyDisclosure({ hourly, unit }) {
   const [open, setOpen] = useState(false);
   return (
     <Box id="forecast-hourly" className="forecast-hourly" mt="3">
-      <Button className="forecast-hourly-toggle" variant="ghost" size="sm" fontWeight="bold" px="0"
+      <Button className="forecast-hourly-toggle" variant="ghost" size="sm" fontWeight="bold" px="1"
+        color="#1A365D" _hover={{ color: "#12284c", bg: "blue.50", textDecoration: "underline" }}
+        _active={{ color: "#12284c", bg: "blue.50" }}
         onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="forecast-hourly-body"
         rightIcon={<Box as={FiChevronDown} transition="transform 0.2s" transform={open ? "rotate(180deg)" : undefined} />}>
         {open ? "Hide 72-hour hourly forecast" : "Show 72-hour hourly forecast"}
@@ -94,7 +96,9 @@ function FullAfdDisclosure({ office, sections }) {
   const [open, setOpen] = useState(false);
   return (
     <Box className="forecast-afd-full" mt="3">
-      <Button className="forecast-afd-full-toggle" variant="ghost" size="sm" fontWeight="semibold" px="0"
+      <Button className="forecast-afd-full-toggle" variant="ghost" size="sm" fontWeight="semibold" px="1"
+        color="#1A365D" _hover={{ color: "#12284c", bg: "blue.50", textDecoration: "underline" }}
+        _active={{ color: "#12284c", bg: "blue.50" }}
         onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="forecast-afd-full-body"
         rightIcon={<Box as={FiChevronDown} transition="transform 0.2s" transform={open ? "rotate(180deg)" : undefined} />}>
         {open ? "Hide full discussion" : "Show full discussion (NWS " + (office || "MTR") + ")"}
