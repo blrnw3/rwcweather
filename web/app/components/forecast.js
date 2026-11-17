@@ -11,21 +11,21 @@ import { UnitCtx } from './Page';
 // temperatures in °C and wind in mph, the site's base units; they are converted to the visitor's unit choice here.
 // Each part can be null when NWS is unavailable, and the card then says so for that part only.
 
-const PT = "America/Los_Angeles";
-const SAFE_HREF = /^https:\/\/[^\s"'<>`\\]+$/i;
-const NWS_HOME = "https://forecast.weather.gov/MapClick.php?lat=37.47&lon=-122.265";
+export const PT = "America/Los_Angeles";
+export const SAFE_HREF = /^https:\/\/[^\s"'<>`\\]+$/i;
+export const NWS_HOME = "https://forecast.weather.gov/MapClick.php?lat=37.47&lon=-122.265";
 
 export function useForecast() {
   const { data, error } = useSWR("/api/forecast", fetcher, { refreshInterval: 600000 });
   return { fc: data?.result, error, loading: !data && !error };
 }
 
-function fmtTemp(unit, c) {
+export function fmtTemp(unit, c) {
   if (c == null) return "–";
   return Math.round(convFunction(unit, "temp")(c)) + unitForObsType(unit, "temp");
 }
 
-function fmtWind(unit, p) {
+export function fmtWind(unit, p) {
   if (p.wind_mph_hi == null) return "–";
   if (p.wind_mph_hi === 0) return "Calm";
   const conv = convFunction(unit, "wind");
@@ -55,7 +55,7 @@ const ALERT_COLOURS = {
   Minor: { bg: "yellow.200", color: "gray.900" },
 };
 
-function Alerts({ alerts }) {
+export function Alerts({ alerts }) {
   if (alerts == null) {
     return <Text className="forecast-alerts-unavailable" fontSize="xs" color="gray.600">Alerts unavailable right now.</Text>;
   }
@@ -74,7 +74,7 @@ function Alerts({ alerts }) {
   });
 }
 
-function Periods({ periods, unit }) {
+export function Periods({ periods, unit }) {
   if (!periods) {
     return <Text className="forecast-unavailable" fontSize="sm" color="gray.600" my="2">Forecast unavailable right now.</Text>;
   }
@@ -98,7 +98,7 @@ function Periods({ periods, unit }) {
   </Grid>;
 }
 
-function RainTotal({ periods, total, unit }) {
+export function RainTotal({ periods, total, unit }) {
   if (!periods || periods.length === 0 || total == null) return null;
   const first = periods[0].name, last = periods[periods.length - 1].name;
   return <Text id="forecast-qpf-total" fontSize="sm" mt="1" color="gray.700">
@@ -107,7 +107,7 @@ function RainTotal({ periods, total, unit }) {
   </Text>;
 }
 
-function Discussion({ d }) {
+export function Discussion({ d }) {
   const [isOpen, setOpen] = useState(false);
   if (d == null) {
     return <Text className="forecast-afd-unavailable" fontSize="xs" color="gray.600" mt="2">Forecast discussion unavailable right now.</Text>;
@@ -166,6 +166,8 @@ export function ForecastCard() {
       <Discussion d={fc.discussion} />
     </>}
     <Text fontSize="xs" color="gray.600" mt="2">
+      <Link href="/forecast">Full forecast</Link>
+      {" · "}
       <Link href={NWS_HOME} isExternal>National Weather Service</Link> point forecast
       {fc?.updated && <> &middot; updated {fmtWhen(fc.updated)}</>}
     </Text>

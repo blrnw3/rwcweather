@@ -91,6 +91,14 @@ def gridpoint() -> Optional[dict]:
     return _safe("gridpoint", TTL_FORECAST, lambda: get_json(p["forecastGridData"])["properties"])
 
 
+def forecast_hourly() -> Optional[dict]:
+    """Hourly forecast at the station grid point (for the 72-hour table)."""
+    p = point()
+    if not p or not p.get("forecastHourly"):
+        return None
+    return _safe("forecast_hourly", TTL_FORECAST, lambda: get_json(p["forecastHourly"])["properties"])
+
+
 def afd() -> Optional[dict]:
     p = point()
     office = (p or {}).get("gridId") or "MTR"

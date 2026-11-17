@@ -43,9 +43,14 @@ def _local_date(iso: str) -> date:
 
 def periods(fc: Optional[dict], today: date) -> Optional[List[dict]]:
     """Forecast periods that start today or tomorrow (local), in order."""
+    return periods_through(fc, today, days=2)
+
+
+def periods_through(fc: Optional[dict], today: date, days: int = 2) -> Optional[List[dict]]:
+    """Forecast periods whose local start date falls in [today, today+days)."""
     if not fc or not isinstance(fc.get("periods"), list):
         return None
-    keep = (today, today + timedelta(days=1))
+    keep = {today + timedelta(days=i) for i in range(days)}
     out = []
     for p in fc["periods"]:
         try:
@@ -63,8 +68,39 @@ def periods(fc: Optional[dict], today: date) -> Optional[List[dict]]:
         else:
             temp_c = f_to_c(temp)
         pop = (p.get("probabilityOfPrecipitation") or {}).get("value")
-        out.append(dict(name=p.get("name"), day=0 if d == today else 1, is_daytime=bool(p.get("isDaytime")),
+        out.append(dict(name=p.get("name"), day=(d - today).days, is_daytime=bool(p.get("isDaytime")),
                         start=p.get("startTime"), end=p.get("endTime"), short=p.get("shortForecast"), detailed=p.get("detailedForecast"),
+                        temp_c=temp_c, pop=int(pop) if pop is not None else 0,
+                        wind_dir=p.get("windDirection") or None, wind_mph_lo=lo, wind_mph_hi=hi,
+                        icon=p.get("icon")))
+    return out
+
+
+def hourly(fc: Optional[dict], start: datetime, end: datetime) -> Optional[List[dict]]:
+    """Hourly forecast periods that overlap [start, end), in order. start/end should be timezone-aware."""
+    if not fc or not isinstance(fc.get("periods"), list):
+        return None
+    out = []
+    for p in fc["periods"]:
+        try:
+            t0 = datetime.fromisoformat(p["startTime"])
+            t1 = datetime.fromisoformat(p["endTime"]) if p.get("endTime") else t0 + timedelta(hours=1)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if t1 <= start or t0 >= end:
+            continue
+        lo, hi = wind_mph(p.get("windSpeed"))
+        temp = p.get("temperature")
+        if isinstance(temp, dict):
+            temp = temp.get("value")
+        if temp is not None and (p.get("temperatureUnit") or "F") == "C":
+            temp_c = float(temp)
+        else:
+            temp_c = f_to_c(temp)
+        pop = (p.get("probabilityOfPrecipitation") or {}).get("value")
+        out.append(dict(start=p.get("startTime"), end=p.get("endTime"),
+                        is_daytime=bool(p.get("isDaytime")),
+                        short=p.get("shortForecast"), detailed=p.get("detailedForecast"),
                         temp_c=temp_c, pop=int(pop) if pop is not None else 0,
                         wind_dir=p.get("windDirection") or None, wind_mph_lo=lo, wind_mph_hi=hi,
                         icon=p.get("icon")))
@@ -228,11 +264,36 @@ def discussion(product: Optional[dict]) -> Optional[dict]:
     kms = key_messages(secs.get("KEY MESSAGES"))
     local = local_mentions(synopsis, short, long_)
     hl, scope = highlights(kms, local)
+    url = f"https://forecast.weather.gov/product.php?site={office}&issuedby={office}&product=AFD"
     return dict(issued=product.get("issuanceTime"), office=office, key_messages=kms,
                 highlights=hl, highlights_scope=scope,
                 synopsis=excerpt(synopsis), short_term=excerpt(short), long_term=excerpt(long_),
-                local=local,
-                url=f"https://forecast.weather.gov/product.php?site={office}&issuedby={office}&product=AFD")
+                local=local, url=url)
+
+
+# Section order used on the forecast page (others follow, still included).
+AFD_SECTION_ORDER = ("KEY MESSAGES", "SYNOPSIS", "DISCUSSION", "SHORT TERM", "LONG TERM")
+
+
+def discussion_full(product: Optional[dict]) -> Optional[dict]:
+    """Highlights plus the full Area Forecast Discussion text, section by section."""
+    d = discussion(product)
+    if not d:
+        return None
+    raw = product.get("productText") or ""
+    secs = sections(raw)
+    ordered = []
+    seen = set()
+    for name in AFD_SECTION_ORDER:
+        if name in secs:
+            ordered.append(dict(name=name, body=_strip_meta(secs[name])))
+            seen.add(name)
+    for name, body in secs.items():
+        if name not in seen:
+            ordered.append(dict(name=name, body=_strip_meta(body)))
+    d["sections"] = ordered
+    d["product_text"] = raw
+    return d
 
 
 # ---------------------------------------------------------------- alerts
