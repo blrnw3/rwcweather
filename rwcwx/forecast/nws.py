@@ -4,17 +4,14 @@ Everything is fetched server-side with an identifying User-Agent and cached per 
 so browsers never hit NWS directly. Each part (forecast, discussion, alerts) is cached and fails on its own:
 a failed fetch is retried after a short back-off, and the last good payload is served in the meantime.
 """
-import os
 from typing import Any, Callable, Optional
 
-import requests
-
 from rwcwx.forecast.cache import STALE_MAX, UpstreamCache
+from rwcwx.forecast.http import CONNECT_TIMEOUT, get_json as http_get_json
 
 LAT, LON = 37.470, -122.265
 BASE = "https://api.weather.gov"
-USER_AGENT = os.getenv("RWC_NWS_USER_AGENT", "rwcweather.com (bmr@nw3weather.co.uk)")
-TIMEOUT = 8
+TIMEOUT = (CONNECT_TIMEOUT, 8)
 
 TTL_POINT = 24 * 3600
 TTL_FORECAST = 20 * 60
@@ -24,9 +21,7 @@ TTL_FAILED = 2 * 60
 
 
 def get_json(url: str, accept: str = "application/geo+json") -> Any:
-    resp = requests.get(url, headers={"User-Agent": USER_AGENT, "Accept": accept}, timeout=TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
+    return http_get_json(url, accept=accept, timeout=TIMEOUT)
 
 
 # Last-good stale window after a failure. A successful fetch is served for its full ttl even when

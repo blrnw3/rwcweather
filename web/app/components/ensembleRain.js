@@ -7,7 +7,7 @@ import { unitForObsType } from "../format";
 import { fetcher } from "./conf";
 import { UnitCtx } from "./Page";
 import { fmtRain, StaleNote } from "./forecast";
-import { PT, STATION_CHART_TIME, stationAxisDay, stationSharedTooltip } from "./stationTime";
+import { PT, STATION_CHART_TIME, sortedUniquePoints, stationAxisDay, stationSharedTooltip } from "./stationTime";
 
 // Ensemble rain totals (GEFS and ECMWF ENS): spread, operational/control, cumulative plume,
 // and how the operational total for a fixed valid window has changed across recent runs.
@@ -114,21 +114,21 @@ function accumOptions(models, hours, unit) {
     const short = key === "ecmwf" ? "ECMWF" : "GEFS";
     Object.keys(acc.members || {}).slice(0, 50).forEach((name) => {
       series.push({
-        name: short + " " + name, type: "line", data: sliceAcc(acc, hours, conv, acc.members[name]),
+        name: short + " " + name, type: "line", data: sortedUniquePoints(sliceAcc(acc, hours, conv, acc.members[name])),
         color: col.member, lineWidth: 1, enableMouseTracking: false, showInLegend: false, zIndex: 1,
       });
     });
     series.push({
-      name: short + " 10th–90th", type: "arearange", data: bandAcc(acc, hours, conv),
+      name: short + " 10th–90th", type: "arearange", data: sortedUniquePoints(bandAcc(acc, hours, conv)),
       color: col.band, zIndex: 2, fillOpacity: 0.55, tooltip: { valueDecimals: dec, valueSuffix: " " + rUnit },
     });
     series.push({
-      name: short + " mean", type: "line", data: sliceAcc(acc, hours, conv, acc.mean),
+      name: short + " mean", type: "line", data: sortedUniquePoints(sliceAcc(acc, hours, conv, acc.mean)),
       color: col.main, lineWidth: 2.25, zIndex: 3, tooltip: { valueDecimals: dec, valueSuffix: " " + rUnit },
     });
     series.push({
       name: model.control_label || (short + " control"), type: "line",
-      data: sliceAcc(acc, hours, conv, acc.control),
+      data: sortedUniquePoints(sliceAcc(acc, hours, conv, acc.control)),
       color: col.main, lineWidth: 2, dashStyle: "ShortDash", zIndex: 4,
       tooltip: { valueDecimals: dec, valueSuffix: " " + rUnit },
     });
@@ -165,7 +165,7 @@ function runsOptions(models, hours, unit) {
       color: colors[key] || "#333",
       lineWidth: 2,
       marker: { enabled: true, radius: 3 },
-      data: runs.map((r) => [-r.lead_days, conv(r.total)]),
+      data: sortedUniquePoints(runs.map((r) => [-r.lead_days, conv(r.total)])),
     });
   });
   if (!series.length) return null;

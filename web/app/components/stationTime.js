@@ -64,3 +64,33 @@ export function stationSharedTooltip() {
     },
   };
 }
+
+// Highcharts error #15: a series' x values must be unique and in ascending order.
+// The run-to-run ensemble chart used to feed [0, -1, ..., -7] (descending), which
+// triggered the warning. Defensively sort (and drop duplicate x) every series.
+export function sortedUniquePoints(data) {
+  if (!data || !data.length) return data || [];
+  const pts = data.filter((p) => {
+    if (p == null) return false;
+    const x = Array.isArray(p) ? p[0] : p.x;
+    return x != null && x === x;
+  }).slice().sort((a, b) => {
+    const xa = Array.isArray(a) ? a[0] : a.x;
+    const xb = Array.isArray(b) ? b[0] : b.x;
+    return xa - xb;
+  });
+  const out = [];
+  pts.forEach((p) => {
+    const x = Array.isArray(p) ? p[0] : p.x;
+    if (!out.length) {
+      out.push(p);
+      return;
+    }
+    const prev = out[out.length - 1];
+    const px = Array.isArray(prev) ? prev[0] : prev.x;
+    if (x === px) out[out.length - 1] = p;
+    else out.push(p);
+  });
+  return out;
+}
+

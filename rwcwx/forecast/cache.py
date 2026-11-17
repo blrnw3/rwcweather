@@ -4,21 +4,26 @@ A successful fetch is served for its TTL. A failed or timed-out fetch is retried
 after a short back-off; until then the last good payload is served (marked stale)
 instead of caching None, as long as it is under STALE_MAX old.
 
-An optional on-disk last-good store (repo/cache/forecast, overridable with
-RWCWX_FORECAST_CACHE_DIR) lets a new uWSGI worker serve stale data after a reload
-when the first upstream call times out. Set the env var to an empty string to
-disable the disk store (tests do this by default).
+An optional on-disk store (repo/cache/forecast, overridable with
+RWCWX_FORECAST_CACHE_DIR) is used in two ways: a value still within its success
+TTL is adopted as fresh after a worker reload (so a HUP does not stampede
+upstream), and an older last-good value (under STALE_MAX) is served if a fetch
+fails. Concurrent callers for the same key share one in-flight fetch (and a
+file lock across processes when the disk store is on). Set the env var to an
+empty string to disable the disk store (tests do this by default).
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
 import tempfile
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, Optional, Tuple
 
 from rwcwx import logger
 
@@ -82,6 +87,48 @@ def _write_disk(path: str, fetched_at: float, value: Any) -> None:
         pass
 
 
+
+
+@contextmanager
+def _interprocess_lock(prefix: str, name: str, persist: bool, deadline: float = 25.0) -> Iterator[None]:
+    """Exclusive lock so only one uWSGI worker fetches a given key at a time."""
+    path = _disk_path(prefix, name) if persist else None
+    if not path:
+        yield
+        return
+    lock_path = path + ".lock"
+    directory = os.path.dirname(lock_path)
+    try:
+        os.makedirs(directory, exist_ok=True)
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o660)
+    except OSError:
+        yield
+        return
+    locked = False
+    try:
+        end = time.time() + deadline
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                locked = True
+                break
+            except BlockingIOError:
+                if time.time() >= end:
+                    break
+                time.sleep(0.05)
+        yield
+    finally:
+        if locked:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+
+
 class UpstreamCache:
     """One cache (memory + optional disk) shared by a single client module."""
 
@@ -93,6 +140,7 @@ class UpstreamCache:
         self._cache: Dict[str, Tuple[float, Any, bool, Optional[float]]] = {}
         # name -> (fetched_monotonic, fetched_at_unix, value)
         self._good: Dict[str, Tuple[float, float, Any]] = {}
+        self._flights: Dict[str, threading.Lock] = {}
 
     def clear(self) -> None:
         with self._lock:
@@ -107,33 +155,79 @@ class UpstreamCache:
         _due, _val, stale, fetched_at = hit
         return dict(stale=bool(stale), fetched_at=fetched_at)
 
+    def _flight_lock(self, name: str) -> threading.Lock:
+        with self._lock:
+            return self._flights.setdefault(name, threading.Lock())
+
+    def _memory_hit(self, name: str, t: float) -> Optional[Any]:
+        with self._lock:
+            hit = self._cache.get(name)
+        if hit is not None and t < hit[0]:
+            return hit[1]
+        return None
+
+    def _adopt_fresh_disk(self, name: str, ttl: float, t: float, wall_t: float) -> Optional[Any]:
+        path = _disk_path(self.prefix, name)
+        rec = _read_disk(path) if path else None
+        if rec is None:
+            return None
+        fetched_at, val = rec
+        age = wall_t - fetched_at
+        if age < 0:
+            age = 0
+        if age >= ttl:
+            return None
+        entry = (t + (ttl - age), val, False, fetched_at)
+        with self._lock:
+            self._good[name] = (t - age, fetched_at, val)
+            self._cache[name] = entry
+        return val
+
     def safe(self, name: str, ttl: float, fn: Callable[[], Any],
              now: Optional[Callable[[], float]] = None,
              wall: Optional[Callable[[], float]] = None,
              failed_ttl: float = 120,
              stale_max: float = STALE_MAX) -> Optional[Any]:
         t = (now or time.monotonic)()
-        wall_t = (wall or time.time)()
         persist = cache_dir() is not None
-        with self._lock:
-            hit = self._cache.get(name)
-        if hit is not None and t < hit[0]:
-            return hit[1]
-        try:
-            val = fn()
-            entry = (t + ttl, val, False, wall_t)
-            with self._lock:
-                self._good[name] = (t, wall_t, val)
-            if persist:
-                path = _disk_path(self.prefix, name)
-                if path:
-                    _write_disk(path, wall_t, val)
-        except Exception as e:
-            logger.warning(f"{self.log_name} {name} fetch failed: {type(e).__name__}")
-            entry = self._fallback(name, t, wall_t, failed_ttl, stale_max, persist)
-        with self._lock:
-            self._cache[name] = entry
-        return entry[1]
+        hit = self._memory_hit(name, t)
+        if hit is not None:
+            return hit
+        with self._flight_lock(name):
+            t = (now or time.monotonic)()
+            wall_t = (wall or time.time)()
+            hit = self._memory_hit(name, t)
+            if hit is not None:
+                return hit
+            with _interprocess_lock(self.prefix, name, persist):
+                t = (now or time.monotonic)()
+                wall_t = (wall or time.time)()
+                hit = self._memory_hit(name, t)
+                if hit is not None:
+                    return hit
+                if persist:
+                    adopted = self._adopt_fresh_disk(name, ttl, t, wall_t)
+                    if adopted is not None:
+                        return adopted
+                try:
+                    val = fn()
+                    wall_t = (wall or time.time)()
+                    t = (now or time.monotonic)()
+                    entry = (t + ttl, val, False, wall_t)
+                    with self._lock:
+                        self._good[name] = (t, wall_t, val)
+                    if persist:
+                        path = _disk_path(self.prefix, name)
+                        if path:
+                            _write_disk(path, wall_t, val)
+                except Exception as e:
+                    logger.warning(f"{self.log_name} {name} fetch failed: {type(e).__name__}")
+                    t = (now or time.monotonic)()
+                    wall_t = (wall or time.time)()
+                    entry = self._fallback(name, t, wall_t, failed_ttl, stale_max, persist)
+                with self._lock:
+                    self._cache[name] = entry
+                return entry[1]
 
     def _fallback(self, name, t, wall_t, failed_ttl, stale_max, persist):
         with self._lock:

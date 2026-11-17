@@ -378,8 +378,10 @@ def test_nws_page_endpoint(monkeypatch):
 # ---------------------------------------------------------------- last-good disk fallback
 
 def test_disk_last_good_survives_memory_clear(tmp_path, monkeypatch):
-    # After a worker reload the in-process cache is empty; a failed fetch should still
-    # serve the last good payload persisted on disk, marked stale, and retry after backoff.
+    # After a worker reload the in-process cache is empty. A value still within its
+    # success TTL is adopted as fresh (no upstream hit). Once that TTL has expired,
+    # a failed fetch still serves the last good payload, marked stale, and retries
+    # after backoff.
     monkeypatch.setenv("RWCWX_FORECAST_CACHE_DIR", str(tmp_path))
     nws.clear()
     clock = [1000.0]
@@ -401,6 +403,12 @@ def test_disk_last_good_survives_memory_clear(tmp_path, monkeypatch):
     nws.clear()                                          # like a new uWSGI worker
     clock[0] += 1
     wall[0] += 1
+    assert nws._safe("diskx", 600, boom, now=now, wall=wall_fn) == {"v": 1}
+    assert calls == ["ok"]                               # fresh disk, no fetch
+    assert nws.status("diskx")["stale"] is False
+    nws.clear()
+    clock[0] += 601
+    wall[0] += 601                                       # past success TTL, still < STALE_MAX
     assert nws._safe("diskx", 600, boom, now=now, wall=wall_fn) == {"v": 1}
     assert calls == ["ok", "boom"]
     st = nws.status("diskx")

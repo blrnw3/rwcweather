@@ -4,22 +4,19 @@ Keyless public APIs, fetched server-side with an identifying User-Agent and cach
 (and last-good on disk) so the page does not hammer upstream. A failed or timed-out fetch is
 retried after a short back-off; the last good payload is served in the meantime instead of None.
 """
-import os
 from typing import Any, Callable, Optional
 from urllib.parse import urlencode
-
-import requests
 
 from rwcwx.config import TZ_NAME
 from rwcwx.forecast import nws as nws_mod
 from rwcwx.forecast.cache import STALE_MAX, UpstreamCache
+from rwcwx.forecast.http import CONNECT_TIMEOUT, get_json as http_get_json
 
 LAT, LON, ELEV = nws_mod.LAT, nws_mod.LON, 125
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
 PREV_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
-USER_AGENT = os.getenv("RWC_NWS_USER_AGENT", "rwcweather.com (bmr@nw3weather.co.uk)")
-TIMEOUT = 15
+TIMEOUT = (CONNECT_TIMEOUT, 12)
 
 TTL_FORECAST = 20 * 60
 TTL_ENSEMBLE = 30 * 60
@@ -29,12 +26,7 @@ _store = UpstreamCache("openmeteo", "Open-Meteo")
 
 
 def get_json(url: str) -> Any:
-    resp = requests.get(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}, timeout=TIMEOUT)
-    resp.raise_for_status()
-    data = resp.json()
-    if isinstance(data, dict) and data.get("error"):
-        raise RuntimeError(data.get("reason") or "Open-Meteo error")
-    return data
+    return http_get_json(url, accept="application/json", timeout=TIMEOUT)
 
 
 def _safe(name: str, ttl: float, fn: Callable[[], Any], now: Optional[Callable[[], float]] = None,
