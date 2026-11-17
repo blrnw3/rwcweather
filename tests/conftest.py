@@ -43,3 +43,9 @@ def prod_like_mktime(monkeypatch):
 
 def pytest_report_header(config):
     return f"process TZ={TEST_TZ} (time.tzname={time.tzname})"
+
+
+@pytest.fixture(autouse=True)
+def _disable_forecast_disk_cache(monkeypatch):
+    """Default tests stay in-memory only. Disk last-good tests opt in with a tmp dir."""
+    monkeypatch.setenv("RWCWX_FORECAST_CACHE_DIR", "")
