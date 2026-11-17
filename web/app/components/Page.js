@@ -17,6 +17,7 @@ export const UnitCtx = createContext(null);
 
 const NAV = new Map([
   ["home", "/"],
+  ["forecast", "/forecast"],
   ["reports", new Map([
     ["daily", "/reports/day"],
     ["annual", "/reports/matrix"],

@@ -96,6 +96,10 @@ app.add_url_rule("/api/recap/latest", view_func=recap_api.get_latest)
 
 # NWS forecast, forecast discussion highlights and active alerts for the home page (cached server-side)
 app.add_url_rule("/api/forecast", view_func=forecast_api.get_forecast)
+# Forecast page: 72-hour NWS + full AFD, 10-day meteogram, ensemble rain totals
+app.add_url_rule("/api/forecast/nws", view_func=forecast_api.get_forecast_nws)
+app.add_url_rule("/api/forecast/meteogram", view_func=forecast_api.get_meteogram)
+app.add_url_rule("/api/forecast/ensemble", view_func=forecast_api.get_ensemble)
 
 # Current temp and today's rain at nearby stations for the home-page Weather nearby card
 app.add_url_rule("/api/nearby", view_func=nearby_api.get_nearby)

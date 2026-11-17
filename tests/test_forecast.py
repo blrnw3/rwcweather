@@ -2,7 +2,7 @@
 and the /api/forecast endpoint with the network mocked. No network, no DB."""
 import json
 import os
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from flask import Flask
@@ -295,3 +295,80 @@ def test_endpoint_includes_qpf(monkeypatch):
     monkeypatch.setattr(nws, "gridpoint", lambda: None)
     res = c.get("/api/forecast").get_json()["result"]
     assert res["qpf_total_mm"] is None and res["periods"][0]["qpf_mm"] is None
+
+
+# ---------------------------------------------------------------- 72-hour periods, hourly, full AFD (forecast page)
+
+def _hourly_fc():
+    periods = []
+    start = datetime(2026, 11, 17, 8, 0, tzinfo=timezone.utc)
+    for i in range(80):
+        t0 = start + timedelta(hours=i)
+        t1 = t0 + timedelta(hours=1)
+        periods.append(dict(
+            startTime=t0.isoformat(), endTime=t1.isoformat(), isDaytime=t0.hour % 24 < 18,
+            temperature=60, temperatureUnit="F",
+            probabilityOfPrecipitation={"value": 20 if i < 10 else 0},
+            windSpeed="5 mph", windDirection="W",
+            shortForecast="Cloudy", detailedForecast="Cloudy.",
+        ))
+    return {"periods": periods}
+
+
+def test_periods_through_covers_three_local_days():
+    ps = parse.periods_through(FORECAST, date(2026, 11, 2), days=3)
+    assert [p["name"] for p in ps] == ["Today", "Tonight", "Tuesday", "Tuesday Night", "Wednesday", "Wednesday Night"]
+    assert [p["day"] for p in ps] == [0, 0, 1, 1, 2, 2]
+    # The home-card helper is still today + tomorrow only.
+    assert [p["name"] for p in parse.periods(FORECAST, date(2026, 11, 2))] == ["Today", "Tonight", "Tuesday", "Tuesday Night"]
+
+
+def test_hourly_keeps_the_72_hour_window():
+    now = datetime(2026, 11, 17, 10, 0, tzinfo=timezone.utc)
+    hrs = parse.hourly(_hourly_fc(), now, now + timedelta(hours=72))
+    assert hrs is not None and len(hrs) == 72
+    assert hrs[0]["temp_c"] == pytest.approx(15.56, abs=0.02)
+    assert hrs[0]["pop"] == 20 and hrs[-1]["pop"] == 0
+    assert hrs[0]["wind_mph_lo"] == 5
+    assert parse.hourly(None, now, now + timedelta(hours=72)) is None
+    assert parse.hourly({}, now, now + timedelta(hours=72)) is None
+
+
+def test_discussion_full_includes_every_section_and_raw_text():
+    d = parse.discussion_full(AFD)
+    assert d["highlights"]  # same highlights as the home card
+    names = [s["name"] for s in d["sections"]]
+    assert names[0] in {"KEY MESSAGES", "SYNOPSIS", "DISCUSSION", "SHORT TERM"}
+    assert "AVIATION" in names and "SHORT TERM" in names
+    short = next(s["body"] for s in d["sections"] if s["name"] == "SHORT TERM")
+    assert "Issued at" not in short
+    assert "The system that brought precip" in short
+    assert AFD["productText"] == d["product_text"]
+    assert parse.discussion_full(None) is None
+
+
+def test_nws_page_endpoint(monkeypatch):
+    from rwcwx.forecast import api as fc_api
+    app = Flask(__name__)
+    app.add_url_rule("/api/forecast/nws", view_func=fc_api.get_forecast_nws)
+
+    def now():
+        return datetime(2026, 11, 17, 10, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(fc_api, "_now", now)
+    monkeypatch.setattr(nws, "forecast", lambda: FORECAST)
+    monkeypatch.setattr(nws, "forecast_hourly", _hourly_fc)
+    monkeypatch.setattr(nws, "gridpoint", lambda: None)
+    monkeypatch.setattr(nws, "afd", lambda: AFD)
+    monkeypatch.setattr(nws, "alerts", lambda: [])
+    res = app.test_client().get("/api/forecast/nws").get_json()["result"]
+    assert res["hourly"] and len(res["hourly"]) == 72
+    assert res["afd"]["product_text"] and res["discussion"]["highlights"]
+    assert "AVIATION" in [s["name"] for s in res["afd"]["sections"]]
+    # 3 local days of 12-hour periods from the 2 Nov fixture when "today" is 17 Nov? today is 17 Nov
+    # and the fixture periods are 2-4 Nov, so periods may be empty. That's ok — the helper is date-based.
+    # Re-run with a matching date:
+    monkeypatch.setattr(fc_api, "_now", lambda: datetime(2026, 11, 2, 20, 0, tzinfo=timezone.utc))
+    res = app.test_client().get("/api/forecast/nws").get_json()["result"]
+    assert [p["name"] for p in res["periods"]] == [
+        "Today", "Tonight", "Tuesday", "Tuesday Night", "Wednesday", "Wednesday Night"]
