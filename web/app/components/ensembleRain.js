@@ -54,15 +54,17 @@ function TotalsTable({ model, hours, unit }) {
 }
 
 const MODEL_COLORS = {
+  // GEFS / GFS in pink, ECMWF in blue — used by the combined accumulation
+  // chart, the run-to-run chart, and their legends.
   gefs: {
+    main: "#c2185b",
+    band: "rgba(194,24,91,0.25)",
+    member: "rgba(194,24,91,0.16)",
+  },
+  ecmwf: {
     main: "#1f6aa5",
     band: "rgba(31,106,165,0.25)",
     member: "rgba(31,106,165,0.14)",
-  },
-  ecmwf: {
-    main: "#c45c16",
-    band: "rgba(196,92,22,0.25)",
-    member: "rgba(196,92,22,0.14)",
   },
 };
 
