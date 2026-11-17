@@ -131,10 +131,20 @@ def test_openmeteo_disk_fallback_after_clear(tmp_path, monkeypatch):
     wall = [1_700_000_000.0]
     now = lambda: clock[0]
     wall_fn = lambda: wall[0]
+    calls = []
     openmeteo._safe("ens", 600, lambda: {"ok": True}, now=now, wall=wall_fn)
     openmeteo.clear()
     def boom():
+        calls.append("boom")
         raise IOError("x")
+    # Still within the success TTL: adopt as fresh, do not refetch.
     assert openmeteo._safe("ens", 600, boom, now=now, wall=wall_fn) == {"ok": True}
+    assert calls == []
+    assert openmeteo.status("ens")["stale"] is False
+    openmeteo.clear()
+    clock[0] += 601
+    wall[0] += 601
+    assert openmeteo._safe("ens", 600, boom, now=now, wall=wall_fn) == {"ok": True}
+    assert calls == ["boom"]
     assert openmeteo.status("ens")["stale"] is True
     openmeteo.clear()

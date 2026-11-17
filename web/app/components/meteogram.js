@@ -10,7 +10,7 @@ import { convFunction, formatObs, unitForObsType } from "../format";
 import { fetcher } from "./conf";
 import { UnitCtx } from "./Page";
 import { fmtRain, StaleNote } from "./forecast";
-import { STATION_CHART_TIME, stationAxisDay, stationSharedTooltip } from "./stationTime";
+import { STATION_CHART_TIME, sortedUniquePoints, stationAxisDay, stationSharedTooltip } from "./stationTime";
 
 // Stacked 10-day meteogram, modelled on nw3weather's forecast page: a per-day
 // summary strip aligned to each day's span on the chart, then panels for
@@ -254,14 +254,14 @@ function buildCharts(el, series, unit) {
   const wUnit = unitForObsType(unit, "wind");
   const pUnit = unitForObsType(unit, "pres");
 
-  const temp = convertSeries(series.temp, tConv);
-  const dew = convertSeries(series.dew, tConv);
-  const precip = convertSeries(series.precip, rConv);
-  const pop = series.pop || [];
-  const cloud = series.cloud || [];
-  const wind = convertSeries(series.wind, wConv);
-  const gust = convertSeries(series.gust, wConv);
-  const pressure = convertSeries(series.pressure, pConv);
+  const temp = sortedUniquePoints(convertSeries(series.temp, tConv));
+  const dew = sortedUniquePoints(convertSeries(series.dew, tConv));
+  const precip = sortedUniquePoints(convertSeries(series.precip, rConv));
+  const pop = sortedUniquePoints(series.pop || []);
+  const cloud = sortedUniquePoints(series.cloud || []);
+  const wind = sortedUniquePoints(convertSeries(series.wind, wConv));
+  const gust = sortedUniquePoints(convertSeries(series.gust, wConv));
+  const pressure = sortedUniquePoints(convertSeries(series.pressure, pConv));
   const { min: xMin, max: xMax } = axisRange([temp, dew, precip, wind, gust, pressure, cloud, pop]);
 
   const ticks = localMidnightTicks(series.daily, xMin, xMax);
