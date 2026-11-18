@@ -92,6 +92,7 @@ def test_openmeteo_urls_are_keyless_and_point_at_the_station():
     assert "api.open-meteo.com" in openmeteo.FORECAST_URL
     assert "ensemble-api.open-meteo.com" in openmeteo.ENSEMBLE_URL
     assert "previous-runs-api.open-meteo.com" in openmeteo.PREV_URL
+    assert "single-runs-api.open-meteo.com" in openmeteo.SINGLE_URL
     assert "gfs_seamless" in openmeteo.METEO_HOURLY or True
     assert "precipitation_previous_day7" in openmeteo.PREV_HOURLY
 
@@ -148,3 +149,19 @@ def test_openmeteo_disk_fallback_after_clear(tmp_path, monkeypatch):
     assert calls == ["boom"]
     assert openmeteo.status("ens")["stale"] is True
     openmeteo.clear()
+
+
+def test_build_meteogram_keeps_series_and_adds_model_run(monkeypatch):
+    from datetime import datetime, timezone
+    from rwcwx.forecast import api as fc_api
+
+    monkeypatch.setattr(openmeteo, "meteogram", _payload)
+    monkeypatch.setattr(
+        openmeteo, "latest_available_run",
+        lambda *a, **k: {"run": datetime(2026, 11, 17, 18, 0, tzinfo=timezone.utc)},
+    )
+    out = fc_api.build_meteogram(datetime(2026, 11, 17, 23, 0, tzinfo=timezone.utc))
+    assert out["series"] is not None
+    assert out["series"].get("temp") or out["series"].get("daily")
+    assert out["model_run"]["run_z"] == "18z"
+    assert out["model_run"]["run_label"] == "18z 17 Nov"

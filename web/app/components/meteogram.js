@@ -9,7 +9,7 @@ import useSWR from "swr";
 import { convFunction, unitForObsType } from "../format";
 import { fetcher } from "./conf";
 import { UnitCtx } from "./Page";
-import { fmtRain, StaleNote } from "./forecast";
+import { fmtRain, StaleNote, UpdateLine } from "./forecast";
 import { dayAlerts } from "./forecastDayAlerts";
 import { STATION_CHART_TIME, sortedUniquePoints, stationAxisDay, stationSharedTooltip } from "./stationTime";
 
@@ -504,7 +504,8 @@ export function Meteogram() {
         Hourly temperature and dew point, precipitation amount and chance, cloud cover, wind and gusts, and pressure
         at the station (37.470, −122.265, ~125 m). Data: Open-Meteo GFS seamless (HRRR in the near term, GFS thereafter).
       </Text>
-      {mg && <StaleNote stale={mg.stale} fetchedAt={mg.fetched_at} />}
+      {mg && <UpdateLine fetchedAt={mg.fetched_at} modelRun={mg.model_run} stale={mg.stale}
+        note={mg.model_run ? "Near-term hours may include later HRRR updates." : null} />}
       {loading && <Spinner size="sm" />}
       {error && !mg && <Text fontSize="sm" color="gray.600">Meteogram unavailable right now.</Text>}
       {mg && !mg.series && <Text fontSize="sm" color="gray.600">Meteogram data is temporarily unavailable.</Text>}

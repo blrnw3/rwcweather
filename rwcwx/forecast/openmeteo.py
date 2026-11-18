@@ -30,8 +30,10 @@ def get_json(url: str) -> Any:
 
 
 def _safe(name: str, ttl: float, fn: Callable[[], Any], now: Optional[Callable[[], float]] = None,
-          wall: Optional[Callable[[], float]] = None) -> Optional[Any]:
-    return _store.safe(name, ttl, fn, now=now, wall=wall, failed_ttl=TTL_FAILED, stale_max=STALE_MAX)
+          wall: Optional[Callable[[], float]] = None, failed_ttl: Optional[float] = None) -> Optional[Any]:
+    return _store.safe(name, ttl, fn, now=now, wall=wall,
+                       failed_ttl=TTL_FAILED if failed_ttl is None else failed_ttl,
+                       stale_max=STALE_MAX)
 
 
 def clear() -> None:
@@ -83,3 +85,115 @@ def previous_runs(model: str) -> Optional[dict]:
         forecast_days=10, hourly=PREV_HOURLY, models=model,
     )
     return _safe("previous:" + model, TTL_ENSEMBLE, lambda: get_json(_url(PREV_URL, params)))
+
+
+SINGLE_URL = "https://single-runs-api.open-meteo.com/v1/forecast"
+# Historical single runs do not change once issued. Cache completed runs for
+# hours so a page view does not re-fetch ~40 cycles; retry missing recent
+# cycles a bit more often (they appear 4–8 h after init).
+TTL_SINGLE_RECENT = 30 * 60
+TTL_SINGLE_OLD = 6 * 3600
+TTL_SINGLE_MISSING = 15 * 60
+RUN_LOOKBACK_DAYS = 5
+RUN_CYCLES = (0, 6, 12, 18)
+# Hours after init before a global run is typically published. Used only to
+# pick a slightly longer "missing" cache for cycles that are not yet due.
+RUN_PUBLISH_LAG_HOURS = 6
+
+# Cached stand-in for a 400 "run is not available" (not an upstream failure).
+_MISSING = {"_unavailable": True}
+
+SINGLE_MODELS = {
+    "gfs_seamless": "gfs_seamless",
+    "ecmwf_ifs025": "ecmwf_ifs025",
+}
+
+
+def run_key(run_utc: "datetime") -> str:
+    from datetime import timezone as _tz
+    return run_utc.astimezone(_tz.utc).strftime("%Y-%m-%dT%H:%M")
+
+
+def run_slots(now_utc, days: int = RUN_LOOKBACK_DAYS):
+    """UTC init times at 00/06/12/18z, from the latest cycle back `days` days."""
+    from datetime import datetime, timedelta, timezone as _tz
+    now_utc = now_utc.astimezone(_tz.utc)
+    hour = (now_utc.hour // 6) * 6
+    latest = now_utc.replace(hour=hour, minute=0, second=0, microsecond=0)
+    oldest = latest - timedelta(days=days)
+    slots = []
+    t = latest
+    while t >= oldest:
+        slots.append(t)
+        t -= timedelta(hours=6)
+    return slots
+
+
+def _single_ttl(run_utc, now_utc=None) -> float:
+    from datetime import datetime, timezone as _tz
+    now_utc = now_utc or datetime.now(_tz.utc)
+    age_h = (now_utc - run_utc.astimezone(_tz.utc)).total_seconds() / 3600.0
+    return TTL_SINGLE_OLD if age_h >= (RUN_PUBLISH_LAG_HOURS + 2) else TTL_SINGLE_RECENT
+
+
+def single_run(model: str, run_utc, now_utc=None) -> Optional[dict]:
+    """One Open-Meteo Single Runs payload for `model` at UTC init `run_utc`, or None if missing."""
+    from datetime import datetime, timezone as _tz
+    import requests
+
+    run_utc = run_utc.astimezone(_tz.utc)
+    key = run_key(run_utc)
+    name = "single:" + model + ":" + key
+    ttl = _single_ttl(run_utc, now_utc)
+    params = dict(
+        latitude=LAT, longitude=LON, elevation=ELEV, timezone="UTC",
+        forecast_days=10, hourly="precipitation", models=model, run=key,
+    )
+    url = _url(SINGLE_URL, params)
+
+    def fetch():
+        try:
+            return get_json(url)
+        except requests.HTTPError as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            if status == 400:
+                return _MISSING
+            raise
+        except RuntimeError as e:
+            if "not available" in str(e).lower():
+                return _MISSING
+            raise
+
+    val = _safe(name, ttl, fetch, failed_ttl=TTL_SINGLE_MISSING)
+    if not val or (isinstance(val, dict) and val.get("_unavailable")):
+        return None
+    return val
+
+
+def fetch_runs(model: str, slots, now_utc=None) -> dict:
+    """Map each slot datetime to a payload or None. Parallel, cached per run."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    if not slots:
+        return {}
+    out = {}
+    workers = min(4, len(slots))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futs = {pool.submit(single_run, model, t, now_utc): t for t in slots}
+        for fut in as_completed(futs):
+            slot = futs[fut]
+            try:
+                out[slot] = fut.result()
+            except Exception:
+                out[slot] = None
+    return out
+
+
+def latest_available_run(model: str, now_utc, slots=None) -> Optional[dict]:
+    """Newest slot that returns data, trying newest-first and stopping at the first hit."""
+    slots = list(slots if slots is not None else run_slots(now_utc))
+    for t in slots:  # already newest first
+        data = single_run(model, t, now_utc)
+        if data and isinstance(data.get("hourly"), dict):
+            return dict(model=model, run=t, data=data)
+    return None

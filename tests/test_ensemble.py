@@ -99,13 +99,17 @@ def test_build_ensemble_endpoint_shape(monkeypatch):
 
     monkeypatch.setattr(openmeteo, "ensemble", lambda model: gefs if "gfs" in model else ecm)
     monkeypatch.setattr(openmeteo, "previous_runs", lambda model: prev)
+    monkeypatch.setattr(openmeteo, "run_slots", lambda *a, **k: [])
+    monkeypatch.setattr(openmeteo, "fetch_runs", lambda *a, **k: {})
+    monkeypatch.setattr(openmeteo, "single_run", lambda *a, **k: None)
 
     out = build_ensemble(start)
     assert set(out["models"]) == {"gefs", "ecmwf"}
-    assert [w["hours"] for w in out["windows"]] == [168, 240]
+    assert [w["hours"] for w in out["windows"]] == [120, 168, 240]
     assert out["models"]["gefs"]["windows"]["168"]["control"] == pytest.approx(0.2 * 168)
     assert out["models"]["ecmwf"]["n_members"] == 2
-    assert out["models"]["gefs"]["runs"]["168"][0]["lead_days"] == 0
+    assert "run_history" in out and "heatmap" in out and "member_heatmap" in out
+    assert "Single Runs" in out["source"]
     assert out["source_url"] == "https://open-meteo.com/"
 
 
@@ -114,5 +118,8 @@ def test_build_ensemble_degrades_when_a_model_is_down(monkeypatch):
     gefs = _ens(start, n=240, control=[0.1] * 240, members=[[0.1] * 240])
     monkeypatch.setattr(openmeteo, "ensemble", lambda model: gefs if "gfs" in model else None)
     monkeypatch.setattr(openmeteo, "previous_runs", lambda model: None)
+    monkeypatch.setattr(openmeteo, "run_slots", lambda *a, **k: [])
+    monkeypatch.setattr(openmeteo, "fetch_runs", lambda *a, **k: {})
+    monkeypatch.setattr(openmeteo, "single_run", lambda *a, **k: None)
     out = build_ensemble(start)
     assert "gefs" in out["models"] and "ecmwf" not in out["models"]

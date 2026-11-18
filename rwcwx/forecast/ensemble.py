@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from rwcwx.config import TZ, TZ_NAME
 from rwcwx.forecast.meteogram import ms, parse_local
 
-WINDOWS = (168, 240)  # 7-day and 10-day totals, hours
+WINDOWS = (120, 168, 240)  # 5-, 7- and 10-day totals, hours
 PERCENTILES = (10, 25, 50, 75, 90)
 
 MODELS = {
@@ -45,23 +45,25 @@ def member_series(hourly: dict) -> Dict[str, List[Optional[float]]]:
 
 def window_total(times: Sequence[Optional[datetime]], values: Sequence[Optional[float]],
                  start: datetime, end: datetime) -> Tuple[Optional[float], float]:
-    """Sum values in [start, end). Returns (total_or_None, coverage 0-1)."""
-    if not times or not values:
+    """Sum values in [start, end). Returns (total_or_None, coverage 0-1).
+
+    Coverage is against the expected number of hours in the window, so a short
+    model cycle (e.g. ECMWF 06/18z ~6 days) does not look complete on a 10-day
+    total just because every hour it *has* is filled.
+    """
+    if start >= end:
         return None, 0.0
-    total = 0.0
-    covered = 0
-    needed = 0
-    for t, v in zip(times, values):
-        if t is None or t < start or t >= end:
-            continue
-        needed += 1
-        if v is None:
-            continue
-        total += float(v)
-        covered += 1
-    if needed == 0:
+    expected = int(round((end - start).total_seconds() / 3600.0))
+    if expected <= 0:
         return None, 0.0
-    coverage = covered / needed
+    by_hour = {}
+    for t, v in zip(times or [], values or []):
+        if t is None or t < start or t >= end or v is None:
+            continue
+        by_hour[int(t.timestamp() // 3600)] = float(v)
+    covered = len(by_hour)
+    total = sum(by_hour.values())
+    coverage = covered / expected
     # Require most of the window (allow a few missing hours).
     if coverage < 0.8:
         return None, coverage
@@ -223,6 +225,7 @@ def build(ensembles: Dict[str, Optional[dict]], previous: Dict[str, Optional[dic
         timezone=TZ_NAME,
         start=local.isoformat(),
         windows=[
+            dict(hours=120, label="Next 5 days", end=(local + timedelta(hours=120)).isoformat()),
             dict(hours=168, label="Next 7 days", end=(local + timedelta(hours=168)).isoformat()),
             dict(hours=240, label="Next 10 days", end=(local + timedelta(hours=240)).isoformat()),
         ],
