@@ -117,6 +117,7 @@ def dashboard_live():
                 m10=trends[0].rain - trends[10].rain,
                 hr1=trends[0].rain - trends[60].rain,
                 hr3=trends[0].rain - trends[180].rain,
+                **_rain_maxes_today(now.date(), int(now.timestamp() // 60)),
             )
         )
     )
@@ -147,6 +148,32 @@ def _wet_today(day: date, _minute: int) -> Optional[dict]:
     except Exception as e:
         logger.warning(f"wet dashboard block failed: {e}")
         return None
+
+
+def _station_hm(at) -> Optional[tuple]:
+    """(hour, minute) of `at` in station-local Pacific time. `at` is UTC (aware, or naive from the daily table)."""
+    if at is None:
+        return None
+    if getattr(at, "tzinfo", None) is None:
+        at = at.replace(tzinfo=UTC)
+    local = at.astimezone(TZ)
+    return (local.hour, local.minute)
+
+
+@lru_cache(maxsize=2)
+def _rain_maxes_today(day: date, _minute: int) -> dict:
+    """Today's max 10-min and 60-min rain from the daily table (avg_extreme rain10/rain60),
+    falling back to a read-only compute from today's observations if not yet stored.
+    Times (`m10_max_at` / `hr1_max_at`) are the end of the rolling window, as stored in
+    avg_extreme.at (or computed the same way). Cached once per minute per worker."""
+    intensity = _rain_intensity(day) or {}
+    r10, r60 = intensity.get("rain10") or {}, intensity.get("rain60") or {}
+    return dict(
+        m10_max=r10.get("val"),
+        hr1_max=r60.get("val"),
+        m10_max_at=_station_hm(r10.get("at")),
+        hr1_max_at=_station_hm(r60.get("at")),
+    )
 
 
 def wet_day(d: date = None):

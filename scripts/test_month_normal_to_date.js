@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Run with: node scripts/test_month_normal_to_date.js
-// Exercises monthlyNormalToDate / waterYearNormalToDate from climate.js
+// Exercises monthlyNormalToDate / waterYearNormalToDate / waterYearDateForTotal from climate.js
 // against the published rain normals, without a JS test runner.
 
 "use strict";
@@ -74,14 +74,20 @@ const harness = [
     extractFunction(climateSrc, "waterYearNormalToDate"),
     extractFunction(climateSrc, "dailyNormal"),
     extractFunction(climateSrc, "periodToDateTotalNormal"),
+    extractFunction(climateSrc, "calendarDaysBetween"),
+    extractFunction(climateSrc, "waterYearDaysLabel"),
+    extractFunction(climateSrc, "waterYearDateForTotal"),
     "this.monthlyNormalToDate = monthlyNormalToDate;",
     "this.waterYearNormalToDate = waterYearNormalToDate;",
     "this.periodToDateTotalNormal = periodToDateTotalNormal;",
+    "this.waterYearDateForTotal = waterYearDateForTotal;",
+    "this.calendarDaysBetween = calendarDaysBetween;",
+    "this.waterYearDaysLabel = waterYearDaysLabel;",
     "this.daysInMonth = daysInMonth;",
 ].join("\n;\n");
 vm.runInNewContext(harness, sandbox);
 
-const { monthlyNormalToDate, waterYearNormalToDate, periodToDateTotalNormal, daysInMonth } = sandbox;
+const { monthlyNormalToDate, waterYearNormalToDate, periodToDateTotalNormal, waterYearDateForTotal, calendarDaysBetween, waterYearDaysLabel, daysInMonth } = sandbox;
 
 function almost(a, b, msg) {
     assert.ok(Math.abs(a - b) < 1e-12, (msg || "") + " " + a + " !== " + b);
@@ -127,6 +133,85 @@ assert.strictEqual(pct(monthRain, novToDate), 174, "new to-date %");
 // Tiny expected normal is treated as absent on the card (>= 0.005 gate)
 assert.ok(monthlyNormalToDate("rain", "total", 2026, 7, 1) < 0.005 || monthly[6] * 1 / 31 < 0.005, "July 1 expected may be under gate");
 
-console.log("ok: monthlyNormalToDate / waterYearNormalToDate (" +
+// waterYearDateForTotal: date whose cumulative normal first reaches the current total
+function wyDate(year, month, day, total) {
+    return waterYearDateForTotal("rain", "total", year, month, day, total);
+}
+// Values come from a vm sandbox, so compare a plain JSON clone.
+// Only keys present on `expected` are required (later fields like year/days may be added).
+function sameDate(actual, expected, msg) {
+    const got = actual == null ? actual : JSON.parse(JSON.stringify(actual));
+    if (expected == null || got == null || expected.exceeds) {
+        const a = got && expected && expected.exceeds ? { exceeds: !!got.exceeds } : got;
+        assert.deepStrictEqual(a, expected, msg);
+        return;
+    }
+    for (const k of Object.keys(expected)) {
+        assert.strictEqual(got[k], expected[k], (msg || "") + " " + k + " " + got[k] + " !== " + expected[k]);
+    }
+}
+sameDate(wyDate(2026, 11, 18, 0), { month: 10, day: 1 }, "zero total is 1 Oct");
+assert.strictEqual(wyDate(2026, 11, 18, null), null);
+assert.strictEqual(wyDate(2026, 11, 18, -0.1), null);
+assert.strictEqual(waterYearDateForTotal("rain", "avg", 2026, 11, 18, 1), null);
+
+const t14dec = waterYearNormalToDate("rain", "total", 2026, 12, 14);
+sameDate(wyDate(2026, 11, 18, t14dec), { month: 12, day: 14 }, "exact Dec 14 normal");
+const t13dec = waterYearNormalToDate("rain", "total", 2026, 12, 13);
+sameDate(wyDate(2026, 11, 18, t13dec), { month: 12, day: 13 }, "exact Dec 13 normal");
+sameDate(wyDate(2026, 11, 18, (t13dec + t14dec) / 2), { month: 12, day: 14 }, "between Dec 13 and 14");
+
+// Mid-October (past relative to mid-November) and April (future, next calendar year of the WY)
+const t15oct = waterYearNormalToDate("rain", "total", 2026, 10, 15);
+sameDate(wyDate(2026, 11, 18, t15oct), { month: 10, day: 15 }, "past date in the water year");
+const t3apr = waterYearNormalToDate("rain", "total", 2027, 4, 3);
+sameDate(wyDate(2026, 11, 18, t3apr), { month: 4, day: 3 }, "future date later in the water year");
+
+sameDate(wyDate(2026, 11, 18, fullWy), { month: 9, day: 30 }, "exact full-year normal is 30 Sep");
+sameDate(wyDate(2026, 11, 18, fullWy + 0.01), { exceeds: true }, "above the annual normal");
+sameDate(wyDate(2026, 9, 30, fullWy), { month: 9, day: 30 }, "Sep date still uses that water year");
+
+// First day of the water year: any positive total up to Oct 1's normal lands on 1 Oct
+const t1oct = waterYearNormalToDate("rain", "total", 2026, 10, 1);
+sameDate(wyDate(2026, 11, 18, t1oct), { month: 10, day: 1 }, "Oct 1 end-of-day normal");
+sameDate(wyDate(2026, 11, 18, t1oct / 2), { month: 10, day: 1 }, "below Oct 1 normal");
+
+// Leap-year February in the 2023-24 water year (today in Mar 2024)
+assert.strictEqual(daysInMonth(2024, 2), 29);
+const t29feb = waterYearNormalToDate("rain", "total", 2024, 2, 29);
+sameDate(wyDate(2024, 3, 1, t29feb), { month: 2, day: 29 }, "leap Feb 29");
+const t28feb = waterYearNormalToDate("rain", "total", 2024, 2, 28);
+sameDate(wyDate(2024, 3, 1, t28feb), { month: 2, day: 28 }, "leap Feb 28");
+// Non-leap WY 2024-25: 28 Feb is the last day of February
+assert.strictEqual(daysInMonth(2025, 2), 28);
+const t28feb25 = waterYearNormalToDate("rain", "total", 2025, 2, 28);
+sameDate(wyDate(2025, 3, 1, t28feb25), { month: 2, day: 28 }, "non-leap Feb 28");
+
+// Offset is (normal date minus today) in station-local civil days.
+almost(calendarDaysBetween(2026, 12, 10, 2026, 11, 18), 22, "10 Dec - 18 Nov");
+almost(calendarDaysBetween(2026, 11, 18, 2026, 11, 18), 0, "same day");
+almost(calendarDaysBetween(2026, 10, 15, 2026, 11, 18), -34, "15 Oct - 18 Nov");
+almost(calendarDaysBetween(2024, 3, 1, 2024, 2, 29), 1, "leap day to 1 Mar");
+assert.strictEqual(calendarDaysBetween(2026, 11, 18, 2026, 11, null), null);
+
+assert.strictEqual(waterYearDaysLabel(22), "(+22 days)");
+assert.strictEqual(waterYearDaysLabel(-34), "(-34 days)");
+assert.strictEqual(waterYearDaysLabel(1), "(+1 day)");
+assert.strictEqual(waterYearDaysLabel(-1), "(-1 day)");
+assert.strictEqual(waterYearDaysLabel(0), "(normal)");
+assert.strictEqual(waterYearDaysLabel(null), null);
+
+const t10dec = waterYearNormalToDate("rain", "total", 2026, 12, 10);
+sameDate(wyDate(2026, 11, 18, t10dec), { month: 12, day: 10, year: 2026, days: 22 }, "10 Dec is +22 days from 18 Nov");
+sameDate(wyDate(2026, 11, 18, t15oct), { month: 10, day: 15, year: 2026, days: -34 }, "15 Oct is -34 days from 18 Nov");
+const t18nov = waterYearNormalToDate("rain", "total", 2026, 11, 18);
+sameDate(wyDate(2026, 11, 18, t18nov), { month: 11, day: 18, year: 2026, days: 0 }, "same-day total is (normal)");
+sameDate(wyDate(2026, 11, 18, 0), { month: 10, day: 1, year: 2026, days: -48 }, "zero total on 18 Nov is 1 Oct (-48)");
+sameDate(wyDate(2026, 10, 1, 0), { month: 10, day: 1, year: 2026, days: 0 }, "zero total on 1 Oct is (normal)");
+sameDate(wyDate(2026, 11, 18, t3apr), { month: 4, day: 3, year: 2027, days: calendarDaysBetween(2027, 4, 3, 2026, 11, 18) }, "Apr date is next calendar year of the WY");
+assert.ok(!("days" in (wyDate(2026, 11, 18, fullWy + 0.01) || {})), "exceeds has no days offset");
+
+console.log("ok: monthlyNormalToDate / waterYearNormalToDate / waterYearDateForTotal (" +
     "Nov 16 2026 to-date " + novToDate.toFixed(4) + " in, " +
-    "month 2.13 in -> " + pct(monthRain, novToDate) + "% vs " + pct(monthRain, 2.29) + "% full month)");
+    "month 2.13 in -> " + pct(monthRain, novToDate) + "% vs " + pct(monthRain, 2.29) + "% full month, " +
+    "14 Dec normal maps back to 14 Dec)");
