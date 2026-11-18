@@ -117,6 +117,7 @@ def dashboard_live():
                 m10=trends[0].rain - trends[10].rain,
                 hr1=trends[0].rain - trends[60].rain,
                 hr3=trends[0].rain - trends[180].rain,
+                **_rain_maxes_today(now.date(), int(now.timestamp() // 60)),
             )
         )
     )
@@ -147,6 +148,18 @@ def _wet_today(day: date, _minute: int) -> Optional[dict]:
     except Exception as e:
         logger.warning(f"wet dashboard block failed: {e}")
         return None
+
+
+@lru_cache(maxsize=2)
+def _rain_maxes_today(day: date, _minute: int) -> dict:
+    """Today's max 10-min and 60-min rain from the daily table (avg_extreme rain10/rain60),
+    falling back to a read-only compute from today's observations if not yet stored.
+    Cached once per minute per worker, like the other dashboard blocks."""
+    intensity = _rain_intensity(day) or {}
+    return dict(
+        m10_max=(intensity.get("rain10") or {}).get("val"),
+        hr1_max=(intensity.get("rain60") or {}).get("val"),
+    )
 
 
 def wet_day(d: date = None):

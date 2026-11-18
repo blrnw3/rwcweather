@@ -133,6 +133,56 @@ export function waterYearNormalToDate(obs, stat, year, month, day) {
 }
 
 /**
+ * Date in the water year containing (year, month, day) at which the
+ * cumulative 1991-2020 daily normal (same basis as waterYearNormalToDate)
+ * first reaches `total`.
+ *
+ * Returns { month, day } (month 1-12). A zero total is the start of the
+ * water year (1 Oct). If `total` is above the full-year normal, returns
+ * { exceeds: true }. Null when the total or normals are missing.
+ */
+export function waterYearDateForTotal(obs, stat, year, month, day, total) {
+    if (total == null || Number.isNaN(total) || total < 0) {
+        return null;
+    }
+    if (waterYearNormalToDate(obs, stat, year, month, day) == null) {
+        return null;
+    }
+    const startYear = month >= WATER_YEAR_FIRST_MONTH ? year : year - 1;
+    if (total === 0) {
+        return { month: WATER_YEAR_FIRST_MONTH, day: 1 };
+    }
+    const full = waterYearNormalToDate(obs, stat, startYear + 1, 9, 30);
+    if (full == null) {
+        return null;
+    }
+    if (total > full + 1e-9) {
+        return { exceeds: true };
+    }
+    let y = startYear, m = WATER_YEAR_FIRST_MONTH, d = 1;
+    const endY = startYear + 1;
+    for (;;) {
+        const expected = waterYearNormalToDate(obs, stat, y, m, d);
+        if (expected != null && expected >= total) {
+            return { month: m, day: d };
+        }
+        d += 1;
+        if (d > daysInMonth(y, m)) {
+            d = 1;
+            m += 1;
+        }
+        if (m > 12) {
+            m = 1;
+            y += 1;
+        }
+        if (y > endY || (y === endY && m === 10)) {
+            break;
+        }
+    }
+    return { month: 9, day: 30 };
+}
+
+/**
  * Normal for a single day. Totals: the month's normal spread evenly over its
  * days. Averages: linear interpolation between mid-month normals, so values
  * change smoothly across month boundaries.
