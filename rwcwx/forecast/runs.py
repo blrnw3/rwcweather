@@ -102,11 +102,43 @@ def six_hour_columns(start: datetime, end: datetime) -> List[datetime]:
     return cols
 
 
+def _last_valid(times, values) -> Optional[datetime]:
+    last = None
+    for t, v in zip(times or [], values or []):
+        if t is not None and v is not None and (last is None or t > last):
+            last = t
+    return last
+
+
+def _sum_window(times, values, start: datetime, end: datetime) -> Optional[float]:
+    """Sum hours in [start, end) without a coverage gate (heatmap cells)."""
+    total = 0.0
+    seen = False
+    for t, v in zip(times or [], values or []):
+        if t is None or v is None or t < start or t >= end:
+            continue
+        total += float(v)
+        seen = True
+    return round(total, 3) if seen else None
+
+
 def cumulative_at(times, values, start: datetime, points: Sequence[datetime]) -> List[Optional[float]]:
+    """Cumulative rain in [start, t) at each column t.
+
+    A cell is null only when the run's last valid hour does not reach the end
+    of that column (past the forecast horizon). Missing hours *inside* the
+    horizon (the usual null at T+0, or a one-hour gap) are summed around, not
+    punched as holes — unlike window_total, which uses a 0.8 coverage gate
+    for comparable 5/7/10-day totals.
+    """
+    last = _last_valid(times, values)
     out = []
     for t in points:
-        total, cov = window_total(times, values, start, t)
-        out.append(total)
+        # The last hour of [start, t) is t - 1h; we need a forecast that covers it.
+        if last is None or last < t - timedelta(hours=1):
+            out.append(None)
+        else:
+            out.append(_sum_window(times, values, start, t))
     return out
 
 
@@ -195,6 +227,71 @@ def heatmap(models_runs: Dict[str, List[dict]], start: datetime, hours: int = 24
 def _col_label(t: datetime) -> str:
     local = t.astimezone(TZ)
     return local.strftime("%a %-d %-I %p").replace(" 0", " ").replace("AM", "AM PT").replace("PM", "PM PT")
+
+
+
+
+def member_heatmap(ensembles: Dict[str, Optional[dict]], start: datetime,
+                   hours: int = 240, current: Optional[dict] = None) -> dict:
+    """6-hourly cumulative heatmap of every member of the latest ensemble run.
+
+    Reuses the already-fetched Ensemble API payloads (no extra upstream calls).
+    Rows are sorted by each member's final cumulative total, wettest at the top.
+    """
+    from rwcwx.forecast.ensemble import MODELS, member_series, _times
+
+    end = start + timedelta(hours=hours)
+    cols = six_hour_columns(start, end)
+    columns = [dict(t=ms(t), iso=t.isoformat(), label=_col_label(t)) for t in cols]
+    current = current or {}
+    models = {}
+    for key, meta in MODELS.items():
+        raw = ensembles.get(key) if ensembles else None
+        if not raw or not isinstance(raw.get("hourly"), dict):
+            continue
+        times = _times(raw["hourly"])
+        series = member_series(raw["hourly"])
+        if not series:
+            continue
+        rows = []
+        for name, vals in series.items():
+            values = cumulative_at(times, vals, start, cols)
+            final = next((v for v in reversed(values) if v is not None), None)
+            is_control = name == "control"
+            if is_control:
+                label = "Control"
+            elif name.startswith("m") and name[1:].isdigit():
+                label = "m" + name[1:]
+            else:
+                label = name
+            rows.append(dict(
+                id=name,
+                label=label,
+                is_control=is_control,
+                total=final,
+                values=values,
+            ))
+        # Wettest at the top; missing totals last; stable by id.
+        rows.sort(key=lambda r: (r["total"] is None, -(r["total"] or 0.0), r["id"]))
+        run = current.get(key) if isinstance(current.get(key), dict) else None
+        models[key] = dict(
+            key=key,
+            name=meta["name"],
+            short="GEFS" if key == "gefs" else "ECMWF ENS",
+            n_members=len([r for r in rows if not r["is_control"]]),
+            sort="final_total_desc",
+            run=run,
+            rows=rows,
+        )
+    return dict(
+        timezone=TZ_NAME,
+        start=start.isoformat(),
+        hours=hours,
+        step_hours=6,
+        sort="final_total_desc",
+        columns=columns,
+        models=models,
+    )
 
 
 def match_run(ens_hourly: Optional[dict], records: List[dict]) -> Optional[dict]:

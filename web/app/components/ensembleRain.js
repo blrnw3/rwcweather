@@ -7,7 +7,7 @@ import { unitForObsType } from "../format";
 import { fetcher } from "./conf";
 import { UnitCtx } from "./Page";
 import { fmtRain, UpdateLine } from "./forecast";
-import { EnsembleHeatmap } from "./ensembleHeatmap";
+import { EnsembleHeatmap, EnsembleMemberHeatmap } from "./ensembleHeatmap";
 import { PT, STATION_CHART_TIME, sortedUniquePoints, stationAxisDay, stationSharedTooltip } from "./stationTime";
 
 // Ensemble rain totals (GEFS and ECMWF ENS): spread, operational/control, cumulative plume,
@@ -244,6 +244,7 @@ export function EnsembleRain() {
   const { ens, error, loading } = useEnsemble();
   const [hours, setHours] = useState(120);
   const [heatView, setHeatView] = useState("both");
+  const [memberView, setMemberView] = useState("both");
   const models = ens && ens.models ? ens.models : {};
   const modelList = ["gefs", "ecmwf"].map((k) => models[k]).filter(Boolean);
   const runsOpts = ens ? runsOptions(ens.run_history, hours, unit) : null;
@@ -293,8 +294,14 @@ export function EnsembleRain() {
           </Text>
         </Box>
         {ens.heatmap && (
-          <Box bg="white" borderRadius="8px" p="3" overflowX="auto">
+          <Box bg="white" borderRadius="8px" p="3" overflowX="auto" mb="4">
             <EnsembleHeatmap heat={ens.heatmap} hours={hours} unit={unit} view={heatView} onView={setHeatView} />
+          </Box>
+        )}
+        {ens.member_heatmap && (
+          <Box bg="white" borderRadius="8px" p="3" overflowX="auto">
+            <EnsembleMemberHeatmap heat={ens.member_heatmap} hours={hours} unit={unit}
+              view={memberView} onView={setMemberView} fetchedAt={ens.fetched_at} />
           </Box>
         )}
       </>}

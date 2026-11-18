@@ -164,3 +164,99 @@ def test_match_run_ignores_older_close_cycle_when_recent_diverges():
     # Ensemble is mostly dry (like 00z) but is not any of the recent GFS cycles.
     ens_vals = [0.0] * 48
     assert R.match_run({"time": ens_times, "precipitation": ens_vals}, recs) is None
+
+
+def test_heatmap_nulls_only_past_horizon_not_mid_series_gaps():
+    """Past-horizon columns are null; a one-hour gap inside the run is not."""
+    start = datetime(2026, 11, 17, 12, 0, tzinfo=TZ)
+    # 30-hour run, 1 mm/h, plus a hole at hour 10
+    run = _utc(2026, 11, 17, 12, 0)
+    times, vals = [], []
+    for i in range(30):
+        t = run + timedelta(hours=i)
+        times.append(t.strftime("%Y-%m-%dT%H:%M"))
+        if i == 0 or i == 10:
+            vals.append(None)
+        else:
+            vals.append(1.0)
+    data = {"hourly": {"time": times, "precipitation": vals}, "timezone": "GMT"}
+    rec = R.slot_record(R.OPERATIONAL["gfs"], run, data, start, (24, 48))
+    heat = R.heatmap({"gfs": [rec]}, start, hours=48)
+    vals_h = heat["models"]["gfs"][0]["values"]
+    # First 6h column (18:00 PT = 02:00 UTC on the 18th): start 12:00 PT = 20:00 UTC
+    # so [20z, 02z) = 6 hours, one of which (if any) may be the hole at 22z (hour 10 from 12z).
+    # Hour 10 = 22:00 UTC 17th = 2:00 PM PT 17th, which is *before* start (12:00 PT 17th is 20z).
+    # Put a hole after start: hour 12 of the run = 00z 18th = 4:00 PM PT 17th... start is 12:00 PT 17th = 20z 17th.
+    # hour 10 from 12z = 22z 17th = 2 PM PT, before start. Need a hole inside the window.
+    assert any(v is not None for v in vals_h), vals_h
+    # Last valid is run+29h = 17z 18 Nov = 9 AM PT 18th. Columns after 10 AM PT 18th should be null.
+    last = run + timedelta(hours=29)
+    for col, v in zip(heat["columns"], vals_h):
+        t = datetime.fromtimestamp(col["t"] / 1000.0, tz=timezone.utc)
+        if last < t - timedelta(hours=1):
+            assert v is None, (col["label"], v, t, last)
+        else:
+            assert v is not None, (col["label"], t, last)
+
+
+def test_heatmap_mid_horizon_gap_does_not_punch_a_hole():
+    start = datetime(2026, 11, 17, 12, 0, tzinfo=TZ)  # 20:00 UTC
+    run = _utc(2026, 11, 17, 12, 0)
+    times, vals = [], []
+    # 48 hours at 1 mm/h; hour 14 (02:00 UTC 18th = 6 PM PT 17th) is missing — inside first columns
+    for i in range(48):
+        t = run + timedelta(hours=i)
+        times.append(t.strftime("%Y-%m-%dT%H:%M"))
+        vals.append(None if (i == 0 or i == 14) else 1.0)
+    data = {"hourly": {"time": times, "precipitation": vals}, "timezone": "GMT"}
+    rec = R.slot_record(R.OPERATIONAL["gfs"], run, data, start, (24, 48))
+    heat = R.heatmap({"gfs": [rec]}, start, hours=24)
+    vals_h = heat["models"]["gfs"][0]["values"]
+    # Every in-horizon column has a numeric total (the missing hour is skipped, not a hole)
+    last = run + timedelta(hours=47)
+    in_horizon = [v for col, v in zip(heat["columns"], vals_h)
+                  if last >= datetime.fromtimestamp(col["t"] / 1000.0, tz=timezone.utc) - timedelta(hours=1)]
+    assert in_horizon and all(v is not None for v in in_horizon)
+    # First column [20z, 02z) has 5 valid hours (22z=hour 10? wait hour 14=02z is the end exclusive? 
+    # hour 14 = 12z+14 = 02z 18th, which is the exclusive end of the 18:00 PT column (02z).
+    # So the hole at 02z is not inside [20z, 02z). Put hole at hour 12 = 00z 18th = 4 PM PT, inside [20z, 02z).
+    # The test already used i==14; also use the values to confirm we didn't apply the 0.8 gate
+    # (5/6 = 0.83 would pass 0.8 anyway). Use two missing hours in a 6h column: i=12 and i=13 (00z and 01z).
+    # Re-build with two holes so a 0.8 gate would fail (4/6 ≈ 0.667).
+    times, vals = [], []
+    for i in range(48):
+        t = run + timedelta(hours=i)
+        times.append(t.strftime("%Y-%m-%dT%H:%M"))
+        vals.append(None if i in (0, 12, 13) else 1.0)
+    data = {"hourly": {"time": times, "precipitation": vals}, "timezone": "GMT"}
+    rec = R.slot_record(R.OPERATIONAL["gfs"], run, data, start, (24, 48))
+    heat = R.heatmap({"gfs": [rec]}, start, hours=24)
+    vals_h = heat["models"]["gfs"][0]["values"]
+    # First column should still have a total of 4 mm, not None
+    assert vals_h[0] == pytest.approx(4.0)
+    assert vals_h[1] == pytest.approx(10.0)  # 4 in first 6h + 6 in next
+
+
+def test_member_heatmap_sorts_wettest_first_and_labels_control():
+    start = datetime(2026, 11, 17, 12, 0, tzinfo=TZ)
+    t0 = start
+    times = [(t0 + timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M") for i in range(24)]
+    # control 0.5 mm/h, m01 2 mm/h, m02 0.1 mm/h
+    hourly = {
+        "time": times,
+        "precipitation": [0.5] * 24,
+        "precipitation_member01": [2.0] * 24,
+        "precipitation_member02": [0.1] * 24,
+    }
+    ensembles = {"gefs": {"hourly": hourly}, "ecmwf": None}
+    current = {"gefs": {"run": "2026-11-17T12:00:00Z", "run_label": "12z 17 Nov", "run_z": "12z"}}
+    heat = R.member_heatmap(ensembles, start, hours=24, current=current)
+    rows = heat["models"]["gefs"]["rows"]
+    assert [r["id"] for r in rows] == ["m01", "control", "m02"]
+    assert rows[0]["label"] == "m01" and rows[1]["label"] == "Control" and rows[1]["is_control"]
+    assert rows[0]["total"] > rows[1]["total"] > rows[2]["total"]
+    assert heat["models"]["gefs"]["sort"] == "final_total_desc"
+    assert heat["models"]["gefs"]["run"]["run_z"] == "12z"
+    assert "ecmwf" not in heat["models"]
+    # first 6h column: 6 hours × rate
+    assert rows[0]["values"][0] == pytest.approx(12.0)

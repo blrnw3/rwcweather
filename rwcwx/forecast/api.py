@@ -135,6 +135,9 @@ def build_ensemble(now_utc: datetime) -> dict:
         latest=history["latest"],
     )
     out["heatmap"] = history["heatmap"]
+    out["member_heatmap"] = runs_mod.member_heatmap(
+        ensembles, local, hours=240, current=history.get("current"),
+    )
     out["source"] = "Open-Meteo Ensemble API and Single Runs API"
     meta = _om_meta(
         "ensemble:" + ens_mod.MODELS["gefs"]["id"],

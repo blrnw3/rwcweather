@@ -2,12 +2,11 @@ import { Box, Button, Flex, Text } from "@chakra-ui/react";
 import { useEffect, useRef } from "react";
 import HighchartsImport from "highcharts";
 import HighchartsHeatmap from "highcharts/modules/heatmap";
-import { fmtRain } from "./forecast";
+import { fmtRain, fmtWhen } from "./forecast";
 import { STATION_CHART_TIME } from "./stationTime";
 
-// Cumulative rain heatmap: rows are operational model cycles (newest at the
-// top), columns are 6-hourly valid times in Pacific. SSR-safe Highcharts
-// import; the heatmap module is registered only in the browser.
+// Cumulative rain heatmaps. SSR-safe Highcharts import; the heatmap module
+// is registered only in the browser.
 
 const HC = HighchartsImport.default || HighchartsImport;
 if (typeof HC === "object" && typeof window !== "undefined" && HC.seriesTypes && !HC.seriesTypes.heatmap) {
@@ -17,36 +16,52 @@ if (typeof HC === "object" && typeof window !== "undefined" && HC.seriesTypes &&
 
 const MODEL_COLORS = {
   gfs: "#c2185b",
+  gefs: "#c2185b",
   ecmwf: "#1f6aa5",
 };
 
 const MODEL_NAMES = {
   gfs: "GFS seamless",
+  gefs: "GEFS",
   ecmwf: "ECMWF IFS",
 };
 
-// Fixed cumulative-rain colour scale in millimetres. Stops are [mm, colour].
-// The axis is always 0–100 mm (converted in US inches mode); values above
-// 100 mm clamp to the final purple. Not data-relative.
+// Fixed cumulative-rain scale in millimetres. These are discrete dataClasses
+// (not interpolated stops): RGB interpolation between the dark-blue 50 mm
+// edge and the orange just above it passed through muddy grey, which showed
+// up as isolated "missing" cells mid-row when a column landed near 50 mm.
 export const HEATMAP_MAX_MM = 100;
-export const HEATMAP_COLOR_STOPS_MM = [
-  [0, "#deebf7"],    // light blue
-  [20, "#9ecae1"],
-  [35, "#4292c6"],
-  [49, "#08519c"],   // darker blue just under 50 mm
-  [50, "#fdae6b"],   // orange at/above 50 mm
-  [65, "#f16913"],
-  [80, "#de2d26"],   // reds
-  [92, "#a50f15"],
-  [100, "#7a0177"],  // purple at 100 mm and above
+export const HEATMAP_DATA_CLASSES_MM = [
+  { from: 0, color: "#deebf7" },    // light blue
+  { from: 20, color: "#9ecae1" },
+  { from: 35, color: "#08519c" },   // darker blue up to 50
+  { from: 50, color: "#fdae6b" },   // orange at/above 50 mm
+  { from: 65, color: "#f16913" },
+  { from: 80, color: "#de2d26" },   // reds
+  { from: 92, color: "#a50f15" },
+  { from: 100, color: "#7a0177" },  // purple at 100 mm and above
 ];
+// Kept as an alias of the class edges so callers can still talk about "stops".
+export const HEATMAP_COLOR_STOPS_MM = HEATMAP_DATA_CLASSES_MM.map((c) => [c.from, c.color]);
+
+const NULL_COLOR = "#d0d0d0";
+const NULL_TOOLTIP = "No data past this run's forecast horizon";
 
 function rainConv(unit) {
   return (mm) => (mm == null ? null : (unit === "us" ? mm / 25.4 : mm));
 }
 
-function colorAxisStops() {
-  return HEATMAP_COLOR_STOPS_MM.map(([mm, color]) => [mm / HEATMAP_MAX_MM, color]);
+function dataClasses(unit) {
+  const conv = rainConv(unit);
+  const n = HEATMAP_DATA_CLASSES_MM.length;
+  return HEATMAP_DATA_CLASSES_MM.map((c, i) => {
+    const next = HEATMAP_DATA_CLASSES_MM[i + 1];
+    const from = conv(c.from);
+    const to = next ? conv(next.from) : undefined;
+    const fmt = (mm) => (unit === "us" ? (mm / 25.4).toFixed(2).replace(/\.00$/, "") + " in" : String(mm) + " mm");
+    const name = i === n - 1 ? (fmt(c.from) + "+") : (fmt(c.from) + "–" + fmt(next.from));
+    return { from, to, color: c.color, name };
+  });
 }
 
 export function sliceHeatmap(heat, hours) {
@@ -60,77 +75,101 @@ export function sliceHeatmap(heat, hours) {
   const columns = keep.map((i) => heat.columns[i]);
   const models = {};
   Object.keys(heat.models || {}).forEach((key) => {
-    models[key] = (heat.models[key] || []).map((row) => ({
-      ...row,
-      values: keep.map((i) => (row.values || [])[i]),
-    }));
+    const block = heat.models[key];
+    // Run heatmap: models[key] is a row array. Member heatmap: { rows, ... }.
+    if (Array.isArray(block)) {
+      models[key] = block.map((row) => ({
+        ...row,
+        values: keep.map((i) => (row.values || [])[i]),
+      }));
+    } else if (block && Array.isArray(block.rows)) {
+      models[key] = {
+        ...block,
+        rows: block.rows.map((row) => ({
+          ...row,
+          values: keep.map((i) => (row.values || [])[i]),
+        })),
+      };
+    } else {
+      models[key] = block;
+    }
   });
   return { ...heat, columns, models, hours };
+}
+
+
+function lastTotal(values) {
+  if (!values || !values.length) return null;
+  for (let i = values.length - 1; i >= 0; i -= 1) {
+    if (values[i] != null) return values[i];
+  }
+  return null;
+}
+
+function sortRowsWettest(rows) {
+  return (rows || []).slice().sort((a, b) => {
+    const ta = lastTotal(a.values);
+    const tb = lastTotal(b.values);
+    if (ta == null && tb == null) return String(a.id || "").localeCompare(String(b.id || ""));
+    if (ta == null) return 1;
+    if (tb == null) return -1;
+    if (tb !== ta) return tb - ta;
+    return String(a.id || "").localeCompare(String(b.id || ""));
+  });
 }
 
 function colLabel(c) {
   return c.label || "";
 }
 
-function heatmapOptions(heat, modelKey, unit) {
-  const rows = (heat.models && heat.models[modelKey]) || [];
-  const cols = heat.columns || [];
-  if (!rows.length || !cols.length) return null;
+function heatmapOptions({ rows, cols, unit, title, titleColor, compact, yLabel, nullTooltip }) {
+  if (!rows || !rows.length || !cols || !cols.length) return null;
   const conv = rainConv(unit);
   const data = [];
   rows.forEach((row, y) => {
     (row.values || []).forEach((v, x) => {
       const yv = conv(v);
-      if (yv == null) return;
-      data.push([x, y, yv]);
+      // Always emit a point, including null, so nullColor grey shows instead of a white gap.
+      data.push({ x, y, value: yv == null ? null : yv });
     });
   });
-  const yCats = rows.map((r) => r.run_label || r.run_z);
+  const yCats = rows.map((r) => yLabel ? yLabel(r) : (r.run_label || r.label || r.run_z || r.id));
   const xCats = cols.map(colLabel);
-  const height = Math.max(200, 56 + rows.length * 18 + 48);
-  const axisMax = conv(HEATMAP_MAX_MM);
-  const tickMm = [0, 25, 50, 75, 100];
+  const rowH = compact ? 11 : 18;
+  const labelSize = compact ? "0.58rem" : "0.72rem";
+  const marginLeft = compact ? 72 : 88;
+  const height = Math.max(240, (compact ? 44 : 56) + rows.length * rowH + 110);
   return {
     chart: {
       type: "heatmap",
       height,
       backgroundColor: "#ffffff",
-      marginLeft: 88,
-      marginRight: 64,
-      marginBottom: 72,
+      marginLeft,
+      marginRight: 16,
+      marginBottom: 120,
       style: { fontFamily: "inherit" },
       time: STATION_CHART_TIME,
     },
     title: {
-      text: MODEL_NAMES[modelKey] + " cumulative rain by run",
+      text: title || "",
       align: "left",
-      style: { fontSize: "0.9rem", fontWeight: "normal", color: MODEL_COLORS[modelKey] || "#333" },
+      style: { fontSize: compact ? "0.82rem" : "0.9rem", fontWeight: "normal", color: titleColor || "#333" },
     },
     credits: { enabled: false },
     legend: {
       enabled: true,
-      layout: "vertical",
-      align: "right",
-      verticalAlign: "middle",
-      symbolHeight: 240,
+      layout: "horizontal",
+      align: "center",
+      verticalAlign: "bottom",
+      itemDistance: 10,
+      itemStyle: { fontSize: "0.65rem", fontWeight: "normal" },
+      symbolRadius: 0,
+      symbolHeight: 10,
       symbolWidth: 14,
-      y: 10,
-      itemStyle: { fontSize: "0.7rem", fontWeight: "normal" },
+      y: 24,
     },
     colorAxis: {
-      min: 0,
-      max: axisMax,
-      startOnTick: false,
-      endOnTick: false,
-      stops: colorAxisStops(),
-      tickPositions: tickMm.map(conv),
-      labels: {
-        style: { fontSize: "0.7rem" },
-        formatter: function () {
-          const mm = unit === "us" ? this.value * 25.4 : this.value;
-          return fmtRain(unit, mm, true);
-        },
-      },
+      dataClasses: dataClasses(unit),
     },
     xAxis: {
       categories: xCats,
@@ -145,16 +184,29 @@ function heatmapOptions(heat, modelKey, unit) {
     yAxis: {
       categories: yCats,
       title: { text: null },
-      reversed: true, // category 0 is newest; Highcharts puts index 0 at the bottom unless reversed
-      labels: { style: { fontSize: "0.72rem" } },
+      reversed: true,
+      labels: {
+        style: { fontSize: labelSize },
+        useHTML: true,
+        formatter: function () {
+          const text = String(this.value);
+          const row = rows[this.pos] || rows.find((r) => (r.label || r.run_label) === this.value);
+          if (row && row.is_control) return "<b>" + text + "</b>";
+          return text;
+        },
+      },
     },
     tooltip: {
       formatter: function () {
         const row = rows[this.point.y] || {};
         const col = cols[this.point.x] || {};
         const val = this.point.value;
-        const txt = val == null ? "–" : fmtRain(unit, unit === "us" ? val * 25.4 : val, true);
-        return "<b>" + (MODEL_NAMES[modelKey] || modelKey) + " " + (row.run_label || "") + " UTC</b><br/>"
+        if (val == null) {
+          return "<b>" + (yLabel ? yLabel(row) : (row.run_label || row.label || "")) + "</b><br/>"
+            + "Valid " + (col.label || "") + "<br/>" + (nullTooltip || NULL_TOOLTIP);
+        }
+        const txt = fmtRain(unit, unit === "us" ? val * 25.4 : val, true);
+        return "<b>" + (yLabel ? yLabel(row) : (row.run_label || row.label || "")) + "</b><br/>"
           + "Valid " + (col.label || "") + "<br/>"
           + "Cumulative: <b>" + (txt || "–") + "</b>";
       },
@@ -162,30 +214,19 @@ function heatmapOptions(heat, modelKey, unit) {
     plotOptions: { series: { animation: false, borderWidth: 0, colsize: 1, rowsize: 1 } },
     series: [{
       type: "heatmap",
-      name: MODEL_NAMES[modelKey],
       data,
       dataLabels: { enabled: false },
       turboThreshold: 0,
-      nullColor: "#f0f0f0",
+      nullColor: NULL_COLOR,
+      borderColor: "#ffffff",
+      borderWidth: compact ? 0 : 0,
     }],
-    // Keep the fixed colour bar off the cells on narrow screens: sit it under the x labels.
     responsive: {
       rules: [{
         condition: { maxWidth: 540 },
         chartOptions: {
-          chart: { marginRight: 12, marginBottom: 150, height: height + 72 },
-          legend: {
-            layout: "horizontal",
-            align: "center",
-            verticalAlign: "bottom",
-            symbolWidth: 240,
-            symbolHeight: 14,
-            y: 28,
-          },
-          colorAxis: {
-            tickPositions: [0, conv(50), conv(100)],
-            labels: { style: { fontSize: "0.65rem" }, y: 14 },
-          },
+          chart: { marginLeft: compact ? 56 : 86, marginBottom: 140, height: height + 20 },
+          legend: { itemDistance: 6, itemStyle: { fontSize: "0.6rem", fontWeight: "normal" } },
         },
       }],
     },
@@ -203,6 +244,19 @@ function ChartHost({ options, id }) {
   return <Box ref={ref} id={id} className="ens-heatmap-chart" />;
 }
 
+function ModelToggle({ view, onView, options }) {
+  return (
+    <Flex mb="2" wrap="wrap" align="center" gridGap="2">
+      {options.map((b) => (
+        <Button key={b.id} size="sm"
+          variant={view === b.id ? "solid" : "outline"}
+          colorScheme={b.colorScheme}
+          onClick={() => onView(b.id)}>{b.label}</Button>
+      ))}
+    </Flex>
+  );
+}
+
 export function EnsembleHeatmap({ heat, hours, unit, view, onView }) {
   const sliced = sliceHeatmap(heat, hours);
   const keys = ["gfs", "ecmwf"].filter((k) => sliced && sliced.models && (sliced.models[k] || []).length);
@@ -214,24 +268,91 @@ export function EnsembleHeatmap({ heat, hours, unit, view, onView }) {
     <Box className="ens-heatmap">
       <Flex mb="2" wrap="wrap" align="center" gridGap="2">
         <Text fontSize="sm" fontWeight="semibold" mr="1">Heatmap</Text>
-        {[{ id: "both", label: "Both models" }, { id: "gfs", label: "GFS" }, { id: "ecmwf", label: "ECMWF" }].map((b) => (
-          <Button key={b.id} size="sm"
-            variant={view === b.id ? "solid" : "outline"}
-            colorScheme={b.id === "ecmwf" ? "blue" : (b.id === "gfs" ? "pink" : "gray")}
-            onClick={() => onView(b.id)}>{b.label}</Button>
-        ))}
+        <ModelToggle view={view} onView={onView} options={[
+          { id: "both", label: "Both models", colorScheme: "gray" },
+          { id: "gfs", label: "GFS", colorScheme: "pink" },
+          { id: "ecmwf", label: "ECMWF", colorScheme: "blue" },
+        ]} />
       </Flex>
       <Text fontSize="xs" color="gray.600" mb="2">
         Cumulative rain from this hour, by operational model cycle (newest at the top) and 6-hourly
         valid time in Pacific Time. Grey cells are past a short cycle&apos;s forecast horizon (ECMWF 06z/18z
-        are about 6 days). The colour scale is fixed at 0–100 mm (clamped above 100 mm; the same
-        thresholds in inches in US units), not relative to the data or the model colour.
+        are about 6 days). The colour scale is fixed at 0–100 mm in discrete bands (clamped above 100 mm;
+        the same thresholds in inches in US units), not relative to the data or the model colour.
       </Text>
       {show.map((k) => (
         <Box key={k} mb="3" overflowX="auto">
-          <ChartHost id={"ens-heat-" + k + "-" + hours} options={heatmapOptions(sliced, k, unit)} />
+          <ChartHost id={"ens-heat-" + k + "-" + hours}
+            options={heatmapOptions({
+              rows: sliced.models[k],
+              cols: sliced.columns,
+              unit,
+              title: MODEL_NAMES[k] + " cumulative rain by run",
+              titleColor: MODEL_COLORS[k],
+              nullTooltip: NULL_TOOLTIP,
+            })} />
         </Box>
       ))}
+    </Box>
+  );
+}
+
+function memberTitle(block, fetchedAt) {
+  const short = (block && block.short) || "";
+  const run = block && block.run;
+  if (run && (run.run_label || run.run_z)) {
+    return short + " " + (run.run_label || run.run_z) + " UTC — members, wettest at the top";
+  }
+  const when = fmtWhen(fetchedAt);
+  return short + " members, wettest at the top"
+    + (when ? " (init not published; fetched " + when + ")" : " (init not published)");
+}
+
+export function EnsembleMemberHeatmap({ heat, hours, unit, view, onView, fetchedAt }) {
+  const sliced = sliceHeatmap(heat, hours);
+  const keys = ["gefs", "ecmwf"].filter((k) => {
+    const b = sliced && sliced.models && sliced.models[k];
+    return b && (b.rows || []).length;
+  });
+  const show = view === "both" ? keys : keys.filter((k) => k === view);
+  if (!keys.length) {
+    return <Text fontSize="sm" color="gray.600">Ensemble-member heatmap unavailable.</Text>;
+  }
+  return (
+    <Box className="ens-member-heatmap" mt="4">
+      <Flex mb="2" wrap="wrap" align="center" gridGap="2">
+        <Text fontSize="sm" fontWeight="semibold" mr="1">Ensemble members</Text>
+        <ModelToggle view={view} onView={onView} options={[
+          { id: "both", label: "Both models", colorScheme: "gray" },
+          { id: "gefs", label: "GEFS", colorScheme: "pink" },
+          { id: "ecmwf", label: "ECMWF ENS", colorScheme: "blue" },
+        ]} />
+      </Flex>
+      <Text fontSize="xs" color="gray.600" mb="2">
+        One row per member of the latest ensemble run (GEFS control + 30, ECMWF ENS control + 50),
+        sorted by each member&apos;s final cumulative total over the selected window, wettest at the top.
+        The control row is labelled in bold. Columns and the 0–100 mm colour scale match the run heatmap
+        above. Built from the ensemble payload already on the page — no extra upstream requests.
+      </Text>
+      {show.map((k) => {
+        const block = sliced.models[k];
+        const rows = sortRowsWettest(block.rows || []);
+        return (
+          <Box key={k} mb="3" overflowX="auto">
+            <ChartHost id={"ens-member-heat-" + k + "-" + hours}
+              options={heatmapOptions({
+                rows,
+                cols: sliced.columns,
+                unit,
+                title: memberTitle(block, fetchedAt),
+                titleColor: MODEL_COLORS[k],
+                compact: true,
+                yLabel: (r) => r.label,
+                nullTooltip: NULL_TOOLTIP,
+              })} />
+          </Box>
+        );
+      })}
     </Box>
   );
 }

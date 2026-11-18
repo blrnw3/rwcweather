@@ -108,7 +108,7 @@ def test_build_ensemble_endpoint_shape(monkeypatch):
     assert [w["hours"] for w in out["windows"]] == [120, 168, 240]
     assert out["models"]["gefs"]["windows"]["168"]["control"] == pytest.approx(0.2 * 168)
     assert out["models"]["ecmwf"]["n_members"] == 2
-    assert "run_history" in out and "heatmap" in out
+    assert "run_history" in out and "heatmap" in out and "member_heatmap" in out
     assert "Single Runs" in out["source"]
     assert out["source_url"] == "https://open-meteo.com/"
 
