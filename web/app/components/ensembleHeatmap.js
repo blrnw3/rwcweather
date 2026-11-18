@@ -2,7 +2,6 @@ import { Box, Button, Flex, Text } from "@chakra-ui/react";
 import { useEffect, useRef } from "react";
 import HighchartsImport from "highcharts";
 import HighchartsHeatmap from "highcharts/modules/heatmap";
-import { unitForObsType } from "../format";
 import { fmtRain } from "./forecast";
 import { STATION_CHART_TIME } from "./stationTime";
 
@@ -26,8 +25,28 @@ const MODEL_NAMES = {
   ecmwf: "ECMWF IFS",
 };
 
+// Fixed cumulative-rain colour scale in millimetres. Stops are [mm, colour].
+// The axis is always 0–100 mm (converted in US inches mode); values above
+// 100 mm clamp to the final purple. Not data-relative.
+export const HEATMAP_MAX_MM = 100;
+export const HEATMAP_COLOR_STOPS_MM = [
+  [0, "#deebf7"],    // light blue
+  [20, "#9ecae1"],
+  [35, "#4292c6"],
+  [49, "#08519c"],   // darker blue just under 50 mm
+  [50, "#fdae6b"],   // orange at/above 50 mm
+  [65, "#f16913"],
+  [80, "#de2d26"],   // reds
+  [92, "#a50f15"],
+  [100, "#7a0177"],  // purple at 100 mm and above
+];
+
 function rainConv(unit) {
   return (mm) => (mm == null ? null : (unit === "us" ? mm / 25.4 : mm));
+}
+
+function colorAxisStops() {
+  return HEATMAP_COLOR_STOPS_MM.map(([mm, color]) => [mm / HEATMAP_MAX_MM, color]);
 }
 
 export function sliceHeatmap(heat, hours) {
@@ -58,28 +77,26 @@ function heatmapOptions(heat, modelKey, unit) {
   const cols = heat.columns || [];
   if (!rows.length || !cols.length) return null;
   const conv = rainConv(unit);
-  const rUnit = unitForObsType(unit, "rain");
-  const dec = unit === "us" ? 2 : 1;
   const data = [];
-  let max = 0;
   rows.forEach((row, y) => {
     (row.values || []).forEach((v, x) => {
       const yv = conv(v);
       if (yv == null) return;
       data.push([x, y, yv]);
-      if (yv > max) max = yv;
     });
   });
   const yCats = rows.map((r) => r.run_label || r.run_z);
   const xCats = cols.map(colLabel);
   const height = Math.max(200, 56 + rows.length * 18 + 48);
+  const axisMax = conv(HEATMAP_MAX_MM);
+  const tickMm = [0, 25, 50, 75, 100];
   return {
     chart: {
       type: "heatmap",
       height,
       backgroundColor: "#ffffff",
       marginLeft: 88,
-      marginRight: 16,
+      marginRight: 64,
       marginBottom: 72,
       style: { fontFamily: "inherit" },
       time: STATION_CHART_TIME,
@@ -90,19 +107,30 @@ function heatmapOptions(heat, modelKey, unit) {
       style: { fontSize: "0.9rem", fontWeight: "normal", color: MODEL_COLORS[modelKey] || "#333" },
     },
     credits: { enabled: false },
-    legend: { enabled: false },
+    legend: {
+      enabled: true,
+      layout: "vertical",
+      align: "right",
+      verticalAlign: "middle",
+      symbolHeight: 240,
+      symbolWidth: 14,
+      y: 10,
+      itemStyle: { fontSize: "0.7rem", fontWeight: "normal" },
+    },
     colorAxis: {
       min: 0,
-      max: max > 0 ? max : undefined,
-      stops: [
-        [0, "#fff7ec"],
-        [0.15, "#fee8c8"],
-        [0.35, "#fdbb84"],
-        [0.55, "#e34a33"],
-        [0.8, "#b30000"],
-        [1, "#7f0000"],
-      ],
-      labels: { style: { fontSize: "0.7rem" }, formatter: function () { return this.value % 1 === 0 ? this.value : this.value.toFixed(dec); } },
+      max: axisMax,
+      startOnTick: false,
+      endOnTick: false,
+      stops: colorAxisStops(),
+      tickPositions: tickMm.map(conv),
+      labels: {
+        style: { fontSize: "0.7rem" },
+        formatter: function () {
+          const mm = unit === "us" ? this.value * 25.4 : this.value;
+          return fmtRain(unit, mm, true);
+        },
+      },
     },
     xAxis: {
       categories: xCats,
@@ -140,6 +168,27 @@ function heatmapOptions(heat, modelKey, unit) {
       turboThreshold: 0,
       nullColor: "#f0f0f0",
     }],
+    // Keep the fixed colour bar off the cells on narrow screens: sit it under the x labels.
+    responsive: {
+      rules: [{
+        condition: { maxWidth: 540 },
+        chartOptions: {
+          chart: { marginRight: 12, marginBottom: 150, height: height + 72 },
+          legend: {
+            layout: "horizontal",
+            align: "center",
+            verticalAlign: "bottom",
+            symbolWidth: 240,
+            symbolHeight: 14,
+            y: 28,
+          },
+          colorAxis: {
+            tickPositions: [0, conv(50), conv(100)],
+            labels: { style: { fontSize: "0.65rem" }, y: 14 },
+          },
+        },
+      }],
+    },
   };
 }
 
@@ -175,7 +224,8 @@ export function EnsembleHeatmap({ heat, hours, unit, view, onView }) {
       <Text fontSize="xs" color="gray.600" mb="2">
         Cumulative rain from this hour, by operational model cycle (newest at the top) and 6-hourly
         valid time in Pacific Time. Grey cells are past a short cycle&apos;s forecast horizon (ECMWF 06z/18z
-        are about 6 days). Colour scale is cumulative amount, not the model colour.
+        are about 6 days). The colour scale is fixed at 0–100 mm (clamped above 100 mm; the same
+        thresholds in inches in US units), not relative to the data or the model colour.
       </Text>
       {show.map((k) => (
         <Box key={k} mb="3" overflowX="auto">

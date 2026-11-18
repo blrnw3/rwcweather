@@ -195,7 +195,9 @@ function runsOptions(history, hours, unit) {
   if (!series.length) return null;
   const uniqTicks = Array.from(new Set(ticks)).sort((a, b) => a - b);
   return {
-    chart: { height: 300, backgroundColor: "#ffffff", marginLeft: 56, marginRight: 16, style: { fontFamily: "inherit" }, time: { useUTC: true } },
+    chart: { height: 540, backgroundColor: "#ffffff", marginLeft: 56, marginRight: 16, style: { fontFamily: "inherit" }, time: { useUTC: true } },
+    // 540 is 1.8× the previous 300 px desktop height; shrink a little on narrow viewports.
+    responsive: { rules: [{ condition: { maxWidth: 540 }, chartOptions: { chart: { height: 400 } } }] },
     title: { text: "Operational total across recent runs", align: "left", style: { fontSize: "0.9rem", fontWeight: "normal" } },
     subtitle: { text: "Same valid window from this hour, one point per model cycle (00/06/12/18z). A cycle is omitted once its remaining forecast no longer covers the window (older runs drop off first; ECMWF 06z/18z are about 6 days and drop off sooner).", align: "left", style: { fontSize: "0.72rem", color: "#555" } },
     credits: { enabled: false },
