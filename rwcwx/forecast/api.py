@@ -9,8 +9,9 @@ from flask import jsonify
 
 from rwcwx.forecast import ensemble as ens_mod
 from rwcwx.forecast import meteogram as mg_mod
-from rwcwx.forecast import nws, openmeteo, parse
+from rwcwx.forecast import nws, openmeteo, parse, runs as runs_mod
 from rwcwx.forecast.cache import merge_status
+from rwcwx.config import TZ
 from rwcwx.recap.rules import local_today
 
 
@@ -85,15 +86,25 @@ def get_forecast_nws():
     return _json(build_nws(_now()))
 
 
-def build_meteogram() -> dict:
+def build_meteogram(now_utc=None) -> dict:
+    now_utc = now_utc or _now()
     raw = openmeteo.meteogram()
     series = mg_mod.series(raw)
+    latest = openmeteo.latest_available_run("gfs_seamless", now_utc)
+    model_run = None
+    if latest:
+        model_run = dict(
+            run=runs_mod.run_iso(latest["run"]),
+            run_label=runs_mod.run_label(latest["run"]),
+            run_z=runs_mod.run_label(latest["run"], with_date=False),
+        )
     return dict(
         location=dict(lat=openmeteo.LAT, lon=openmeteo.LON, elevation=openmeteo.ELEV),
         source="Open-Meteo",
         source_url="https://open-meteo.com/",
         model="gfs_seamless",
         model_note="GFS seamless (HRRR in the near term, GFS thereafter)",
+        model_run=model_run,
         series=series,
         **_om_meta("meteogram"),
     )
@@ -108,16 +119,26 @@ def build_ensemble(now_utc: datetime) -> dict:
         "gefs": openmeteo.ensemble(ens_mod.MODELS["gefs"]["id"]),
         "ecmwf": openmeteo.ensemble(ens_mod.MODELS["ecmwf"]["id"]),
     }
-    previous = {
-        ens_mod.MODELS["gefs"]["previous_model"]: openmeteo.previous_runs(ens_mod.MODELS["gefs"]["previous_model"]),
-        ens_mod.MODELS["ecmwf"]["previous_model"]: openmeteo.previous_runs(ens_mod.MODELS["ecmwf"]["previous_model"]),
-    }
-    out = ens_mod.build(ensembles, previous, now_utc)
+    # Previous Runs API is no longer used for the run-to-run chart (daily
+    # lead offsets only). Per-cycle history comes from the Single Runs API.
+    out = ens_mod.build(ensembles, {}, now_utc)
+    local = now_utc.astimezone(TZ).replace(minute=0, second=0, microsecond=0)
+    history = runs_mod.build_history(now_utc, local, ensembles)
+    for key, model in (out.get("models") or {}).items():
+        if key in history.get("current", {}):
+            model["model_run"] = history["current"][key]
+    out["run_history"] = dict(
+        source=history["source"],
+        source_url=history["source_url"],
+        lookback_days=history["lookback_days"],
+        operational=history["operational"],
+        latest=history["latest"],
+    )
+    out["heatmap"] = history["heatmap"]
+    out["source"] = "Open-Meteo Ensemble API and Single Runs API"
     meta = _om_meta(
         "ensemble:" + ens_mod.MODELS["gefs"]["id"],
         "ensemble:" + ens_mod.MODELS["ecmwf"]["id"],
-        "previous:" + ens_mod.MODELS["gefs"]["previous_model"],
-        "previous:" + ens_mod.MODELS["ecmwf"]["previous_model"],
     )
     out.update(meta)
     return out

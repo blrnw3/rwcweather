@@ -59,6 +59,30 @@ export function StaleNote({ stale, fetchedAt }) {
   );
 }
 
+/** Model init as "18z 17 Nov UTC". Run times are UTC cycles. */
+export function fmtRunStamp(run) {
+  if (!run) return null;
+  const label = run.run_label || run.run_z;
+  if (!label) return null;
+  return label + " UTC";
+}
+
+export function UpdateLine({ fetchedAt, modelRun, stale, prefix, note }) {
+  const run = fmtRunStamp(modelRun);
+  const when = fmtWhen(fetchedAt);
+  const bits = [];
+  if (prefix) bits.push(prefix);
+  if (run) bits.push("model run " + run);
+  if (when) bits.push((stale ? "cached " : "fetched ") + when);
+  if (!bits.length && !note) return null;
+  return (
+    <Text className="forecast-update-line" fontSize="xs" color="gray.600" mb="2">
+      {bits.join(" · ")}
+      {note ? (bits.length ? ". " : "") + note : null}
+    </Text>
+  );
+}
+
 const ALERT_COLOURS = {
   Extreme: { bg: "red.600", color: "white" },
   Severe: { bg: "red.500", color: "white" },

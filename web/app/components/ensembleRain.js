@@ -6,7 +6,8 @@ import useSWR from "swr";
 import { unitForObsType } from "../format";
 import { fetcher } from "./conf";
 import { UnitCtx } from "./Page";
-import { fmtRain, StaleNote } from "./forecast";
+import { fmtRain, UpdateLine } from "./forecast";
+import { EnsembleHeatmap } from "./ensembleHeatmap";
 import { PT, STATION_CHART_TIME, sortedUniquePoints, stationAxisDay, stationSharedTooltip } from "./stationTime";
 
 // Ensemble rain totals (GEFS and ECMWF ENS): spread, operational/control, cumulative plume,
@@ -153,33 +154,73 @@ function accumOptions(models, hours, unit) {
   };
 }
 
-function runsOptions(models, hours, unit) {
+function runAxisLabel(ms) {
+  const d = new Date(ms);
+  if (isNaN(d)) return "";
+  const z = String(d.getUTCHours()).padStart(2, "0") + "z";
+  const day = new Intl.DateTimeFormat("en-US", { weekday: "short", day: "numeric", timeZone: "UTC" }).format(d);
+  return day + " " + z;
+}
+
+function runsOptions(history, hours, unit) {
   const rUnit = unitForObsType(unit, "rain");
   const conv = rainConv(unit);
+  const dec = unit === "us" ? 2 : 1;
   const series = [];
-  const colors = { gefs: MODEL_COLORS.gefs.main, ecmwf: MODEL_COLORS.ecmwf.main };
-  Object.entries(models).forEach(([key, model]) => {
-    const runs = (model.runs && model.runs[String(hours)]) || [];
-    if (!runs.length) return;
+  const colors = { gfs: MODEL_COLORS.gefs.main, ecmwf: MODEL_COLORS.ecmwf.main };
+  const ops = (history && history.operational) || {};
+  const ticks = [];
+  Object.keys(ops).forEach((key) => {
+    const group = ops[key];
+    const rows = (group && group.runs) || [];
+    const data = [];
+    rows.forEach((r) => {
+      const tot = r.totals && r.totals[String(hours)] && r.totals[String(hours)].total;
+      const x = Date.parse(r.run);
+      if (tot == null || !isFinite(x)) return;
+      data.push({ x, y: conv(tot), name: r.run_label || r.run_z });
+      ticks.push(x);
+    });
+    if (!data.length) return;
     series.push({
-      name: model.previous_label || model.name,
+      name: (group && group.label) || key,
       type: "line",
       color: colors[key] || "#333",
       lineWidth: 2,
       marker: { enabled: true, radius: 3 },
-      data: sortedUniquePoints(runs.map((r) => [-r.lead_days, conv(r.total)])),
+      data: sortedUniquePoints(data),
+      tooltip: { valueDecimals: dec, valueSuffix: " " + rUnit },
     });
   });
   if (!series.length) return null;
+  const uniqTicks = Array.from(new Set(ticks)).sort((a, b) => a - b);
   return {
-    chart: { height: 280, backgroundColor: "#ffffff", marginLeft: 56, marginRight: 16, style: { fontFamily: "inherit" }, time: STATION_CHART_TIME },
+    chart: { height: 300, backgroundColor: "#ffffff", marginLeft: 56, marginRight: 16, style: { fontFamily: "inherit" }, time: { useUTC: true } },
     title: { text: "Operational total across recent runs", align: "left", style: { fontSize: "0.9rem", fontWeight: "normal" } },
-    subtitle: { text: "Same valid window; “0” is the latest run, “−1” is about 24 hours earlier", align: "left", style: { fontSize: "0.72rem", color: "#555" } },
+    subtitle: { text: "Same valid window from this hour, one point per model cycle (00/06/12/18z). A cycle is omitted once its remaining forecast no longer covers the window (older runs drop off first; ECMWF 06z/18z are about 6 days and drop off sooner).", align: "left", style: { fontSize: "0.72rem", color: "#555" } },
     credits: { enabled: false },
     legend: { itemStyle: { fontSize: "0.75rem", fontWeight: "normal" } },
-    xAxis: { title: { text: "Days ago", style: { fontSize: "0.75rem" } }, tickInterval: 1, labels: { style: { fontSize: "0.72rem" } }, gridLineWidth: 1, gridLineColor: "#eee" },
+    xAxis: {
+      type: "datetime",
+      tickPositions: uniqTicks.length ? uniqTicks : undefined,
+      labels: { style: { fontSize: "0.68rem" }, rotation: -45, formatter: function () { return runAxisLabel(this.value); } },
+      gridLineWidth: 1, gridLineColor: "#eee",
+      title: { text: "Model run (UTC)", style: { fontSize: "0.75rem" } },
+    },
     yAxis: { title: { text: rUnit, style: { fontSize: "0.75rem" } }, min: 0, gridLineColor: "#eee", labels: { style: { fontSize: "0.72rem" } } },
-    tooltip: { shared: true, valueDecimals: unit === "us" ? 2 : 1, valueSuffix: " " + rUnit, headerFormat: "<span>Run {point.key} day(s) ago</span><br/>" },
+    tooltip: {
+      shared: true,
+      formatter: function () {
+        const head = runAxisLabel(this.x);
+        let html = "<span>" + head + " UTC</span>";
+        (this.points || []).forEach((p) => {
+          const y = p.y == null ? "–" : Number(p.y).toFixed(dec);
+          html += "<br/><span style=\"color:" + (p.color || "#333") + "\">●</span> "
+            + p.series.name + ": <b>" + y + "</b> " + rUnit;
+        });
+        return html;
+      },
+    },
     plotOptions: { series: { animation: false } },
     series,
   };
@@ -199,10 +240,11 @@ function ChartHost({ options, id }) {
 export function EnsembleRain() {
   const unit = useContext(UnitCtx);
   const { ens, error, loading } = useEnsemble();
-  const [hours, setHours] = useState(168);
+  const [hours, setHours] = useState(120);
+  const [heatView, setHeatView] = useState("both");
   const models = ens && ens.models ? ens.models : {};
   const modelList = ["gefs", "ecmwf"].map((k) => models[k]).filter(Boolean);
-  const runsOpts = ens ? runsOptions(models, hours, unit) : null;
+  const runsOpts = ens ? runsOptions(ens.run_history, hours, unit) : null;
 
   return (
     <Box id="forecast-ensemble" className="forecast-section" border="2px solid #656382" bg="gray.100"
@@ -219,16 +261,18 @@ export function EnsembleRain() {
       {ens && modelList.length > 0 && <>
         <Flex className="ens-window-toggle" mb="3" wrap="wrap" align="center" gridGap="2">
           <Text fontSize="sm" fontWeight="semibold" mr="1">Valid window</Text>
-          {(ens.windows || [{ hours: 168, label: "Next 7 days" }, { hours: 240, label: "Next 10 days" }]).map((w) => (
+          {(ens.windows || [{ hours: 120, label: "Next 5 days" }, { hours: 168, label: "Next 7 days" }, { hours: 240, label: "Next 10 days" }]).map((w) => (
             <Button key={w.hours} size="sm" variant={hours === w.hours ? "solid" : "outline"} colorScheme="blue"
               onClick={() => setHours(w.hours)}>{w.label}</Button>
           ))}
         </Flex>
-        {ens && <StaleNote stale={ens.stale} fetchedAt={ens.fetched_at} />}
+        <UpdateLine fetchedAt={ens.fetched_at} stale={ens.stale} />
         <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={{ base: 4, md: 6 }} mb="4">
           {modelList.map((m) => (
             <Box key={m.id} className={"ens-model ens-model-" + m.id} bg="white" borderRadius="8px" p="3">
               <Text fontWeight="bold" mb="1">{m.name}</Text>
+              <UpdateLine modelRun={m.model_run}
+                note={!m.model_run ? "Init time is not published by Open-Meteo for this ensemble." : null} />
               <TotalsTable model={m} hours={hours} unit={unit} />
             </Box>
           ))}
@@ -236,17 +280,24 @@ export function EnsembleRain() {
         <Box bg="white" borderRadius="8px" p="3" overflowX="auto" mb="4">
           <ChartHost id={"ens-acc-" + hours} options={accumOptions(models, hours, unit)} />
         </Box>
-        <Box bg="white" borderRadius="8px" p="3" overflowX="auto">
+        <Box bg="white" borderRadius="8px" p="3" overflowX="auto" mb="4">
           <ChartHost id={"ens-runs-" + hours} options={runsOpts} />
           <Text fontSize="xs" color="gray.600" mt="2">
-            Run history comes from Open-Meteo’s previous-runs API (up to 7 days of lead-time offsets for the
-            operational GFS seamless and ECMWF IFS 0.25° forecasts). Ensemble member spread is from the latest
-            GEFS (30 members + control) and ECMWF ENS (50 members + control) runs.
+            Run history is from Open-Meteo’s Single Runs API: each 00/06/12/18z cycle of operational
+            GFS seamless and ECMWF IFS 0.25°, going back five days. Ensemble member spread is from the
+            latest GEFS (30 members + control) and ECMWF ENS (50 members + control) runs. ECMWF ENS
+            init is identified by matching the control to operational IFS; GEFS init is shown only
+            when that match is close, because Open-Meteo does not publish GEFS single runs.
           </Text>
         </Box>
+        {ens.heatmap && (
+          <Box bg="white" borderRadius="8px" p="3" overflowX="auto">
+            <EnsembleHeatmap heat={ens.heatmap} hours={hours} unit={unit} view={heatView} onView={setHeatView} />
+          </Box>
+        )}
       </>}
       <Text fontSize="xs" color="gray.600" mt="2">
-        Source: <Box as="a" href="https://open-meteo.com/" textDecoration="underline">Open-Meteo</Box> Ensemble and Previous Runs APIs.
+        Source: <Box as="a" href="https://open-meteo.com/" textDecoration="underline">Open-Meteo</Box> Ensemble and Single Runs APIs.
       </Text>
     </Box>
   );
