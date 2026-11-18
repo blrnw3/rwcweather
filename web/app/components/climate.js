@@ -141,6 +141,29 @@ export function waterYearNormalToDate(obs, stat, year, month, day) {
  * water year (1 Oct). If `total` is above the full-year normal, returns
  * { exceeds: true }. Null when the total or normals are missing.
  */
+/**
+ * Whole calendar days from (y0, m0, d0) to (y1, m1, d1). Station-local dates
+ * compared as civil dates (UTC midnight arithmetic, so DST does not matter).
+ */
+export function calendarDaysBetween(y1, m1, d1, y0, m0, d0) {
+    if ([y1, m1, d1, y0, m0, d0].some((v) => v == null || Number.isNaN(v))) {
+        return null;
+    }
+    return Math.round((Date.UTC(y1, m1 - 1, d1) - Date.UTC(y0, m0 - 1, d0)) / 86400000);
+}
+
+/** "(+22 days)", "(-3 days)", "(+1 day)", or "(normal)" for a zero offset. */
+export function waterYearDaysLabel(days) {
+    if (days == null || Number.isNaN(days)) {
+        return null;
+    }
+    if (days === 0) {
+        return "(normal)";
+    }
+    const n = Math.abs(days);
+    return "(" + (days > 0 ? "+" : "-") + n + " " + (n === 1 ? "day" : "days") + ")";
+}
+
 export function waterYearDateForTotal(obs, stat, year, month, day, total) {
     if (total == null || Number.isNaN(total) || total < 0) {
         return null;
@@ -150,7 +173,10 @@ export function waterYearDateForTotal(obs, stat, year, month, day, total) {
     }
     const startYear = month >= WATER_YEAR_FIRST_MONTH ? year : year - 1;
     if (total === 0) {
-        return { month: WATER_YEAR_FIRST_MONTH, day: 1 };
+        return {
+            month: WATER_YEAR_FIRST_MONTH, day: 1, year: startYear,
+            days: calendarDaysBetween(startYear, WATER_YEAR_FIRST_MONTH, 1, year, month, day),
+        };
     }
     const full = waterYearNormalToDate(obs, stat, startYear + 1, 9, 30);
     if (full == null) {
@@ -164,7 +190,10 @@ export function waterYearDateForTotal(obs, stat, year, month, day, total) {
     for (;;) {
         const expected = waterYearNormalToDate(obs, stat, y, m, d);
         if (expected != null && expected >= total) {
-            return { month: m, day: d };
+            return {
+                month: m, day: d, year: y,
+                days: calendarDaysBetween(y, m, d, year, month, day),
+            };
         }
         d += 1;
         if (d > daysInMonth(y, m)) {
@@ -179,7 +208,10 @@ export function waterYearDateForTotal(obs, stat, year, month, day, total) {
             break;
         }
     }
-    return { month: 9, day: 30 };
+    return {
+        month: 9, day: 30, year: startYear + 1,
+        days: calendarDaysBetween(startYear + 1, 9, 30, year, month, day),
+    };
 }
 
 /**

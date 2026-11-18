@@ -28,7 +28,7 @@ import { aqiStatus, formatObs, moonPhase, prettySecs, timeOf } from '../format';
 import {
   CLIMATE_PAGE, ClimateAnom, annualNormal, dailyNormal, monthlyNormalToDate,
   periodToDateTempNormal, periodToDateTotalNormal, signedPctDeparture,
-  waterYearDateForTotal, waterYearNormal, waterYearNormalToDate,
+  waterYearDateForTotal, waterYearDaysLabel, waterYearNormal, waterYearNormalToDate,
 } from '../components/climate';
 import {
   RECORD, TIE, ON_TRACK,
@@ -183,6 +183,21 @@ function serverDate(...sources) {
     }
   }
   return null;
+}
+
+// 24-hour station-local (Pacific) clock. Prefers [hour, minute] already converted
+// on the server; falls back to an ISO timestamp interpreted in America/Los_Angeles.
+function stationHm(at) {
+  if (at == null) return null;
+  if (Array.isArray(at) && at.length >= 2 && at[0] != null && at[1] != null) {
+    return String(at[0]).padStart(2, "0") + ":" + String(at[1]).padStart(2, "0");
+  }
+  const d = at instanceof Date ? at : new Date(at);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    timeZone: "America/Los_Angeles",
+  }).format(d);
 }
 
 // Outside daylight: "twilight" between civil dawn and sunrise or sunset and civil dusk (sun 0° to -6°),
@@ -501,9 +516,15 @@ function RainHomeCard(props) {
   const showMax = !!(dash?.wet?.wet_now || dash?.["rain_trend"]?.["m10"] > 0 || dash?.["rain_trend"]?.["hr1"] > 0);
   const max10 = showMax ? dash?.["rain_trend"]?.["m10_max"] : null;
   const maxHr = showMax ? dash?.["rain_trend"]?.["hr1_max"] : null;
-  const maxLabel = (val) => (val > 0
-    ? <Text as="span" className="rain-rate-max" fontWeight="normal" ml="2">max: {formatObs(unit, val, "rain", false, false)}</Text>
-    : null);
+  const max10At = showMax ? dash?.["rain_trend"]?.["m10_max_at"] : null;
+  const maxHrAt = showMax ? dash?.["rain_trend"]?.["hr1_max_at"] : null;
+  const maxLabel = (val, at) => {
+    if (!(val > 0)) return null;
+    const hm = stationHm(at);
+    return <Text as="span" className="rain-rate-max" fontWeight="normal" ml="2" whiteSpace="nowrap">
+      max: {formatObs(unit, val, "rain", false, false)}{hm ? " @ " + hm : ""}
+    </Text>;
+  };
 
   const wetDisc = useDisclosure();
   const icon = <Text as="span" color="blue" className="home_ico"><WiRain /></Text>
@@ -516,8 +537,8 @@ function RainHomeCard(props) {
     <WetHoursDetails wet={dash?.wet} rainToday={dash?.["now"]?.["rain"]} isOpen={wetDisc.isOpen} nowMs={dash?.server?.epoch ? dash.server.epoch * 1000 : null} />
     {/* "Past 10m" only matters while it's raining: show it only if there was rain in the past hour. */}
     <Text borderBottom={show10m ? null : "1px solid #ccc"}>Last rain: <Text as="span" fontWeight="bold">{last}</Text> ago</Text>
-    {show10m && <Text borderBottom="1px solid #ccc" className="rain-past-10m">Past 10m: <Text as="span" fontWeight="bold">{rn10}</Text>{maxLabel(max10)}</Text>}
-    <Text className="rain-hourly">Hourly: <Text as="span" fontWeight="bold">{rnhr}</Text>{maxLabel(maxHr)}</Text>
+    {show10m && <Text borderBottom="1px solid #ccc" className="rain-past-10m">Past 10m: <Text as="span" fontWeight="bold">{rn10}</Text>{maxLabel(max10, max10At)}</Text>}
+    <Text className="rain-hourly">Hourly: <Text as="span" fontWeight="bold">{rnhr}</Text>{maxLabel(maxHr, maxHrAt)}</Text>
     <Text borderBottom="1px solid #ccc">Past 24hrs: <Text as="span" fontWeight="bold">{rn24}</Text></Text>
     <Text className="rain-month-line">
       Monthly: <Text as="span" fontWeight="bold">{monthly}</Text>
@@ -609,10 +630,12 @@ function WaterYearClimate({ total, date }) {
   }
   const normalLink = <Link href={CLIMATE_PAGE} textDecoration="underline">normal</Link>;
   const normalFor = waterYearDateForTotal("rain", "total", ...date, total);
+  const daysLabel = waterYearDaysLabel(normalFor?.days);
   const normalForText = normalFor?.exceeds
     ? "Exceeds the annual normal"
     : (normalFor?.month && normalFor?.day
       ? "Normal for: " + normalFor.day + " " + MONTH_SHORT[normalFor.month - 1]
+        + (daysLabel ? " " + daysLabel : "")
       : null);
   return <Text className="water-year-climate" fontSize="sm" lineHeight="short" color="gray.700">
     <span className="wy-vs-full">({formatObs(unit, total - fullNormal, "rain", true)} vs full-year {normalLink})</span>
