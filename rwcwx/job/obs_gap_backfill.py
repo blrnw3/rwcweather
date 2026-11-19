@@ -16,6 +16,7 @@ Typical sources, in order of preference:
 from __future__ import annotations
 
 import csv
+import os
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -82,13 +83,21 @@ def _mm(inches) -> str:
     return f"{float(inches) * IN_TO_MM:.1f} mm"
 
 
+def _as_path(p) -> Path:
+    if p is None:
+        raise click.ClickException("missing path")
+    if isinstance(p, bytes):
+        p = os.fsdecode(p)
+    return p if isinstance(p, Path) else Path(p)
+
+
 def load_source(json_dir: Optional[Path], monthly_log: Optional[Path], after: datetime, before: datetime) -> List[dict]:
     if monthly_log is not None:
-        by_t = {r["t_local"]: r for r in parse_monthly_log(monthly_log)}
+        by_t = {r["t_local"]: r for r in parse_monthly_log(_as_path(monthly_log))}
         return rows_in_window(by_t, after, before)
     if json_dir is None:
         raise click.ClickException("Provide --json-dir or --monthly-log")
-    return rows_in_window(load_interval_dir(json_dir), after, before)
+    return rows_in_window(load_interval_dir(_as_path(json_dir)), after, before)
 
 
 def fetch_obs(st: datetime, en: datetime) -> List[dict]:
