@@ -131,11 +131,21 @@ def existing_times(st: datetime, en: datetime) -> set:
     return {r[0] for r in db.execute(q, st=st.replace(tzinfo=None), en=en.replace(tzinfo=None))}
 
 
+def _num(v):
+    return None if v is None else float(v)
+
+
 def day_obs_objects(rows: Iterable[dict]) -> list:
-    return [SimpleNamespace(**{k: r.get(k) for k in
-                               ("t", "temp", "humi", "wind", "gust", "wdir", "rain", "pres",
-                                "intemp", "inhumi", "pm2", "dewpt", "aqi")})
-            for r in rows]
+    keys = ("t", "temp", "humi", "wind", "gust", "wdir", "rain", "pres",
+            "intemp", "inhumi", "pm2", "dewpt", "aqi")
+    out = []
+    for r in rows:
+        d = {k: r.get(k) for k in keys}
+        for k in d:
+            if k != "t" and d[k] is not None:
+                d[k] = float(d[k])
+        out.append(SimpleNamespace(**d))
+    return out
 
 
 def merge_day(d: date, existing: List[dict], gap_params: List[dict]) -> List[dict]:
