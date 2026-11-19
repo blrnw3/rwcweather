@@ -21,6 +21,9 @@ from rwcwx.util import DateUtil
 from rwcwx.wet import intensity_store
 from rwcwx.wet import store as wet_store
 from rwcwx.wet.rules import WINDOW_MIN as WET_WINDOW_MIN
+from rwcwx.job.save_latest_guard import (
+    release_orm_session, restart_in_place, rss_bytes, should_restart,
+)
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_LOG_FILE = os.path.join(REPO_ROOT, "log", "save_latest.log")
@@ -70,6 +73,7 @@ class CumulusObsImporter:
         self.n_air_missing = 0
         self.last_obs_dt = None
         self.air_ok = True
+        self.started_at = datetime.now()
 
     def run(self):
         while True:
@@ -104,6 +108,19 @@ class CumulusObsImporter:
             logger.warning(f"No new observations in the last {mins:.0f} min; is {self.obs_path} still being updated?")
         self.last_heartbeat = now
         self.n_saved = self.n_avg_ext = self.n_errors = self.n_air_missing = 0
+        self.maybe_self_restart()
+
+    def maybe_self_restart(self) -> None:
+        reason = should_restart(rss_bytes(), self.started_at, now=datetime.now())
+        if not reason:
+            return
+        logger.warning("Restarting save_latest in-place (%s); pid %s will be reused", reason, os.getpid())
+        for h in logging.getLogger().handlers:
+            try:
+                h.flush()
+            except Exception:
+                pass
+        restart_in_place()
 
     def get_and_save_latest(self) -> None:
         last_mod = os.path.getmtime(self.obs_path)
@@ -227,6 +244,10 @@ class CumulusObsImporter:
             intensity_store.update_day(d)       # max 10 / 60-min rain; tips only count on their own day
         except Exception as e:
             logger.warning(f"rain intensity update failed for {d}: {e!r}")
+        # ObsQ.day (and any other db.s query) leaves instances in the process-wide Session.
+        n = release_orm_session(getattr(db, "s", None))
+        if n:
+            logger.debug("Released %s ORM instances from the ingest session", n)
 
 
 def _exit_on_sigterm(signum, frame):
