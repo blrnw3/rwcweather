@@ -131,10 +131,6 @@ def existing_times(st: datetime, en: datetime) -> set:
     return {r[0] for r in db.execute(q, st=st.replace(tzinfo=None), en=en.replace(tzinfo=None))}
 
 
-def _num(v):
-    return None if v is None else float(v)
-
-
 def day_obs_objects(rows: Iterable[dict]) -> list:
     keys = ("t", "temp", "humi", "wind", "gust", "wdir", "rain", "pres",
             "intemp", "inhumi", "pm2", "dewpt", "aqi")
