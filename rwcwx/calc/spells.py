@@ -10,8 +10,11 @@ Rules:
   °C, so °F thresholds are converted before comparing.
 - A spell is a run of consecutive calendar days that all have data and all meet the condition. A missing day
   ends the spell (we can't tell whether it met the condition).
-- Month filter: only days in that month count, so spells are cut at month boundaries ("longest dry spell in
-  July"). Start year: only days from 1 January of that year count.
+- Month filter (rankings): any spell that overlaps the month or season is returned in full. Start year: only
+  days from 1 January of that year count.
+- All-time grid: a cell is the longest run of qualifying days that fall inside that month, calendar year, or
+  water year. A spell that crosses a boundary is clipped to the days inside the cell (20 December – 10 January
+  is 12 days in December and 10 in January), not counted at its full length in both.
 - Rain and wet-hour totals include today when today already meets the condition; temperatures and sunshine stop
   at yesterday, because a partial day isn't comparable.
 - Ranked by length (longest first); ties: most recent first, as elsewhere in the rankings.
@@ -189,3 +192,145 @@ def _fmt(s: dict) -> dict:
     t = lambda d: (d.year, d.month, d.day)
     return dict(start=t(s["start"]), end=t(s["end"]), length=s["length"], total=s["total"], mean=s["mean"],
                 max=s["max"], min=s["min"])
+
+
+def _period_end(year: int, month: int) -> date:
+    if month == 12:
+        return date(year, 12, 31)
+    return date(year, month + 1, 1) - timedelta(days=1)
+
+
+def _water_year_of(d: date) -> int:
+    """California / USGS label: the calendar year in which the Oct-Sep water year ends."""
+    return d.year + 1 if d.month >= 10 else d.year
+
+
+def _clip_days(start: date, end: date, lo: date, hi: date) -> Tuple[int, date, date]:
+    a = start if start > lo else lo
+    b = end if end < hi else hi
+    if a > b:
+        return 0, a, b
+    return (b - a).days + 1, a, b
+
+
+def _span_has_est(lo: date, hi: date, est_dates: Optional[set]) -> bool:
+    if not est_dates:
+        return False
+    d = lo
+    while d <= hi:
+        if d in est_dates:
+            return True
+        d += timedelta(days=1)
+    return False
+
+
+def _consider(lengths: dict, est_flags: dict, key, start: date, end: date, lo: date, hi: date,
+              est_dates: Optional[set]) -> None:
+    n, a, b = _clip_days(start, end, lo, hi)
+    if n <= 0:
+        return
+    est = _span_has_est(a, b, est_dates)
+    prev = lengths.get(key, 0)
+    if n > prev:
+        lengths[key] = n
+        est_flags[key] = est
+    elif n == prev and est:
+        est_flags[key] = True
+
+
+def _month_name(month: int) -> str:
+    return ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")[month - 1]
+
+
+def _dmy(d: date) -> str:
+    return "%s %s %s" % (d.day, _month_name(d.month), d.year)
+
+
+def _water_year_status(wy: int, today: Optional[date], first_date: Optional[date]) -> str:
+    end = date(wy, 9, 30)
+    start = date(wy - 1, 10, 1)
+    if today is not None and today <= end:
+        return "current"
+    if first_date is not None and first_date > start:
+        return "partial"
+    return "complete"
+
+
+def _water_year_note(wy: int, status: str, today: Optional[date], first_date: Optional[date]) -> str:
+    if status == "current" and today is not None:
+        return "WY%s to date: 1 Oct %s – %s" % (wy, wy - 1, _dmy(today))
+    if status == "partial" and first_date is not None:
+        return "WY%s partial: records start %s" % (wy, _dmy(first_date))
+    return "WY%s: 1 Oct %s – 30 Sep %s" % (wy, wy - 1, wy)
+
+
+def _cell(period, length: int, est: bool) -> dict:
+    out = dict(m=period, val=length)
+    if est:
+        out["est"] = True
+    return out
+
+
+def spell_grid(daily: Iterable[Tuple[date, Optional[float]]], var: str, typ: str, threshold: float,
+               direction: str = "above", today: Optional[date] = None,
+               est_dates: Optional[set] = None) -> dict:
+    """Longest qualifying spell, in days, inside each month, calendar year and water year.
+
+    Spells are the same runs as find_spells (consecutive calendar days meeting the
+    threshold, broken by a missing day). A spell that crosses a month, year or
+    water-year boundary contributes only the days that fall inside that cell.
+    Months, years and water years that have at least one daily value are included
+    (0 if no day met the condition). Periods with no data are omitted.
+
+    last-day rules match spell_ranking: rain / wet hours / rates may include today;
+    temperatures and sunshine stop at yesterday.
+    """
+    cfg = SPELL_VARS[(var, typ)]
+    stored = stored_threshold(var, typ, threshold)
+    last_day = None
+    if today is not None:
+        last_day = today if cfg.get("partial") else today - timedelta(days=1)
+    days = [(d, v) for d, v in daily if v is not None and (last_day is None or d <= last_day)]
+    spells = find_spells(days, stored, direction, last_day=last_day)
+
+    months_with_data, years_with_data, wys_with_data = set(), set(), set()
+    first_date = None
+    for d, _v in days:
+        months_with_data.add((d.year, d.month))
+        years_with_data.add(d.year)
+        wys_with_data.add(_water_year_of(d))
+        if first_date is None or d < first_date:
+            first_date = d
+
+    monthly, monthly_est = {k: 0 for k in months_with_data}, {}
+    yearly, yearly_est = {k: 0 for k in years_with_data}, {}
+    wateryear, wateryear_est = {k: 0 for k in wys_with_data}, {}
+
+    for s in spells:
+        start, end = s["start"], s["end"]
+        y, m = start.year, start.month
+        while date(y, m, 1) <= end:
+            _consider(monthly, monthly_est, (y, m), start, end, date(y, m, 1), _period_end(y, m), est_dates)
+            if m == 12:
+                y, m = y + 1, 1
+            else:
+                m += 1
+        for year in range(start.year, end.year + 1):
+            _consider(yearly, yearly_est, year, start, end, date(year, 1, 1), date(year, 12, 31), est_dates)
+        start_wy, end_wy = _water_year_of(start), _water_year_of(end)
+        for wy in range(start_wy, end_wy + 1):
+            _consider(wateryear, wateryear_est, wy, start, end, date(wy - 1, 10, 1), date(wy, 9, 30), est_dates)
+
+    monthly_rows = [_cell([y, m], monthly[(y, m)], monthly_est.get((y, m), False))
+                    for y, m in sorted(monthly)]
+    yearly_rows = [_cell(y, yearly[y], yearly_est.get(y, False)) for y in sorted(yearly)]
+    wateryear_rows = []
+    for wy in sorted(wateryear):
+        status = _water_year_status(wy, today, first_date)
+        row = _cell(wy, wateryear[wy], wateryear_est.get(wy, False))
+        row["status"] = status
+        row["note"] = _water_year_note(wy, status, today, first_date)
+        wateryear_rows.append(row)
+
+    first = [first_date.year, first_date.month, first_date.day] if first_date else None
+    return dict(monthly=monthly_rows, yearly=yearly_rows, wateryear=wateryear_rows, first_date=first)

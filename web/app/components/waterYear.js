@@ -145,16 +145,43 @@ export function completeWaterYearStats(waterYears) {
     };
 }
 
+function waterYearsFromSpellGrid(response) {
+    const rows = response?.result?.wateryear || [];
+    const firstDate = response?.result?.first_date || null;
+    const serverDate = response?.server?.date;
+    const waterYears = new Map();
+    for (const row of rows) {
+        waterYears.set(row.m, {
+            value: row.val,
+            status: row.status,
+            note: row.note,
+            est: !!row.est,
+        });
+    }
+    const currentWaterYear = serverDate ? waterYearOf(serverDate[0], serverDate[1]) : null;
+    return { waterYears, currentWaterYear, firstDate };
+}
+
 // Water-year summaries of daily rain totals (shared SWR key, so every report
 // page reuses one request). Returns null for variables without water years.
-export function useWaterYears(obs, summary, threshold, est) {
+// When summary is "spells", `spell` is { dir, threshold, dailyAggregation }
+// and the lengths come from /api/var/spells_grid (same request as the matrix).
+export function useWaterYears(obs, summary, threshold, est, spell = null) {
     const start = isEstOn(est) ? dataYearStart(est) + "0101" : WATER_YEAR_DATA_START;
-    const url = hasWaterYears(obs)
-        ? "/api/var/all_periods/" + obs + "/" + OBS.get(obs).summary + "/?start=" + start + "&include_today=1" + estQuery(est)
+    const spellUrl = hasWaterYears(obs) && summary === "spells" && spell
+        ? "/api/var/spells_grid/" + obs + "/" + spell.dailyAggregation
+            + "/?dir=" + spell.dir + "&threshold=" + spell.threshold
+            + "&start=" + start + estQuery(est)
         : null;
+    const url = spellUrl || (hasWaterYears(obs) && summary !== "spells"
+        ? "/api/var/all_periods/" + obs + "/" + OBS.get(obs).summary + "/?start=" + start + "&include_today=1" + estQuery(est)
+        : null);
     const { data: response, error } = useSWR(url, fetcher, { refreshInterval: 300000 });
     if (!url) {
         return null;
+    }
+    if (summary === "spells") {
+        return { ...waterYearsFromSpellGrid(response), response, error };
     }
     return { ...waterYearSummaries(response, summary, threshold), response, error };
 }
@@ -175,7 +202,7 @@ export function formatWaterYearValue(value, obs, unit, summary) {
     if (value == null) {
         return "-";
     }
-    if (summary === "count") {
+    if (summary === "count" || summary === "spells") {
         return Number.isInteger(value) ? value.toString() : value.toFixed(1);
     }
     return formatObs(unit, value, OBS.get(obs).fmat, false, false);

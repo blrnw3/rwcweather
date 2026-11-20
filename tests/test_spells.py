@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from rwcwx.calc.spells import find_spells, spell_ranking, stored_threshold
+from rwcwx.calc.spells import find_spells, spell_grid, spell_ranking, stored_threshold
 
 D0 = date(2024, 1, 1)
 
@@ -85,3 +85,97 @@ def test_metric_rain_thresholds_accepted_as_inches():
         inch_val = round(mm / 25.4, 4)
         assert inch_val in rain_thresholds
         assert stored_threshold("rain", "total", inch_val) == inch_val
+
+
+
+def _grid_val(rows, key):
+    for row in rows:
+        if row["m"] == key or (isinstance(key, list) and row["m"] == key):
+            return row["val"]
+    return None
+
+
+def test_spell_grid_clips_to_month_and_year():
+    # 20 Dec 2023 – 10 Jan 2024: all dry. Clip, do not count the full 22-day run in both months.
+    data = series([0] * 22, date(2023, 12, 20))
+    g = spell_grid(data, "rain", "total", 0.01, "below")
+    assert _grid_val(g["monthly"], [2023, 12]) == 12  # 20–31 Dec
+    assert _grid_val(g["monthly"], [2024, 1]) == 10   # 1–10 Jan
+    assert _grid_val(g["yearly"], 2023) == 12
+    assert _grid_val(g["yearly"], 2024) == 10
+    # The whole run sits in WY2024 (1 Oct 2023 – 30 Sep 2024).
+    assert _grid_val(g["wateryear"], 2024) == 22
+    assert _grid_val(g["wateryear"], 2025) is None
+
+
+def test_spell_grid_clips_across_water_year():
+    # 25 Sep – 10 Oct 2024: 6 days in WY2024, 10 days in WY2025.
+    data = series([0] * 16, date(2024, 9, 25))
+    g = spell_grid(data, "rain", "total", 0.01, "below")
+    assert _grid_val(g["monthly"], [2024, 9]) == 6
+    assert _grid_val(g["monthly"], [2024, 10]) == 10
+    assert _grid_val(g["yearly"], 2024) == 16
+    assert _grid_val(g["wateryear"], 2024) == 6
+    assert _grid_val(g["wateryear"], 2025) == 10
+
+
+def test_spell_grid_zero_when_month_has_data_but_no_match():
+    data = series([1, 1, 1], date(2024, 1, 1))
+    g = spell_grid(data, "rain", "total", 0.01, "below")
+    assert _grid_val(g["monthly"], [2024, 1]) == 0
+    assert _grid_val(g["yearly"], 2024) == 0
+    # A month with no rows at all is omitted (not a zero).
+    assert _grid_val(g["monthly"], [2024, 2]) is None
+
+
+def test_spell_grid_picks_longest_clipped_run_in_the_month():
+    # Jan 1-3 dry, Jan 5-20 dry (16 days), then a 5-day run from 31 Jan into February.
+    # Longest in January is 16, not 3 and not the clipped 1-day tail; February is 4 days.
+    vals = [0, 0, 0, 1] + [0] * 16 + [1] * 10 + [0] * 5  # Jan 1 .. Feb 4
+    data = series(vals, date(2024, 1, 1))
+    g = spell_grid(data, "rain", "total", 0.01, "below")
+    assert _grid_val(g["monthly"], [2024, 1]) == 16
+    assert _grid_val(g["monthly"], [2024, 2]) == 4
+    assert _grid_val(g["yearly"], 2024) == 16
+
+
+def test_spell_grid_temperature_excludes_today():
+    today = date(2024, 1, 4)
+    data = series([33, 33, 33, 33], date(2024, 1, 1))  # 33 °C is above 90 °F
+    g = spell_grid(data, "temp", "max", 90, "above", today=today)
+    assert _grid_val(g["monthly"], [2024, 1]) == 3
+
+
+def test_spell_grid_rain_includes_today():
+    today = date(2024, 1, 4)
+    data = series([0, 0, 0, 0], date(2024, 1, 1))
+    g = spell_grid(data, "rain", "total", 0.01, "below", today=today)
+    assert _grid_val(g["monthly"], [2024, 1]) == 4
+
+
+def test_spell_grid_est_flag_only_when_max_run_includes_estimated_day():
+    data = series([0] * 5 + [1] + [0] * 2, date(2024, 1, 1))
+    # Longest is Jan 1–5; an estimated day on the short later run should not flag the month.
+    g = spell_grid(data, "rain", "total", 0.01, "below", est_dates={date(2024, 1, 7)})
+    jan = next(r for r in g["monthly"] if r["m"] == [2024, 1])
+    assert jan["val"] == 5
+    assert "est" not in jan
+    # An estimated day inside the longest run does flag the cell.
+    g = spell_grid(data, "rain", "total", 0.01, "below", est_dates={date(2024, 1, 2)})
+    jan = next(r for r in g["monthly"] if r["m"] == [2024, 1])
+    assert jan["val"] == 5 and jan.get("est") is True
+
+
+def test_spell_grid_water_year_status_and_note():
+    data = series([0] * 10, date(2024, 10, 1))
+    g = spell_grid(data, "rain", "total", 0.01, "below", today=date(2024, 10, 15))
+    wy = next(r for r in g["wateryear"] if r["m"] == 2025)
+    assert wy["val"] == 10 and wy["status"] == "current"
+    assert wy["note"] == "WY2025 to date: 1 Oct 2024 – 15 Oct 2024"
+
+    # A mid-year start after 1 Oct is a partial water year once that year has ended.
+    data = series([0] * 5, date(2020, 12, 27))
+    g = spell_grid(data, "rain", "total", 0.01, "below", today=date(2022, 1, 1))
+    wy = next(r for r in g["wateryear"] if r["m"] == 2021)
+    assert wy["status"] == "partial"
+    assert wy["note"] == "WY2021 partial: records start 27 Dec 2020"
