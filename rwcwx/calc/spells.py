@@ -12,12 +12,14 @@ Rules:
   ends the spell (we can't tell whether it met the condition).
 - Month filter (rankings): any spell that overlaps the month or season is returned in full. Start year: only
   days from 1 January of that year count.
-- All-time grid: a cell is the longest qualifying spell (full length, in days) that either fully covers that
-  month, calendar year or water year, or has its midpoint in that period. Midpoint is start + (length-1)//2,
-  the earlier middle day when the length is even. A spell that crosses a boundary is counted at its full
-  length (so a 22-day run from 20 December to 10 January, midpoint 30 December, is 22 in December and 0 in
-  January). An ongoing spell (ending on the latest eligible day) is counted at its length so far; for the
-  current in-progress period, "fully covers" means covering the period to date.
+- All-time grid: each spell has one home period of each kind (month, calendar year, water year) — the
+  period it overlaps the most, with ties broken by the period that contains its midpoint
+  (start + (length-1)//2, the earlier middle day when the length is even). If the midpoint is not in any
+  tied period, the earliest of those periods is used. In its home period the spell counts at full length;
+  in every other period it touches, only the days inside that period are counted. The cell is the maximum
+  of those candidate values. A cell whose value comes from a spell that crosses the period boundary is
+  marked shared (asterisk). An ongoing spell (ending on the latest eligible day) is counted at its length
+  so far.
 - Rain and wet-hour totals include today when today already meets the condition; temperatures and sunshine stop
   at yesterday, because a partial day isn't comparable.
 - Ranked by length (longest first); ties: most recent first, as elsewhere in the rankings.
@@ -220,14 +222,84 @@ def _effective_hi(lo: date, hi: date, last_day: Optional[date]) -> date:
     return hi
 
 
-def _qualifies(start: date, end: date, length: int, lo: date, hi: date) -> bool:
-    """True if the spell fully covers [lo, hi] or its midpoint falls in that span."""
-    if end < lo or start > hi:
-        return False
-    if start <= lo and end >= hi:
-        return True
+def _overlap_days(start: date, end: date, lo: date, hi: date) -> int:
+    """Inclusive days of [start, end] that fall inside [lo, hi]."""
+    a = max(start, lo)
+    b = min(end, hi)
+    if b < a:
+        return 0
+    return (b - a).days + 1
+
+
+def _month_periods(start: date, end: date):
+    y, m = start.year, start.month
+    periods = []
+    while date(y, m, 1) <= end:
+        periods.append(((y, m), date(y, m, 1), _period_end(y, m)))
+        if m == 12:
+            y, m = y + 1, 1
+        else:
+            m += 1
+    return periods
+
+
+def _year_periods(start: date, end: date):
+    return [(year, date(year, 1, 1), date(year, 12, 31)) for year in range(start.year, end.year + 1)]
+
+
+def _water_year_periods(start: date, end: date):
+    return [(wy, date(wy - 1, 10, 1), date(wy, 9, 30))
+            for wy in range(_water_year_of(start), _water_year_of(end) + 1)]
+
+
+def _home_key(start: date, length: int, active):
+    """Period with the most overlap; ties go to the one containing the midpoint, else the earliest."""
     mid = _midpoint(start, length)
-    return lo <= mid <= hi
+    best_ov = -1
+    candidates = []
+    for item in active:
+        ov = item[4]
+        if ov > best_ov:
+            best_ov = ov
+            candidates = [item]
+        elif ov == best_ov:
+            candidates.append(item)
+    for item in candidates:
+        lo, hi = item[1], item[2]
+        if lo <= mid <= hi:
+            return item[0]
+    return candidates[0][0]
+
+
+def _apply(lengths: dict, est_flags: dict, extends: dict, key, value: int, est: bool, crosses: bool) -> None:
+    prev = lengths.get(key, 0)
+    if value > prev:
+        lengths[key] = value
+        est_flags[key] = est
+        extends[key] = crosses
+    elif value == prev and value > 0:
+        if est:
+            est_flags[key] = True
+        if crosses:
+            extends[key] = True
+
+
+def _assign(lengths: dict, est_flags: dict, extends: dict, start: date, end: date, length: int,
+            periods, last_day: Optional[date], est_dates: Optional[set]) -> None:
+    active = []
+    for key, lo, hi in periods:
+        ehi = _effective_hi(lo, hi, last_day)
+        ov = _overlap_days(start, end, lo, ehi)
+        if ov > 0:
+            active.append((key, lo, hi, ehi, ov))
+    if not active:
+        return
+    home = _home_key(start, length, active)
+    est = _span_has_est(start, end, est_dates)
+    for key, lo, hi, ehi, ov in active:
+        value = length if key == home else ov
+        crosses = start < lo or end > hi
+        _apply(lengths, est_flags, extends, key, value, est, crosses)
 
 
 def _span_has_est(lo: date, hi: date, est_dates: Optional[set]) -> bool:
@@ -239,21 +311,6 @@ def _span_has_est(lo: date, hi: date, est_dates: Optional[set]) -> bool:
             return True
         d += timedelta(days=1)
     return False
-
-
-def _consider(lengths: dict, est_flags: dict, assigned: dict, key, start: date, end: date, length: int,
-              lo: date, hi: date, last_day: Optional[date], est_dates: Optional[set]) -> None:
-    hi = _effective_hi(lo, hi, last_day)
-    if not _qualifies(start, end, length, lo, hi):
-        return
-    est = _span_has_est(start, end, est_dates)
-    prev = lengths.get(key, 0)
-    if length > prev:
-        lengths[key] = length
-        est_flags[key] = est
-        assigned[key] = (start, end)
-    elif length == prev and est:
-        est_flags[key] = True
 
 
 def _month_name(month: int) -> str:
@@ -291,33 +348,28 @@ def _cell(period, length: int, est: bool, shared: bool = False) -> dict:
     return out
 
 
-def _shared_keys(assigned: dict) -> set:
-    """Keys whose assigned spell also qualifies in another period of the same kind."""
-    counts = {}
-    for ident in assigned.values():
-        counts[ident] = counts.get(ident, 0) + 1
-    return {key for key, ident in assigned.items() if counts[ident] > 1}
-
-
 def spell_grid(daily: Iterable[Tuple[date, Optional[float]]], var: str, typ: str, threshold: float,
                direction: str = "above", today: Optional[date] = None,
                est_dates: Optional[set] = None) -> dict:
-    """Longest qualifying spell (full length, in days) for each month, calendar year and water year.
+    """Longest spell length (days) for each month, calendar year and water year.
 
     Spells are the same runs as find_spells (consecutive calendar days meeting the
-    threshold, broken by a missing day). A spell counts in a period at its full
-    length if it fully covers that period, or if its midpoint (start + (length-1)//2)
-    falls in the period. Months, years and water years that have at least one daily
-    value are included (0 if no spell qualifies). Periods with no data are omitted.
-    A cell whose assigned spell also counts in another period of the same kind
-    (month, calendar year, or water year) is marked shared, so the grid can show
-    a trailing asterisk.
+    threshold, broken by a missing day). Each spell has one home period of each
+    kind: the month / calendar year / water year it overlaps the most, with ties
+    broken by the period that contains its midpoint (start + (length-1)//2). In
+    its home period it counts at full length; in every other period it touches,
+    only the days inside that period are counted. The cell value is the maximum
+    of those candidates. Months, years and water years that have at least one
+    daily value are included (0 if no spell qualifies). Periods with no data are
+    omitted.
+
+    A cell whose value comes from a spell that crosses that period's boundary is
+    marked shared, so the grid can show a trailing asterisk (both the full-length
+    home spell and truncated portions of a spell homed elsewhere).
 
     An ongoing spell ending on the latest eligible day is counted at its length so
-    far; "fully covers" for the current in-progress period means covering it to date.
-
-    last-day rules match spell_ranking: rain / wet hours / rates may include today;
-    temperatures and sunshine stop at yesterday.
+    far. last-day rules match spell_ranking: rain / wet hours / rates may include
+    today; temperatures and sunshine stop at yesterday.
     """
     cfg = SPELL_VARS[(var, typ)]
     stored = stored_threshold(var, typ, threshold)
@@ -336,39 +388,28 @@ def spell_grid(daily: Iterable[Tuple[date, Optional[float]]], var: str, typ: str
         if first_date is None or d < first_date:
             first_date = d
 
-    monthly, monthly_est, monthly_who = {k: 0 for k in months_with_data}, {}, {}
-    yearly, yearly_est, yearly_who = {k: 0 for k in years_with_data}, {}, {}
-    wateryear, wateryear_est, wateryear_who = {k: 0 for k in wys_with_data}, {}, {}
+    monthly, monthly_est, monthly_ext = {k: 0 for k in months_with_data}, {}, {}
+    yearly, yearly_est, yearly_ext = {k: 0 for k in years_with_data}, {}, {}
+    wateryear, wateryear_est, wateryear_ext = {k: 0 for k in wys_with_data}, {}, {}
 
     for s in spells:
         start, end, length = s["start"], s["end"], s["length"]
-        y, m = start.year, start.month
-        while date(y, m, 1) <= end:
-            _consider(monthly, monthly_est, monthly_who, (y, m), start, end, length,
-                      date(y, m, 1), _period_end(y, m), last_day, est_dates)
-            if m == 12:
-                y, m = y + 1, 1
-            else:
-                m += 1
-        for year in range(start.year, end.year + 1):
-            _consider(yearly, yearly_est, yearly_who, year, start, end, length,
-                      date(year, 1, 1), date(year, 12, 31), last_day, est_dates)
-        start_wy, end_wy = _water_year_of(start), _water_year_of(end)
-        for wy in range(start_wy, end_wy + 1):
-            _consider(wateryear, wateryear_est, wateryear_who, wy, start, end, length,
-                      date(wy - 1, 10, 1), date(wy, 9, 30), last_day, est_dates)
+        _assign(monthly, monthly_est, monthly_ext, start, end, length,
+                _month_periods(start, end), last_day, est_dates)
+        _assign(yearly, yearly_est, yearly_ext, start, end, length,
+                _year_periods(start, end), last_day, est_dates)
+        _assign(wateryear, wateryear_est, wateryear_ext, start, end, length,
+                _water_year_periods(start, end), last_day, est_dates)
 
-    monthly_shared, yearly_shared, wateryear_shared = (
-        _shared_keys(monthly_who), _shared_keys(yearly_who), _shared_keys(wateryear_who))
     monthly_rows = [_cell([y, m], monthly[(y, m)], monthly_est.get((y, m), False),
-                          (y, m) in monthly_shared)
+                          monthly_ext.get((y, m), False))
                     for y, m in sorted(monthly)]
-    yearly_rows = [_cell(y, yearly[y], yearly_est.get(y, False), y in yearly_shared)
+    yearly_rows = [_cell(y, yearly[y], yearly_est.get(y, False), yearly_ext.get(y, False))
                    for y in sorted(yearly)]
     wateryear_rows = []
     for wy in sorted(wateryear):
         status = _water_year_status(wy, today, first_date)
-        row = _cell(wy, wateryear[wy], wateryear_est.get(wy, False), wy in wateryear_shared)
+        row = _cell(wy, wateryear[wy], wateryear_est.get(wy, False), wateryear_ext.get(wy, False))
         row["status"] = status
         row["note"] = _water_year_note(wy, status, today, first_date)
         wateryear_rows.append(row)

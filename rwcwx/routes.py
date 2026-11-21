@@ -402,7 +402,8 @@ def var_spells_grid(var: str, typ: str):
     """
     Longest qualifying spell (days) in each month, calendar year and water year,
     e.g. /api/var/spells_grid/rain/total/?dir=below&threshold=0.01
-    A spell counts at its full length in a period if it fully covers that period or its midpoint falls in it.
+    Each spell counts at full length in its home period (most overlap, ties broken by midpoint)
+    and at the days inside the period in every other period it touches; the cell is the maximum.
     Query params: dir (above|below), threshold (one of the supported values),
     optional start (YYYYMMDD, inclusive).
     """
