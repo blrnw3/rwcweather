@@ -102,6 +102,8 @@ function useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spel
     const annual = new Map();
     const estMonths = new Map(); // year -> Set of month indices (0-11)
     const estYears = new Set();
+    const sharedMonths = new Map(); // year -> Set of month indices
+    const sharedYears = new Set();
 
     const markMonth = (year, monthIdx) => {
         if (!estMonths.has(year)) {
@@ -120,11 +122,20 @@ function useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spel
             if (result.est) {
                 markMonth(year, month - 1);
             }
+            if (result.shared) {
+                if (!sharedMonths.has(year)) {
+                    sharedMonths.set(year, new Set());
+                }
+                sharedMonths.get(year).add(month - 1);
+            }
         }
         for (const result of results.yearly || []) {
             annual.set(result.m, result.val);
             if (result.est) {
                 estYears.add(result.m);
+            }
+            if (result.shared) {
+                sharedYears.add(result.m);
             }
         }
     } else if (summary === "count") {
@@ -168,15 +179,17 @@ function useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spel
         }
     }
 
-    return { matrix, annual, estMonths, estYears, currentYear, currentMonth, response, error, isValidating };
+    return { matrix, annual, estMonths, estYears, sharedMonths, sharedYears,
+        currentYear, currentMonth, response, error, isValidating };
 }
 
-function formatCell(summary, unit, value, fmat) {
+function formatCell(summary, unit, value, fmat, shared = false) {
     if (value == null) {
         return "-";
     }
     if (isDayLength(summary)) {
-        return formatSpellLength(value);
+        const text = formatSpellLength(value);
+        return summary === "spells" && shared ? text + "*" : text;
     }
     return formatObs(unit, value, fmat, false, false);
 }
@@ -185,7 +198,7 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold, est, dir, sp
     const obsObj = OBS.get(obs);
     const fmat = fmatForObs(obs, dailyAggregation);
     const unit = useContext(UnitCtx);
-    const { matrix, annual, estMonths, estYears, currentYear, currentMonth, response, error, isValidating }
+    const { matrix, annual, estMonths, estYears, sharedMonths, sharedYears, currentYear, currentMonth, response, error, isValidating }
         = useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spellThreshold);
     // Rain also gets a water-year column; from October the in-progress water
     // year ends next calendar year, so it needs its own (otherwise future) row.
@@ -220,7 +233,8 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold, est, dir, sp
                     const isFuture = year > currentYear || (year === currentYear && month > currentMonth);
                     const hasValue = matrix.get(year)?.has(month);
                     const value = hasValue ? matrix.get(year).get(month) : null;
-                    const formattedValue = formatCell(summary, unit, value, fmat);
+                    const formattedValue = formatCell(summary, unit, value, fmat,
+                        !!sharedMonths.get(year)?.has(month));
                     const { bg, col } = isFuture
                         ? { bg: "gray.200", col: "black" }
                         : styleForReportValue(value, fmat, unit, summary, false, true);
@@ -244,7 +258,8 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold, est, dir, sp
                     const hasValue = annual.has(year);
                     const value = hasValue ? annual.get(year) : null;
                     const isFuture = year > currentYear;
-                    const formattedValue = isFuture ? "" : formatCell(summary, unit, value, fmat);
+                    const formattedValue = isFuture ? "" : formatCell(summary, unit, value, fmat,
+                        !!sharedYears.has(year));
                     const { bg, col } = isFuture
                         ? { bg: "gray.200", col: "black" }
                         : styleForReportValue(value, fmat, unit, summary, true);
@@ -572,6 +587,9 @@ export default function AllTimeReport() {
                 An ongoing spell, still running on the latest eligible day, is counted at its length so far
                 (and may qualify for the current period by covering it to date). Rain and wet hours may
                 include today; temperatures and sunshine stop at yesterday.
+            </Text>
+            <Text mt="2">
+                * spell crosses a period boundary and is counted in more than one period.
             </Text>
             <Text mt="2">
                 The table above compares the same month (or full year) across years: its min, max and average

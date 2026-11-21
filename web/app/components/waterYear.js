@@ -156,6 +156,7 @@ function waterYearsFromSpellGrid(response) {
             status: row.status,
             note: row.note,
             est: !!row.est,
+            shared: !!row.shared,
         });
     }
     const currentWaterYear = serverDate ? waterYearOf(serverDate[0], serverDate[1]) : null;
@@ -222,6 +223,7 @@ export function WaterYearCell({ waterYear, data, obs, unit, summary, showClimate
     const info = data?.waterYears.get(waterYear);
     const value = info ? info.value : null;
     const flagged = info && info.status !== "complete";
+    const starred = flagged || (summary === "spells" && !!info?.shared);
     const { bg, col } = styleForReportValue(value, OBS.get(obs).fmat, unit, summary, true);
 
     return <Box className={"cell water-year" + (flagged ? " partial" : "")}
@@ -237,7 +239,7 @@ export function WaterYearCell({ waterYear, data, obs, unit, summary, showClimate
         py="2"
         px="1"
     >
-        <EstMark est={!flagged && info?.est}>{formatWaterYearValue(value, obs, unit, summary)}{flagged ? "*" : ""}</EstMark>
+        <EstMark est={!flagged && info?.est}>{formatWaterYearValue(value, obs, unit, summary)}{starred ? "*" : ""}</EstMark>
         {showClimate && <ClimateAnom value={value} normal={waterYearClimateNormal(info, obs)} obs={obs} stat="total" unit={unit} />}
     </Box>;
 }

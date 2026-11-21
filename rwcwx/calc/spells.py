@@ -241,7 +241,7 @@ def _span_has_est(lo: date, hi: date, est_dates: Optional[set]) -> bool:
     return False
 
 
-def _consider(lengths: dict, est_flags: dict, key, start: date, end: date, length: int,
+def _consider(lengths: dict, est_flags: dict, assigned: dict, key, start: date, end: date, length: int,
               lo: date, hi: date, last_day: Optional[date], est_dates: Optional[set]) -> None:
     hi = _effective_hi(lo, hi, last_day)
     if not _qualifies(start, end, length, lo, hi):
@@ -251,6 +251,7 @@ def _consider(lengths: dict, est_flags: dict, key, start: date, end: date, lengt
     if length > prev:
         lengths[key] = length
         est_flags[key] = est
+        assigned[key] = (start, end)
     elif length == prev and est:
         est_flags[key] = True
 
@@ -281,11 +282,21 @@ def _water_year_note(wy: int, status: str, today: Optional[date], first_date: Op
     return "WY%s: 1 Oct %s – 30 Sep %s" % (wy, wy - 1, wy)
 
 
-def _cell(period, length: int, est: bool) -> dict:
+def _cell(period, length: int, est: bool, shared: bool = False) -> dict:
     out = dict(m=period, val=length)
     if est:
         out["est"] = True
+    if shared:
+        out["shared"] = True
     return out
+
+
+def _shared_keys(assigned: dict) -> set:
+    """Keys whose assigned spell also qualifies in another period of the same kind."""
+    counts = {}
+    for ident in assigned.values():
+        counts[ident] = counts.get(ident, 0) + 1
+    return {key for key, ident in assigned.items() if counts[ident] > 1}
 
 
 def spell_grid(daily: Iterable[Tuple[date, Optional[float]]], var: str, typ: str, threshold: float,
@@ -298,6 +309,9 @@ def spell_grid(daily: Iterable[Tuple[date, Optional[float]]], var: str, typ: str
     length if it fully covers that period, or if its midpoint (start + (length-1)//2)
     falls in the period. Months, years and water years that have at least one daily
     value are included (0 if no spell qualifies). Periods with no data are omitted.
+    A cell whose assigned spell also counts in another period of the same kind
+    (month, calendar year, or water year) is marked shared, so the grid can show
+    a trailing asterisk.
 
     An ongoing spell ending on the latest eligible day is counted at its length so
     far; "fully covers" for the current in-progress period means covering it to date.
@@ -322,35 +336,39 @@ def spell_grid(daily: Iterable[Tuple[date, Optional[float]]], var: str, typ: str
         if first_date is None or d < first_date:
             first_date = d
 
-    monthly, monthly_est = {k: 0 for k in months_with_data}, {}
-    yearly, yearly_est = {k: 0 for k in years_with_data}, {}
-    wateryear, wateryear_est = {k: 0 for k in wys_with_data}, {}
+    monthly, monthly_est, monthly_who = {k: 0 for k in months_with_data}, {}, {}
+    yearly, yearly_est, yearly_who = {k: 0 for k in years_with_data}, {}, {}
+    wateryear, wateryear_est, wateryear_who = {k: 0 for k in wys_with_data}, {}, {}
 
     for s in spells:
         start, end, length = s["start"], s["end"], s["length"]
         y, m = start.year, start.month
         while date(y, m, 1) <= end:
-            _consider(monthly, monthly_est, (y, m), start, end, length,
+            _consider(monthly, monthly_est, monthly_who, (y, m), start, end, length,
                       date(y, m, 1), _period_end(y, m), last_day, est_dates)
             if m == 12:
                 y, m = y + 1, 1
             else:
                 m += 1
         for year in range(start.year, end.year + 1):
-            _consider(yearly, yearly_est, year, start, end, length,
+            _consider(yearly, yearly_est, yearly_who, year, start, end, length,
                       date(year, 1, 1), date(year, 12, 31), last_day, est_dates)
         start_wy, end_wy = _water_year_of(start), _water_year_of(end)
         for wy in range(start_wy, end_wy + 1):
-            _consider(wateryear, wateryear_est, wy, start, end, length,
+            _consider(wateryear, wateryear_est, wateryear_who, wy, start, end, length,
                       date(wy - 1, 10, 1), date(wy, 9, 30), last_day, est_dates)
 
-    monthly_rows = [_cell([y, m], monthly[(y, m)], monthly_est.get((y, m), False))
+    monthly_shared, yearly_shared, wateryear_shared = (
+        _shared_keys(monthly_who), _shared_keys(yearly_who), _shared_keys(wateryear_who))
+    monthly_rows = [_cell([y, m], monthly[(y, m)], monthly_est.get((y, m), False),
+                          (y, m) in monthly_shared)
                     for y, m in sorted(monthly)]
-    yearly_rows = [_cell(y, yearly[y], yearly_est.get(y, False)) for y in sorted(yearly)]
+    yearly_rows = [_cell(y, yearly[y], yearly_est.get(y, False), y in yearly_shared)
+                   for y in sorted(yearly)]
     wateryear_rows = []
     for wy in sorted(wateryear):
         status = _water_year_status(wy, today, first_date)
-        row = _cell(wy, wateryear[wy], wateryear_est.get(wy, False))
+        row = _cell(wy, wateryear[wy], wateryear_est.get(wy, False), wy in wateryear_shared)
         row["status"] = status
         row["note"] = _water_year_note(wy, status, today, first_date)
         wateryear_rows.append(row)

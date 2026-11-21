@@ -95,6 +95,13 @@ def _grid_val(rows, key):
     return None
 
 
+def _grid_row(rows, key):
+    for row in rows:
+        if row["m"] == key or (isinstance(key, list) and row["m"] == key):
+            return row
+    return None
+
+
 def test_spell_grid_dec_jan_assigned_by_midpoint():
     # 20 Dec 2023 – 10 Jan 2024: 22 dry days. Midpoint = 20 Dec + 10 = 30 Dec,
     # so the full 22-day length goes to December / 2023 / WY2024, not January.
@@ -227,3 +234,64 @@ def test_spell_grid_water_year_status_and_note():
     wy = next(r for r in g["wateryear"] if r["m"] == 2021)
     assert wy["status"] == "partial"
     assert wy["note"] == "WY2021 partial: records start 27 Dec 2020"
+
+
+
+def test_spell_grid_shared_when_same_spell_counts_in_several_months():
+    # 20 May – 10 July 2024: only June qualifies (fully covered), so June is not shared.
+    data = series([0] * 52, date(2024, 5, 20))
+    g = spell_grid(data, "rain", "total", 0.01, "below")
+    assert _grid_row(g["monthly"], [2024, 6])["val"] == 52
+    assert "shared" not in _grid_row(g["monthly"], [2024, 6])
+    assert "shared" not in (_grid_row(g["monthly"], [2024, 5]) or {})
+    assert "shared" not in (_grid_row(g["monthly"], [2024, 7]) or {})
+
+    # 1 May – 31 July 2024 fully covers May, June and July (92 days, midpoint 15 June).
+    data = series([0] * 92, date(2024, 5, 1))
+    g = spell_grid(data, "rain", "total", 0.01, "below")
+    for month in (5, 6, 7):
+        row = _grid_row(g["monthly"], [2024, month])
+        assert row["val"] == 92 and row.get("shared") is True
+    # The year is only 2024, so the annual cell is not shared.
+    assert _grid_row(g["yearly"], 2024)["val"] == 92
+    assert "shared" not in _grid_row(g["yearly"], 2024)
+
+
+def test_spell_grid_midpoint_only_month_is_not_shared():
+    # 20 Dec 2023 – 10 Jan 2024 goes only to December (midpoint 30 Dec). January is 0, not starred.
+    data = series([0] * 22, date(2023, 12, 20))
+    g = spell_grid(data, "rain", "total", 0.01, "below")
+    assert _grid_row(g["monthly"], [2023, 12])["val"] == 22
+    assert "shared" not in _grid_row(g["monthly"], [2023, 12])
+    assert _grid_row(g["monthly"], [2024, 1])["val"] == 0
+    assert "shared" not in _grid_row(g["monthly"], [2024, 1])
+    assert "shared" not in _grid_row(g["yearly"], 2023)
+    assert "shared" not in _grid_row(g["yearly"], 2024)
+
+
+def test_spell_grid_shared_across_calendar_years():
+    # 1 Jan 2023 – 31 Dec 2024 fully covers both calendar years.
+    data = series([0] * 731, date(2023, 1, 1))  # 2024 is a leap year
+    g = spell_grid(data, "rain", "total", 0.01, "below")
+    assert _grid_row(g["yearly"], 2023)["val"] == 731 and _grid_row(g["yearly"], 2023).get("shared") is True
+    assert _grid_row(g["yearly"], 2024)["val"] == 731 and _grid_row(g["yearly"], 2024).get("shared") is True
+
+
+def test_spell_grid_shared_across_water_years():
+    # 1 Oct 2022 – 30 Sep 2024 fully covers WY2023 and WY2024.
+    data = series([0] * 731, date(2022, 10, 1))  # includes 29 Feb 2024
+    g = spell_grid(data, "rain", "total", 0.01, "below")
+    assert _grid_row(g["wateryear"], 2023)["val"] == 731 and _grid_row(g["wateryear"], 2023).get("shared") is True
+    assert _grid_row(g["wateryear"], 2024)["val"] == 731 and _grid_row(g["wateryear"], 2024).get("shared") is True
+
+
+def test_spell_grid_ongoing_spell_shared_across_months():
+    # 1 Oct – 20 Nov, still running: both October and November-to-date get 51, so both are shared.
+    data = series([0] * 51, date(2024, 10, 1))
+    g = spell_grid(data, "rain", "total", 0.01, "below", today=date(2024, 11, 20))
+    assert _grid_row(g["monthly"], [2024, 10]).get("shared") is True
+    assert _grid_row(g["monthly"], [2024, 11]).get("shared") is True
+    assert _grid_row(g["monthly"], [2024, 10])["val"] == 51
+    # Only one calendar year / water year is involved.
+    assert "shared" not in _grid_row(g["yearly"], 2024)
+    assert "shared" not in _grid_row(g["wateryear"], 2025)
