@@ -81,8 +81,9 @@ for _key, _cs in CELSIUS_THRESHOLDS.items():
     SPELL_VARS[_key]["thresholds"] = tuple(sorted(set(SPELL_VARS[_key]["thresholds"]) | {c * 9 / 5 + 32 for c in _cs}))
 
 # Round mm (and mm/h) thresholds offered to metric users, accepted as their inch equivalents (rounded to 4 dp).
+# Rain totals also offer 1 mm and 2.5 mm (instead of 2 mm). 2 mm stays accepted so older links still work.
 MM_THRESHOLDS = {
-    ("rain", "total"): (0.2, 2, 5, 10, 25),
+    ("rain", "total"): (0.2, 1, 2, 2.5, 5, 10, 25),
     ("wetrate", "avg"): (0.5, 1, 2, 5),
     ("rain60", "max"): (1, 2, 5, 10),
     ("rain10", "max"): (0.5, 1, 2, 5),

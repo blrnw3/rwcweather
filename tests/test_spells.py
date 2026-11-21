@@ -81,7 +81,8 @@ def test_celsius_thresholds_accepted_as_fahrenheit():
 def test_metric_rain_thresholds_accepted_as_inches():
     from rwcwx.calc.spells import SPELL_VARS
     rain_thresholds = set(SPELL_VARS[("rain", "total")]["thresholds"])
-    for mm in (0.2, 2, 5, 10, 25):
+    # 1 mm and 2.5 mm are the current metric options; 2 mm remains accepted for older links.
+    for mm in (0.2, 1, 2, 2.5, 5, 10, 25):
         inch_val = round(mm / 25.4, 4)
         assert inch_val in rain_thresholds
         assert stored_threshold("rain", "total", inch_val) == inch_val
