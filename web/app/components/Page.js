@@ -158,7 +158,8 @@ function Header(props) {
 
 function SubHeader(props) {
   const carry = useCarryHref();
-  const subnav = (typeof(NAV.get(props.name)) === "string") ? new Map([]) : NAV.get(props.name);
+  const navEntry = NAV.get(props.name);
+  const subnav = (navEntry && typeof navEntry !== "string") ? navEntry : new Map([]);
   return <Flex id="subheader" bg="pliny.50" justify="space-between">
     <Flex>
       {" "}
