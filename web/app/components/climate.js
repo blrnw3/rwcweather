@@ -3,6 +3,7 @@ import NextLink from "next/link";
 import { CLIMATE_NORMALS } from "../data/climate";
 import { formatObs } from "../format";
 import { OBS } from "./conf";
+import { seasonMonths } from "./seasons";
 
 // Climate comparison, modelled on nw3weather: a value is followed, in brackets
 // on the line below, by how it compares with the long-term normal for the
@@ -77,6 +78,20 @@ export function monthlyNormals(obs, stat) {
 /** Normal for calendar month `month` (1-12). */
 export function monthlyNormal(obs, stat, month) {
     return normalsFor(obs, stat)?.monthly[month - 1] ?? null;
+}
+
+/** Seasonal normal: sum of monthly totals, or mean of monthly means. Winter uses Dec+Jan+Feb. */
+export function seasonalNormal(obs, stat, season) {
+    const months = seasonMonths(season);
+    if (!months.length) {
+        return null;
+    }
+    const vals = months.map((m) => monthlyNormal(obs, stat, m));
+    if (vals.some((v) => v == null)) {
+        return null;
+    }
+    const total = vals.reduce((a, b) => a + b, 0);
+    return isTotal(stat) ? total : total / vals.length;
 }
 
 export function annualNormal(obs, stat) {
