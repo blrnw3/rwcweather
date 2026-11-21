@@ -27,6 +27,17 @@ import {
     StatButtons,
     SunViewToggle,
 } from "../../components/report";
+import {
+    SPELL_OBS,
+    SpellKindSelector,
+    SpellThresholdSelector,
+    formatSpellLength,
+    hasSpellOptions,
+    spellDailyStats,
+    spellDefaultThreshold,
+    spellSummaryLabel,
+    spellThresholdsAny,
+} from "../../components/spells";
 import { formatObs } from "../../format";
 import { annualNormal, ClimateAnom, ClimateNormalsLink, ClimateNote, hasClimate, monthlyNormal, waterYearNormal } from "../../components/climate";
 import {
@@ -36,16 +47,51 @@ import {
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const months = Array.from(Array(12).keys());
 
-function useSummaries(obs, dailyAggregation, est) {
-    const url = "/api/var/all_periods/" + obs + "/" + dailyAggregation
-        + "/?start=" + dataYearStart(est) + "0101&include_today=1" + estQuery(est);
+function useSummaries(obs, dailyAggregation, est, enabled = true) {
+    const url = enabled
+        ? "/api/var/all_periods/" + obs + "/" + dailyAggregation
+            + "/?start=" + dataYearStart(est) + "0101&include_today=1" + estQuery(est)
+        : null;
     return useSWR(url, fetcher, { refreshInterval: 300000 });
+}
+
+function useSpellGrid(obs, dailyAggregation, dir, threshold, est, enabled = true) {
+    const url = enabled
+        ? "/api/var/spells_grid/" + obs + "/" + dailyAggregation
+            + "/?dir=" + dir + "&threshold=" + threshold
+            + "&start=" + dataYearStart(est) + "0101" + estQuery(est)
+        : null;
+    return useSWR(url, fetcher, { refreshInterval: 300000 });
+}
+
+function allTimeSummaryOptions(obs) {
+    return summaryOptions(obs, { spells: SPELL_OBS.includes(obs) });
+}
+
+function isDayLength(summary) {
+    return summary === "count" || summary === "spells";
+}
+
+function spellOpts(summary, dir, spellThreshold, dailyAggregation) {
+    return summary === "spells"
+        ? { dir, threshold: spellThreshold, dailyAggregation }
+        : null;
+}
+
+function defaultDailyFor(obs, summary) {
+    let typ = obs === "wind" || obs === "gust" ? "max" : defaultDailyStat(obs, OBS.get(obs).summary);
+    if (summary === "spells" && !hasSpellOptions(obs, typ)) {
+        typ = spellDailyStats(obs)[0] || typ;
+    }
+    return typ;
 }
 
 // Shared by the year-by-month matrix and the all-time summary so both always
 // show the same underlying values for the selected variable and statistics.
-function useMatrixData(obs, dailyAggregation, summary, threshold, est) {
-    const { data: response, error, isValidating } = useSummaries(obs, dailyAggregation, est);
+function useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spellThreshold) {
+    const summaries = useSummaries(obs, dailyAggregation, est, summary !== "spells");
+    const spells = useSpellGrid(obs, dailyAggregation, dir, spellThreshold, est, summary === "spells");
+    const { data: response, error, isValidating } = summary === "spells" ? spells : summaries;
     const results = response?.result || {};
     const serverDate = response?.server?.date || [new Date().getFullYear(), new Date().getMonth() + 1, 1];
     const currentYear = serverDate[0];
@@ -56,6 +102,8 @@ function useMatrixData(obs, dailyAggregation, summary, threshold, est) {
     const annual = new Map();
     const estMonths = new Map(); // year -> Set of month indices (0-11)
     const estYears = new Set();
+    const sharedMonths = new Map(); // year -> Set of month indices
+    const sharedYears = new Set();
 
     const markMonth = (year, monthIdx) => {
         if (!estMonths.has(year)) {
@@ -64,7 +112,33 @@ function useMatrixData(obs, dailyAggregation, summary, threshold, est) {
         estMonths.get(year).add(monthIdx);
     };
 
-    if (summary === "count") {
+    if (summary === "spells") {
+        for (const result of results.monthly || []) {
+            const [year, month] = result.m;
+            if (!matrix.has(year)) {
+                matrix.set(year, new Map());
+            }
+            matrix.get(year).set(month - 1, result.val);
+            if (result.est) {
+                markMonth(year, month - 1);
+            }
+            if (result.shared) {
+                if (!sharedMonths.has(year)) {
+                    sharedMonths.set(year, new Set());
+                }
+                sharedMonths.get(year).add(month - 1);
+            }
+        }
+        for (const result of results.yearly || []) {
+            annual.set(result.m, result.val);
+            if (result.est) {
+                estYears.add(result.m);
+            }
+            if (result.shared) {
+                sharedYears.add(result.m);
+            }
+        }
+    } else if (summary === "count") {
         const numericThreshold = Number(threshold);
         for (const result of results.daily || []) {
             const [year, month] = result.d;
@@ -105,18 +179,31 @@ function useMatrixData(obs, dailyAggregation, summary, threshold, est) {
         }
     }
 
-    return { matrix, annual, estMonths, estYears, currentYear, currentMonth, response, error, isValidating };
+    return { matrix, annual, estMonths, estYears, sharedMonths, sharedYears,
+        currentYear, currentMonth, response, error, isValidating };
 }
 
-function MonthlyMatrix({ obs, dailyAggregation, summary, threshold, est }) {
+function formatCell(summary, unit, value, fmat, shared = false) {
+    if (value == null) {
+        return "-";
+    }
+    if (isDayLength(summary)) {
+        const text = formatSpellLength(value);
+        return summary === "spells" && shared ? text + "*" : text;
+    }
+    return formatObs(unit, value, fmat, false, false);
+}
+
+function MonthlyMatrix({ obs, dailyAggregation, summary, threshold, est, dir, spellThreshold }) {
     const obsObj = OBS.get(obs);
     const fmat = fmatForObs(obs, dailyAggregation);
     const unit = useContext(UnitCtx);
-    const { matrix, annual, estMonths, estYears, currentYear, currentMonth, response, error, isValidating }
-        = useMatrixData(obs, dailyAggregation, summary, threshold, est);
+    const { matrix, annual, estMonths, estYears, sharedMonths, sharedYears, currentYear, currentMonth, response, error, isValidating }
+        = useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spellThreshold);
     // Rain also gets a water-year column; from October the in-progress water
     // year ends next calendar year, so it needs its own (otherwise future) row.
-    const waterYears = useWaterYears(obs, summary, threshold, est);
+    const waterYears = useWaterYears(obs, summary, threshold, est,
+        spellOpts(summary, dir, spellThreshold, dailyAggregation));
     const lastYear = Math.max(currentYear, waterYears?.currentWaterYear || currentYear);
     const years = Array.from(Array(lastYear - dataYearStart(est) + 1).keys())
         .map((offset) => lastYear - offset);
@@ -146,9 +233,8 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold, est }) {
                     const isFuture = year > currentYear || (year === currentYear && month > currentMonth);
                     const hasValue = matrix.get(year)?.has(month);
                     const value = hasValue ? matrix.get(year).get(month) : null;
-                    const formattedValue = summary === "count"
-                        ? (value == null ? "-" : value.toString())
-                        : formatObs(unit, value, fmat, false, false);
+                    const formattedValue = formatCell(summary, unit, value, fmat,
+                        !!sharedMonths.get(year)?.has(month));
                     const { bg, col } = isFuture
                         ? { bg: "gray.200", col: "black" }
                         : styleForReportValue(value, fmat, unit, summary, false, true);
@@ -172,9 +258,8 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold, est }) {
                     const hasValue = annual.has(year);
                     const value = hasValue ? annual.get(year) : null;
                     const isFuture = year > currentYear;
-                    const formattedValue = isFuture ? "" : summary === "count"
-                        ? (value == null ? "-" : value.toString())
-                        : formatObs(unit, value, fmat, false, false);
+                    const formattedValue = isFuture ? "" : formatCell(summary, unit, value, fmat,
+                        !!sharedYears.has(year));
                     const { bg, col } = isFuture
                         ? { bg: "gray.200", col: "black" }
                         : styleForReportValue(value, fmat, unit, summary, true);
@@ -256,16 +341,17 @@ function allTimeStats(matrix, annual, currentYear, currentMonth, estMonths, estY
     return { byMonth, annual: calcStats(annualValues) };
 }
 
-function AllTimeSummary({ obs, dailyAggregation, summary, threshold, est }) {
+function AllTimeSummary({ obs, dailyAggregation, summary, threshold, est, dir, spellThreshold }) {
     const obsObj = OBS.get(obs);
     const fmat = fmatForObs(obs, dailyAggregation);
     const unit = useContext(UnitCtx);
     const { matrix, annual, estMonths, estYears, currentYear, currentMonth, response, error, isValidating }
-        = useMatrixData(obs, dailyAggregation, summary, threshold, est);
+        = useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spellThreshold);
     const stats = allTimeStats(matrix, annual, currentYear, currentMonth, estMonths, estYears);
     // Same water-year column as the matrix (rain only), over complete water
     // years: the in-progress and any partial first water year are left out.
-    const waterYears = useWaterYears(obs, summary, threshold, est);
+    const waterYears = useWaterYears(obs, summary, threshold, est,
+        spellOpts(summary, dir, spellThreshold, dailyAggregation));
     const waterYearStats = waterYears ? completeWaterYearStats(waterYears.waterYears) : null;
 
     // Anomalies against the climate normal, same rule as the matrix (mean / total summary with normals).
@@ -283,8 +369,8 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold, est }) {
         if (value == null) {
             return "-";
         }
-        if (summary === "count") {
-            return key === "avg" ? value.toFixed(1) : value.toString();
+        if (isDayLength(summary)) {
+            return formatSpellLength(value, { average: key === "avg" });
         }
         return formatObs(unit, value, fmat, false, false);
     };
@@ -387,67 +473,144 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold, est }) {
 // Selections kept in the URL, e.g. /reports/alltime?var=rain&summary=count&threshold=0.1
 const ALLTIME_URL_STATE = {
     obs: { param: "var", def: () => "temp", valid: inList(MULTIDAY_OBS_STATES) },
+    // summary is resolved before daily so a Spells view can snap to a supported daily statistic.
+    summary: { def: (s) => OBS.get(s.obs).summary, valid: (v, s) => allTimeSummaryOptions(s.obs).includes(v) },
     dailyAggregation: {
-        param: "daily", def: (s) => s.obs === "wind" || s.obs === "gust" ? "max" : defaultDailyStat(s.obs, OBS.get(s.obs).summary), valid: (v, s) => dailyAggregationOptions(s.obs).includes(v),
+        param: "daily",
+        def: (s) => defaultDailyFor(s.obs, s.summary),
+        valid: (v, s) => s.summary === "spells" ? hasSpellOptions(s.obs, v) : dailyAggregationOptions(s.obs).includes(v),
     },
-    summary: { def: (s) => OBS.get(s.obs).summary, valid: (v, s) => summaryOptions(s.obs).includes(v) },
     threshold: {
         def: () => "0", valid: (v, s) => countThresholdsAny(s.obs).includes(v), use: (s) => s.summary === "count",
+    },
+    dir: { def: () => "above", valid: inList(["above", "below"]), use: (s) => s.summary === "spells" },
+    spellThreshold: {
+        param: "level",
+        def: (s) => spellDefaultThreshold(s.obs, s.dailyAggregation) || "0",
+        valid: (v, s) => spellThresholdsAny(s.obs, s.dailyAggregation).includes(v),
+        use: (s) => s.summary === "spells",
     },
     est: { def: () => "0", valid: (v) => v === "0" || v === "1" },
 };
 
+function AllTimeHeading({ obs, dailyAggregation, summary, dir, spellThreshold }) {
+    const unit = useContext(UnitCtx);
+    if (summary === "spells") {
+        return spellSummaryLabel(obs, dailyAggregation, dir, spellThreshold, unit)
+            + " – " + OBS.get(obs).name;
+    }
+    return SUMMARY_NAMES[summary] + " of " + dailyAggName(obs, dailyAggregation) + " " + OBS.get(obs).name;
+}
+
 export default function AllTimeReport() {
-    const [{ obs, dailyAggregation, summary, threshold, est }, update] = useUrlState(ALLTIME_URL_STATE);
-    const monthlySummaryOptions = summaryOptions(obs);
+    const [{ obs, dailyAggregation, summary, threshold, est, dir, spellThreshold }, update] = useUrlState(ALLTIME_URL_STATE);
+    const monthlySummaryOptions = allTimeSummaryOptions(obs);
 
     // Switching variable resets the daily statistic and threshold; a Mean/Total
-    // summary follows the new variable (Min/Max/Count are kept).
-    const handleObsChange = (nextObs, nextStat) => update({
-        obs: nextObs,
-        dailyAggregation: nextStat || (nextObs === "wind" ? "max" : defaultDailyStat(nextObs, OBS.get(nextObs).summary)),
-        threshold: "0",
-        // Totals (rain amount, wet hours) open on Total, as in the rankings; otherwise keep min/max/count.
-        summary: isTotalObs(nextObs) || summary === "avg" || summary === "total" ? OBS.get(nextObs).summary : summary,
+    // summary follows the new variable (Min/Max/Count are kept). Spells is kept
+    // when the new variable has spell options.
+    const handleObsChange = (nextObs, nextStat) => {
+        const keepSpells = summary === "spells" && SPELL_OBS.includes(nextObs);
+        let nextDaily = nextStat || defaultDailyFor(nextObs, keepSpells ? "spells" : summary);
+        if (keepSpells && !hasSpellOptions(nextObs, nextDaily)) {
+            nextDaily = spellDailyStats(nextObs)[0] || nextDaily;
+        }
+        update({
+            obs: nextObs,
+            dailyAggregation: nextDaily,
+            threshold: "0",
+            summary: keepSpells ? "spells"
+                : (isTotalObs(nextObs) || summary === "avg" || summary === "total" ? OBS.get(nextObs).summary : summary),
+            spellThreshold: spellDefaultThreshold(nextObs, nextDaily) || spellThreshold,
+        });
+    };
+    const setDailyAggregation = (value) => update({
+        dailyAggregation: value,
+        ...(summary === "spells" ? { spellThreshold: spellDefaultThreshold(obs, value) } : {}),
     });
-    const setDailyAggregation = (value) => update({ dailyAggregation: value });
-    const setSummary = (value) => update({ summary: value });
+    const setSummary = (value) => {
+        const nextDaily = value === "spells" && !hasSpellOptions(obs, dailyAggregation)
+            ? (spellDailyStats(obs)[0] || dailyAggregation)
+            : dailyAggregation;
+        update({
+            summary: value,
+            dailyAggregation: nextDaily,
+            ...(value === "spells" ? { spellThreshold: spellDefaultThreshold(obs, nextDaily) } : {}),
+        });
+    };
     const setThreshold = (value) => update({ threshold: value });
+    const setDir = (value) => update({ dir: value });
+    const setSpellThreshold = (value) => update({ spellThreshold: value });
 
     return <Page name="reports" sub="all-time" title="Reports | all-time">
         <Heading as="h1" size="1">Reports: All-time</Heading>
         <Heading as="h2" size="2">
-            {SUMMARY_NAMES[summary]} of {dailyAggName(obs, dailyAggregation)} {OBS.get(obs).name}
+            <AllTimeHeading obs={obs} dailyAggregation={dailyAggregation} summary={summary}
+                dir={dir} spellThreshold={spellThreshold} />
         </Heading>
         <ClimateNormalsLink />
 
         <Text fontWeight="bold">Variable:</Text>
-        <RadioButtonGroup name="obs" value={baseObs(obs)} options={DAILY_VALUE_OBS_OPTIONS} optFormat={fmatObsOpt} fn={handleObsChange} />
+        <RadioButtonGroup name="obs" value={baseObs(obs)}
+            options={summary === "spells" ? DAILY_VALUE_OBS_OPTIONS.filter((v) => SPELL_OBS.includes(v)) : DAILY_VALUE_OBS_OPTIONS}
+            optFormat={fmatObsOpt} fn={handleObsChange} />
         <SunViewToggle obs={obs} stat={dailyAggregation} fn={handleObsChange} multiDay />
-        <StatButtons name="daily-aggregation" label="Daily statistic:" obs={obs} stat={dailyAggregation} options={dailyAggregationOptions}
+        <StatButtons name="daily-aggregation" label="Daily statistic:" obs={obs} stat={dailyAggregation}
+            options={summary === "spells"
+                ? (o) => dailyAggregationOptions(o).filter((s) => hasSpellOptions(o, s))
+                : dailyAggregationOptions}
             optFormat={(value) => DAILY_AGGREGATION_NAMES[value]} fn={setDailyAggregation} onObs={handleObsChange}
-            allowObs={(v) => MULTIDAY_OBS_STATES.includes(v)} />
+            allowObs={(v) => summary === "spells" ? SPELL_OBS.includes(v) : MULTIDAY_OBS_STATES.includes(v)} />
         <Text mt="1" fontWeight="bold">Monthly and annual summary:</Text>
         <RadioButtonGroup name="summary" value={summary} options={monthlySummaryOptions} optFormat={(value) => SUMMARY_NAMES[value]} fn={setSummary} />
         {summary === "count" && <CountThresholdSelector obs={obs} value={threshold} fn={setThreshold} />}
+        {summary === "spells" && <>
+            <SpellKindSelector obs={obs} dir={dir} fn={setDir} />
+            <SpellThresholdSelector obs={obs} dailyAggregation={dailyAggregation} value={spellThreshold} fn={setSpellThreshold} />
+        </>}
         <EstToggle value={est} onChange={(v) => update({ est: v })} />
 
-        <MonthlyMatrix obs={obs} dailyAggregation={dailyAggregation} summary={summary} threshold={threshold} est={est} />
+        <MonthlyMatrix obs={obs} dailyAggregation={dailyAggregation} summary={summary} threshold={threshold} est={est}
+            dir={dir} spellThreshold={spellThreshold} />
 
         <Heading as="h3" size="3" mt="6">Min, max and average across all years</Heading>
-        <AllTimeSummary obs={obs} dailyAggregation={dailyAggregation} summary={summary} threshold={threshold} est={est} />
+        <AllTimeSummary obs={obs} dailyAggregation={dailyAggregation} summary={summary} threshold={threshold} est={est}
+            dir={dir} spellThreshold={spellThreshold} />
 
-        <Text mt="3">
-            Choose a daily series first, then summarize those daily values independently for each month and year.
-            Count is the number of selected daily values above the chosen threshold. Rainfall uses daily totals.
-        </Text>
-        <Text mt="2">
-            The table above compares the same month (or full year) across years: its min, max and average are
-            taken over the values in the matrix. Years with no data for a month are ignored rather than counted as
-            zero. The current, still in-progress month and year are excluded so partial data does not skew the results;
-            for rain, the Water yr column likewise covers complete water years only (in-progress and partial
-            water years are excluded).
-        </Text>
+        {summary === "spells" ? <>
+            <Text mt="3">
+                Each cell is the longest spell of the chosen kind, in days, that either fully covers that
+                month, calendar year or water year, or has its midpoint in that period. The midpoint is the
+                earlier middle day when the length is even. A spell that crosses a boundary is counted at its
+                full length in every period it covers or whose midpoint it falls in. A period with
+                observations but no such spell is 0. A missing day ends the spell, as on the spells ranking.
+                An ongoing spell, still running on the latest eligible day, is counted at its length so far
+                (and may qualify for the current period by covering it to date). Rain and wet hours may
+                include today; temperatures and sunshine stop at yesterday.
+            </Text>
+            <Text mt="2">
+                * spell crosses a period boundary and is counted in more than one period.
+            </Text>
+            <Text mt="2">
+                The table above compares the same month (or full year) across years: its min, max and average
+                are taken over the spell lengths in the matrix. Years with no data for a month are ignored
+                rather than counted as zero. The current, still in-progress month and year are excluded so
+                partial spells do not skew the results; for rain, the Water yr column likewise covers complete
+                water years only (in-progress and partial water years are excluded).
+            </Text>
+        </> : <>
+            <Text mt="3">
+                Choose a daily series first, then summarize those daily values independently for each month and year.
+                Count is the number of selected daily values above the chosen threshold. Rainfall uses daily totals.
+            </Text>
+            <Text mt="2">
+                The table above compares the same month (or full year) across years: its min, max and average are
+                taken over the values in the matrix. Years with no data for a month are ignored rather than counted as
+                zero. The current, still in-progress month and year are excluded so partial data does not skew the results;
+                for rain, the Water yr column likewise covers complete water years only (in-progress and partial
+                water years are excluded).
+            </Text>
+        </>}
       <DerivedVarNote obs={obs} mt="3" />
     </Page>;
 }

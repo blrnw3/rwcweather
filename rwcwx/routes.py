@@ -11,7 +11,7 @@ from rwcwx.astronomy import get_all_times_rwc, getTimes
 from rwcwx.calc.avg_extreme import (
     AvgExtAggregator, MonthSummary, DaySummary, YearSummary, WaterYearRainSummary, DayOfYearSummary,
 )
-from rwcwx.calc.spells import DIRECTIONS, SPELL_VARS, spell_ranking, supported as spells_supported
+from rwcwx.calc.spells import DIRECTIONS, SPELL_VARS, spell_grid, spell_ranking, supported as spells_supported
 from rwcwx.calc import anom_spells as anom_spells_mod
 from rwcwx.calc.rolling import (
     ROLLING_DAYS, ROLLING_VARS, SEASONS, min_days_required, rolling_ranking_with_current,
@@ -396,6 +396,51 @@ def var_spells(var: str, typ: str):
 @lru_cache(maxsize=128)
 def _spells_cached(var, typ, threshold, direction, month, start_year, limit, today: date, _bucket: int, est: bool = False) -> dict:
     return spell_ranking(_daily_values(var, typ, est=est), var, typ, threshold, direction, month, start_year, limit, today)
+
+
+def var_spells_grid(var: str, typ: str):
+    """
+    Longest qualifying spell (days) in each month, calendar year and water year,
+    e.g. /api/var/spells_grid/rain/total/?dir=below&threshold=0.01
+    A spell counts at its full length in a period if it fully covers that period or its midpoint falls in it.
+    Query params: dir (above|below), threshold (one of the supported values),
+    optional start (YYYYMMDD, inclusive).
+    """
+    cfg = SPELL_VARS.get((var, typ))
+    try:
+        threshold = float(request.args.get("threshold", "nan"))
+    except ValueError:
+        threshold = None
+    direction = request.args.get("dir", "above")
+    start_date = None
+    if request.args.get("start"):
+        try:
+            start_date = DateStampConverter.from_str(request.args["start"]).date()
+        except (TypeError, ValueError):
+            start_date = None
+            threshold = None
+    if cfg is None or threshold is None or threshold not in cfg["thresholds"] or direction not in DIRECTIONS:
+        return {
+            "error": "Unsupported spell grid",
+            "supported": dict(vars=spells_supported(), dir=list(DIRECTIONS)),
+        }, 400
+    now = DateUtil.now()
+    est = _est_wanted()
+    res = _spells_grid_cached(var, typ, threshold, direction, start_date, now.date(),
+                              int(now.timestamp() // 300), est)
+    return _wrap_result(res, var=var, type=typ, dir=direction, threshold=threshold)
+
+
+@lru_cache(maxsize=128)
+def _spells_grid_cached(var, typ, threshold, direction, start_date, today: date, _bucket: int,
+                        est: bool = False) -> dict:
+    daily = _daily_values(var, typ, est=est)
+    if start_date is not None:
+        daily = [(d, v) for d, v in daily if d >= start_date]
+    est_dates = None
+    if est and (var, typ) in est_merge.ESTIMATED_VARS:
+        est_dates = est_store.fetch_dates(var, typ)
+    return spell_grid(daily, var, typ, threshold, direction, today=today, est_dates=est_dates)
 
 
 def var_anom_spells(var: str, typ: str):

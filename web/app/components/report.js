@@ -185,6 +185,7 @@ export const SUMMARY_NAMES = {
     avg: "Mean",
     total: "Total",
     count: "Count",
+    spells: "Spells",
 };
 
 export const DAILY_AGGREGATION_NAMES = {
@@ -205,9 +206,14 @@ export function dailyAggregationOptions(obs) {
     return dailyStatsFor(obs);
 }
 
-export function summaryOptions(obs) {
+export function summaryOptions(obs, { spells = false } = {}) {
     // Variables summarised by their max (e.g. max 10-/60-min rain) would otherwise list "max" twice.
-    return [...new Set(["min", "max", OBS.get(obs).summary, "count"])];
+    const options = [...new Set(["min", "max", OBS.get(obs).summary, "count"])];
+    // Spells is an all-time-grid summary only; the ranking page keeps its own period selector.
+    if (spells) {
+        options.push("spells");
+    }
+    return options;
 }
 
 export function summaryKey(summary) {
@@ -237,7 +243,8 @@ function styleForScaleValue(value, scale) {
 
 // `monthly`: the value aggregates a month (annual=true: a year), so variables with period scales use them.
 export function styleForReportValue(value, obsType, unit, summary, annual = false, monthly = false) {
-    if (summary === "count") {
+    if (summary === "count" || summary === "spells") {
+        // Count and spell length are both in days, so they share the same colour scale.
         const scale = annual
             ? [1, 50, 100, 150, 200, 250, 300, 365]
             : [1, 5, 10, 15, 20, 25, 28, 31];
