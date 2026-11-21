@@ -564,11 +564,14 @@ export default function AllTimeReport() {
 
         {summary === "spells" ? <>
             <Text mt="3">
-                Each cell is the longest run of consecutive days meeting the chosen spell, in days, that fall
-                inside that month, calendar year or water year. A spell that crosses a boundary is clipped to
-                the days inside the cell, rather than counted at its full length in both. A missing day ends
-                the spell, as on the spells ranking. Rain and wet hours may include today; temperatures and
-                sunshine stop at yesterday.
+                Each cell is the longest spell of the chosen kind, in days, that either fully covers that
+                month, calendar year or water year, or has its midpoint in that period. The midpoint is the
+                earlier middle day when the length is even. A spell that crosses a boundary is counted at its
+                full length in every period it covers or whose midpoint it falls in. A period with
+                observations but no such spell is 0. A missing day ends the spell, as on the spells ranking.
+                An ongoing spell, still running on the latest eligible day, is counted at its length so far
+                (and may qualify for the current period by covering it to date). Rain and wet hours may
+                include today; temperatures and sunshine stop at yesterday.
             </Text>
             <Text mt="2">
                 The table above compares the same month (or full year) across years: its min, max and average

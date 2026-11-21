@@ -95,28 +95,57 @@ def _grid_val(rows, key):
     return None
 
 
-def test_spell_grid_clips_to_month_and_year():
-    # 20 Dec 2023 – 10 Jan 2024: all dry. Clip, do not count the full 22-day run in both months.
+def test_spell_grid_dec_jan_assigned_by_midpoint():
+    # 20 Dec 2023 – 10 Jan 2024: 22 dry days. Midpoint = 20 Dec + 10 = 30 Dec,
+    # so the full 22-day length goes to December / 2023 / WY2024, not January.
     data = series([0] * 22, date(2023, 12, 20))
     g = spell_grid(data, "rain", "total", 0.01, "below")
-    assert _grid_val(g["monthly"], [2023, 12]) == 12  # 20–31 Dec
-    assert _grid_val(g["monthly"], [2024, 1]) == 10   # 1–10 Jan
-    assert _grid_val(g["yearly"], 2023) == 12
-    assert _grid_val(g["yearly"], 2024) == 10
-    # The whole run sits in WY2024 (1 Oct 2023 – 30 Sep 2024).
+    assert _grid_val(g["monthly"], [2023, 12]) == 22
+    assert _grid_val(g["monthly"], [2024, 1]) == 0
+    assert _grid_val(g["yearly"], 2023) == 22
+    assert _grid_val(g["yearly"], 2024) == 0
     assert _grid_val(g["wateryear"], 2024) == 22
     assert _grid_val(g["wateryear"], 2025) is None
 
 
-def test_spell_grid_clips_across_water_year():
-    # 25 Sep – 10 Oct 2024: 6 days in WY2024, 10 days in WY2025.
+def test_spell_grid_covers_a_whole_month_at_full_length():
+    # 20 May – 10 July 2024: 52 days, midpoint = 20 May + 25 = 14 June.
+    # June is fully covered, so it gets the full 52, not 30. May and July do not.
+    data = series([0] * 52, date(2024, 5, 20))
+    g = spell_grid(data, "rain", "total", 0.01, "below")
+    assert _grid_val(g["monthly"], [2024, 5]) == 0
+    assert _grid_val(g["monthly"], [2024, 6]) == 52
+    assert _grid_val(g["monthly"], [2024, 7]) == 0
+    assert _grid_val(g["yearly"], 2024) == 52
+
+
+def test_spell_grid_even_length_midpoint_is_the_earlier_middle_day():
+    # 4-day run 30 Jan – 2 Feb: midpoint = 30 Jan + 1 = 31 Jan -> January.
+    data = series([0] * 4, date(2024, 1, 30))
+    g = spell_grid(data, "rain", "total", 0.01, "below")
+    assert _grid_val(g["monthly"], [2024, 1]) == 4
+    assert _grid_val(g["monthly"], [2024, 2]) == 0
+    # 4-day run 31 Jan – 3 Feb: midpoint = 31 Jan + 1 = 1 Feb -> February.
+    data = series([0] * 4, date(2024, 1, 31))
+    g = spell_grid(data, "rain", "total", 0.01, "below")
+    assert _grid_val(g["monthly"], [2024, 1]) == 0
+    assert _grid_val(g["monthly"], [2024, 2]) == 4
+    # 2-day run 31 Jan – 1 Feb: midpoint = 31 Jan -> January.
+    data = series([0] * 2, date(2024, 1, 31))
+    g = spell_grid(data, "rain", "total", 0.01, "below")
+    assert _grid_val(g["monthly"], [2024, 1]) == 2
+    assert _grid_val(g["monthly"], [2024, 2]) == 0
+
+
+def test_spell_grid_water_year_boundary_follows_midpoint():
+    # 25 Sep – 10 Oct 2024: 16 days, midpoint = 25 Sep + 7 = 2 Oct, in WY2025.
     data = series([0] * 16, date(2024, 9, 25))
     g = spell_grid(data, "rain", "total", 0.01, "below")
-    assert _grid_val(g["monthly"], [2024, 9]) == 6
-    assert _grid_val(g["monthly"], [2024, 10]) == 10
+    assert _grid_val(g["monthly"], [2024, 9]) == 0
+    assert _grid_val(g["monthly"], [2024, 10]) == 16
     assert _grid_val(g["yearly"], 2024) == 16
-    assert _grid_val(g["wateryear"], 2024) == 6
-    assert _grid_val(g["wateryear"], 2025) == 10
+    assert _grid_val(g["wateryear"], 2024) == 0
+    assert _grid_val(g["wateryear"], 2025) == 16
 
 
 def test_spell_grid_zero_when_month_has_data_but_no_match():
@@ -128,14 +157,14 @@ def test_spell_grid_zero_when_month_has_data_but_no_match():
     assert _grid_val(g["monthly"], [2024, 2]) is None
 
 
-def test_spell_grid_picks_longest_clipped_run_in_the_month():
-    # Jan 1-3 dry, Jan 5-20 dry (16 days), then a 5-day run from 31 Jan into February.
-    # Longest in January is 16, not 3 and not the clipped 1-day tail; February is 4 days.
+def test_spell_grid_picks_longest_qualifying_spell_in_the_month():
+    # Jan 1-3 dry, Jan 5-20 dry (16 days), then a 5-day run from 31 Jan into February
+    # (midpoint 2 Feb, so February gets the full 5). Longest in January is 16.
     vals = [0, 0, 0, 1] + [0] * 16 + [1] * 10 + [0] * 5  # Jan 1 .. Feb 4
     data = series(vals, date(2024, 1, 1))
     g = spell_grid(data, "rain", "total", 0.01, "below")
     assert _grid_val(g["monthly"], [2024, 1]) == 16
-    assert _grid_val(g["monthly"], [2024, 2]) == 4
+    assert _grid_val(g["monthly"], [2024, 2]) == 5
     assert _grid_val(g["yearly"], 2024) == 16
 
 
@@ -164,6 +193,25 @@ def test_spell_grid_est_flag_only_when_max_run_includes_estimated_day():
     g = spell_grid(data, "rain", "total", 0.01, "below", est_dates={date(2024, 1, 2)})
     jan = next(r for r in g["monthly"] if r["m"] == [2024, 1])
     assert jan["val"] == 5 and jan.get("est") is True
+
+
+def test_spell_grid_ongoing_spell_counts_current_length_and_covers_period_to_date():
+    # Still running on 20 Nov: 1 Oct – 20 Nov is 51 days, midpoint = 1 Oct + 25 = 26 Oct.
+    # October is fully covered (complete month) and November-to-date is fully covered,
+    # so both cells get the current length, 51.
+    today = date(2024, 11, 20)
+    data = series([0] * 51, date(2024, 10, 1))
+    g = spell_grid(data, "rain", "total", 0.01, "below", today=today)
+    assert _grid_val(g["monthly"], [2024, 10]) == 51
+    assert _grid_val(g["monthly"], [2024, 11]) == 51
+    assert _grid_val(g["yearly"], 2024) == 51
+    assert _grid_val(g["wateryear"], 2025) == 51
+    # A run that only starts mid-October does not cover October and has its midpoint
+    # in November, so only November (in progress) gets the current length.
+    data = series([0] * 37, date(2024, 10, 15))  # 15 Oct – 20 Nov
+    g = spell_grid(data, "rain", "total", 0.01, "below", today=today)
+    assert _grid_val(g["monthly"], [2024, 10]) == 0
+    assert _grid_val(g["monthly"], [2024, 11]) == 37
 
 
 def test_spell_grid_water_year_status_and_note():
