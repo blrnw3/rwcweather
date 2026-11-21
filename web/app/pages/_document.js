@@ -1,4 +1,5 @@
 import NextDocument, { Html, Head, Main, NextScript } from 'next/document'
+import { gaBootstrapInline } from '../lib/ga'
 
 export default class Document extends NextDocument {
   render() {
@@ -6,22 +7,11 @@ export default class Document extends NextDocument {
       <Html>
         <Head>
           {process.env.NODE_ENV === 'production' && (
-            <>
-              <script
-                async
-                src="https://www.googletagmanager.com/gtag/js?id=G-57NHWG35P0"
-              />
-              <script
-                dangerouslySetInnerHTML={{
-                  __html: `
-                    window.dataLayer = window.dataLayer || [];
-                    function gtag(){dataLayer.push(arguments);}
-                    gtag('js', new Date());
-                    gtag('config', 'G-57NHWG35P0', { page_path: window.location.pathname });
-                  `,
-                }}
-              />
-            </>
+            <script
+              dangerouslySetInnerHTML={{
+                __html: gaBootstrapInline(),
+              }}
+            />
           )}
         </Head>
         <body>
