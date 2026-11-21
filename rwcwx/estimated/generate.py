@@ -6,6 +6,8 @@ production database unless --insert is given explicitly.
 Usage:
   python -m rwcwx.estimated.generate --cache-dir DIR --csv-out OUT.csv
   python -m rwcwx.estimated.generate --fetch --cache-dir DIR --csv-out OUT.csv --sql-out OUT.sql
+  python -m rwcwx.estimated.generate --means-from-csv daily_estimated_v5.csv \
+      --csv-out daily_estimated_mean_v5.csv --sql-out daily_estimated_mean_v5.sql
 """
 from __future__ import annotations
 
@@ -16,7 +18,7 @@ import logging
 import os
 import sys
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 from urllib.error import HTTPError, URLError
@@ -25,13 +27,16 @@ from urllib.request import Request, urlopen
 from rwcwx.estimated.conversions import (
     BLEND,
     CV_RMSE,
+    MEAN_MIDRANGE_METHOD,
     PERIOD_END,
     PERIOD_START,
     VERSION,
     apply,
     confidence_for,
+    estimate_daily_mean,
     f_to_c,
     method_label,
+    worse_extreme,
 )
 from rwcwx.estimated.qc import pulgas_is_bogus
 
@@ -268,6 +273,72 @@ def _candidate(sources: Dict[str, Dict[date, dict]], source_id: str, method: str
     }
 
 
+def _parse_row_date(value) -> date:
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    return _parse_iso(str(value)[:10])
+
+
+def mean_row_from_extremes(tmax_row: dict, tmin_row: dict) -> dict:
+    """Build a temp/avg row from a day's estimated Tmax and Tmin."""
+    d = _parse_row_date(tmax_row["d"])
+    if _parse_row_date(tmin_row["d"]) != d:
+        raise ValueError("Tmax and Tmin dates do not match")
+    val, mid = estimate_daily_mean(tmax_row["val"], tmin_row["val"], d.month)
+    worse = worse_extreme(tmax_row, tmin_row)
+    return {
+        "d": d.isoformat(),
+        "var": "temp",
+        "type": "avg",
+        "val": val,
+        "source": worse["source"],
+        "method": method_label(MEAN_MIDRANGE_METHOD),
+        "version": tmax_row.get("version") or tmin_row.get("version") or VERSION,
+        "confidence": worse.get("confidence") or confidence_for(worse["source"]),
+        "raw_val": mid,
+    }
+
+
+def derive_mean_rows(rows: Iterable[dict]) -> List[dict]:
+    """Daily mean rows for dates that have both an estimated Tmax and Tmin."""
+    by_day: Dict[str, dict] = {}
+    for r in rows:
+        if r.get("var") != "temp" or r.get("type") not in ("max", "min"):
+            continue
+        key = str(r["d"])[:10]
+        by_day.setdefault(key, {})[r["type"]] = r
+    out: List[dict] = []
+    for day in sorted(by_day):
+        parts = by_day[day]
+        if "max" in parts and "min" in parts:
+            out.append(mean_row_from_extremes(parts["max"], parts["min"]))
+    return out
+
+
+def load_csv_rows(path: Path) -> List[dict]:
+    rows = []
+    with path.open(newline="") as fh:
+        for rec in csv.DictReader(fh):
+            raw = rec.get("raw_val")
+            rows.append({
+                "d": rec["d"],
+                "var": rec["var"],
+                "type": rec["type"],
+                "val": float(rec["val"]),
+                "source": rec["source"],
+                "method": rec["method"],
+                "version": rec.get("version") or VERSION,
+                "confidence": rec.get("confidence") or "A",
+                "raw_val": None if raw in (None, "") else float(raw),
+            })
+    return rows
+
+
+def means_from_csv(path: Path) -> List[dict]:
+    """Derive temp/avg rows from an existing estimated CSV (Tmax and Tmin)."""
+    return derive_mean_rows(load_csv_rows(path))
+
+
 def generate_rows(sources: Dict[str, Dict[date, dict]], start: date, end: date,
                   rejections: Optional[List[dict]] = None) -> List[dict]:
     """Build the estimated series, rejecting bogus Pulgas values via quality control.
@@ -325,6 +396,7 @@ def generate_rows(sources: Dict[str, Dict[date, dict]], start: date, end: date,
                 chosen = cands.get("coop") or cands.get("sfo")
             if chosen:
                 rows.append(chosen)
+    rows.extend(derive_mean_rows(rows))
     return rows
 
 
@@ -338,13 +410,27 @@ def write_csv(rows: Iterable[dict], path: Path) -> None:
     logger.info("wrote %s", path)
 
 
-def write_sql(rows: List[dict], path: Path, batch: int = 200) -> None:
+def write_sql(rows: List[dict], path: Path, batch: int = 200,
+              migrations: Optional[List[str]] = None) -> None:
     """Batched INSERT statements. Safe to re-run (ON DUPLICATE KEY UPDATE)."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    if migrations is None:
+        types = {r.get("type") for r in rows}
+        migrations = []
+        if types and types <= {"avg"}:
+            # Means-only load: table already exists; only the avg enum change is needed.
+            migrations.append("data/migrations/20261121_daily_estimated_avg.sql")
+        else:
+            migrations.append("data/migrations/20261112_daily_estimated.sql")
+            if "avg" in types:
+                migrations.append("data/migrations/20261121_daily_estimated_avg.sql")
     lines = [
         f"-- daily_estimated {VERSION}: {len(rows)} rows, {PERIOD_START} to {PERIOD_END}",
-        "-- Apply the migration first, then this file, only with explicit approval:",
-        "--   mysql wx < data/migrations/20261112_daily_estimated.sql",
+        "-- Apply the migration(s) first, then this file, only with explicit approval:",
+    ]
+    for mig in migrations:
+        lines.append(f"--   mysql wx < {mig}")
+    lines += [
         f"--   mysql wx < {path}",
         "SET NAMES utf8mb4;",
         "",
@@ -399,7 +485,7 @@ def summarize(rows: List[dict], start: Optional[date] = None, end: Optional[date
     coverage = defaultdict(lambda: defaultdict(int))
     sources = defaultdict(lambda: defaultdict(int))
     sources_by_year = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
-    annual = defaultdict(lambda: {"n_tmax": 0, "sum_tmax": 0.0, "n_tmin": 0, "sum_tmin": 0.0, "rain": 0.0, "n_rain": 0})
+    annual = defaultdict(lambda: {"n_tmax": 0, "sum_tmax": 0.0, "n_tmin": 0, "sum_tmin": 0.0, "n_tavg": 0, "sum_tavg": 0.0, "rain": 0.0, "n_rain": 0})
     for r in rows:
         d = _parse_iso(r["d"])
         key = r["var"] + "/" + r["type"]
@@ -412,11 +498,14 @@ def summarize(rows: List[dict], start: Optional[date] = None, end: Optional[date
         elif r["var"] == "temp" and r["type"] == "min":
             annual[d.year]["n_tmin"] += 1
             annual[d.year]["sum_tmin"] += r["val"]
+        elif r["var"] == "temp" and r["type"] == "avg":
+            annual[d.year]["n_tavg"] += 1
+            annual[d.year]["sum_tavg"] += r["val"]
         elif r["var"] == "rain":
             annual[d.year]["n_rain"] += 1
             annual[d.year]["rain"] += r["val"]
     by_var = {}
-    for key in ("temp/max", "temp/min", "rain/total"):
+    for key in ("temp/max", "temp/min", "temp/avg", "rain/total"):
         years = coverage[key]
         by_var[key] = {
             str(yr): {"n": years.get(yr, 0), "of": expected[yr],
@@ -427,7 +516,7 @@ def summarize(rows: List[dict], start: Optional[date] = None, end: Optional[date
     source_mix = {k: dict(v) for k, v in sources.items()}
     source_mix_by_year = {}
     fill_share = {}
-    for key in ("temp/max", "temp/min", "rain/total"):
+    for key in ("temp/max", "temp/min", "temp/avg", "rain/total"):
         source_mix_by_year[key] = {}
         fill_share[key] = {}
         for yr in expected:
@@ -457,11 +546,14 @@ def summarize(rows: List[dict], start: Optional[date] = None, end: Optional[date
             "n_rain": a["n_rain"],
             "mean_tmax_c": round(a["sum_tmax"] / a["n_tmax"], 2) if a["n_tmax"] else None,
             "mean_tmin_c": round(a["sum_tmin"] / a["n_tmin"], 2) if a["n_tmin"] else None,
+            "mean_tavg_c": round(a["sum_tavg"] / a["n_tavg"], 2) if a["n_tavg"] else None,
             "n_tmax": a["n_tmax"],
             "n_tmin": a["n_tmin"],
+            "n_tavg": a["n_tavg"],
             "days_in_year": days,
             "missing_tmax": days - a["n_tmax"],
             "missing_tmin": days - a["n_tmin"],
+            "missing_tavg": days - a["n_tavg"],
             "missing_rain": days - a["n_rain"],
             "tmax_secondary": tmax_mix["n_secondary"],
             "tmin_secondary": tmin_mix["n_secondary"],
@@ -525,9 +617,10 @@ def insert_mysql(sql_path: Path, mysql_url: str) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Generate v5 estimated daily history (Tmax, Tmin, rain) from Pulgas Ridge, with COOP/SFO gap-fill and quality control.")
-    p.add_argument("--cache-dir", type=Path, required=True, help="Directory of IEM/ACIS cache files (created if fetching).")
+    p = argparse.ArgumentParser(description="Generate v5 estimated daily history (Tmax, Tmin, daily mean, rain) from Pulgas Ridge, with COOP/SFO gap-fill and quality control.")
+    p.add_argument("--cache-dir", type=Path, help="Directory of IEM/ACIS cache files (created if fetching). Required unless --means-from-csv is set.")
     p.add_argument("--fetch", action="store_true", help="Download missing source files from IEM and ACIS.")
+    p.add_argument("--means-from-csv", type=Path, help="Derive only temp/avg rows from an existing v5 CSV of Tmax and Tmin (no source fetch, no changes to max/min/rain).")
     p.add_argument("--csv-out", type=Path, required=True, help="Destination CSV.")
     p.add_argument("--sql-out", type=Path, help="Optional batched INSERT SQL file.")
     p.add_argument("--summary-out", type=Path, help="Optional JSON summary (coverage, source mix, annual totals).")
@@ -544,9 +637,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     start, end = _parse_iso(args.start), _parse_iso(args.end)
     if start > end:
         raise SystemExit("start is after end")
-    sources = ensure_sources(args.cache_dir, start, end, fetch=args.fetch)
     rejections: List[dict] = []
-    rows = generate_rows(sources, start, end, rejections)
+    if args.means_from_csv:
+        rows = means_from_csv(args.means_from_csv)
+        if args.start != PERIOD_START or args.end != PERIOD_END:
+            rows = [r for r in rows if start <= _parse_iso(r["d"]) <= end]
+    else:
+        if not args.cache_dir:
+            raise SystemExit("--cache-dir is required unless --means-from-csv is set")
+        sources = ensure_sources(args.cache_dir, start, end, fetch=args.fetch)
+        rows = generate_rows(sources, start, end, rejections)
     write_csv(rows, args.csv_out)
     if args.sql_out:
         write_sql(rows, args.sql_out)

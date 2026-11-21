@@ -12,6 +12,8 @@ import pytest
 from rwcwx.estimated.conversions import (
     COOP_RAIN_RATIO,
     COOP_TMAX_LINEAR,
+    MEAN_MIDRANGE_METHOD,
+    MEAN_MIDRANGE_MONTH_OFFSET,
     PUGC1_RAIN_RATIO,
     PUGC1_TMAX_LINEAR,
     PUGC1_TMIN_LINEAR,
@@ -20,10 +22,22 @@ from rwcwx.estimated.conversions import (
     apply,
     apply_linear,
     confidence_for,
+    estimate_daily_mean,
     f_to_c,
+    method_label,
+    worse_extreme,
 )
-from rwcwx.estimated.generate import generate_rows, load_acis_coop, load_iem_daily, summarize, write_csv
+from rwcwx.estimated.generate import (
+    derive_mean_rows,
+    generate_rows,
+    load_acis_coop,
+    load_iem_daily,
+    means_from_csv,
+    summarize,
+    write_csv,
+)
 from rwcwx.estimated.merge import (
+    ESTIMATED_VARS,
     mark_periods,
     merge_rows,
     merge_values,
@@ -242,6 +256,18 @@ def test_generate_pulgas_primary_then_gap_fill(tmp_path):
     rain12 = by[("2015-01-12", "rain", "total")]
     assert rain12["source"] == "sfo"
     assert rain12["val"] == round(0.10 * SFO_RAIN_RATIO, 3)
+
+    for day, src, conf in (("2015-01-10", "pugc1", "A"), ("2015-01-11", "coop", "B"),
+                           ("2015-01-12", "sfo", "C")):
+        avg = by[(day, "temp", "avg")]
+        tmax, tmin = by[(day, "temp", "max")], by[(day, "temp", "min")]
+        expected, mid = estimate_daily_mean(tmax["val"], tmin["val"], 1)
+        assert avg["val"] == expected
+        assert avg["raw_val"] == mid
+        assert avg["source"] == src
+        assert avg["confidence"] == conf
+        assert avg["method"] == "v5-midrange-month"
+        assert avg["version"] == "v5"
 
     assert not any(r["d"] == "2015-01-13" for r in rows)
 
@@ -502,3 +528,110 @@ def test_generate_tmax_rejected_only_when_sfo_also_disagrees(tmp_path):
     assert rej["replacement_source"] == "coop"
     assert rej["replacement_val"] == coop_tmax
     assert rej["replacement_confidence"] == "B"
+
+
+# ---- daily mean from midrange + monthly offset ----
+
+def test_estimated_vars_includes_temp_avg():
+    assert ("temp", "max") in ESTIMATED_VARS
+    assert ("temp", "min") in ESTIMATED_VARS
+    assert ("rain", "total") in ESTIMATED_VARS
+    assert ("temp", "avg") in ESTIMATED_VARS
+    # Mean is derived, not a source-blend variable.
+    from rwcwx.estimated.conversions import BLEND
+    assert ("temp", "avg") not in BLEND
+
+
+def test_mean_offsets_and_rounding():
+    assert MEAN_MIDRANGE_MONTH_OFFSET == {
+        1: -0.38, 2: -0.49, 3: -0.62, 4: -0.96, 5: -1.04, 6: -1.21,
+        7: -1.32, 8: -1.30, 9: -1.04, 10: -0.73, 11: -0.37, 12: -0.30,
+    }
+    assert method_label(MEAN_MIDRANGE_METHOD) == "v5-midrange-month"
+    # 1 Jan example from the v5 series: Tmax 10.9, Tmin 8.46 -> mid 9.68, mean 9.30
+    val, mid = estimate_daily_mean(10.9, 8.46, 1)
+    assert mid == 9.68
+    assert val == 9.30
+    assert estimate_daily_mean(20.0, 10.0, 7) == (13.68, 15.0)
+    assert estimate_daily_mean(10.0, 8.0, 12) == (8.70, 9.0)
+
+
+def test_worse_extreme_prefers_lower_confidence():
+    pug = {"source": "pugc1", "confidence": "A"}
+    coop = {"source": "coop", "confidence": "B"}
+    sfo = {"source": "sfo", "confidence": "C"}
+    assert worse_extreme(pug, pug)["source"] == "pugc1"
+    assert worse_extreme(pug, coop)["source"] == "coop"
+    assert worse_extreme(coop, pug)["confidence"] == "B"
+    assert worse_extreme(pug, sfo)["source"] == "sfo"
+    assert worse_extreme(coop, sfo)["source"] == "sfo"
+    # Same confidence, different source: later fill (sfo) wins.
+    assert worse_extreme({"source": "coop", "confidence": "C"}, sfo)["source"] == "sfo"
+
+
+def test_derive_mean_rows_skips_days_missing_an_extreme():
+    rows = [
+        {"d": "2011-07-01", "var": "temp", "type": "max", "val": 22.0,
+         "source": "pugc1", "method": "v5-linear", "version": "v5", "confidence": "A", "raw_val": 21.0},
+        {"d": "2011-07-01", "var": "temp", "type": "min", "val": 12.0,
+         "source": "coop", "method": "v5-linear", "version": "v5", "confidence": "B", "raw_val": 11.0},
+        {"d": "2011-07-02", "var": "temp", "type": "max", "val": 23.0,
+         "source": "pugc1", "method": "v5-linear", "version": "v5", "confidence": "A", "raw_val": 22.0},
+        {"d": "2011-07-01", "var": "rain", "type": "total", "val": 0.0,
+         "source": "pugc1", "method": "v5-ratio", "version": "v5", "confidence": "A", "raw_val": 0.0},
+    ]
+    means = derive_mean_rows(rows)
+    assert len(means) == 1
+    m = means[0]
+    assert m["d"] == "2011-07-01"
+    assert m["var"] == "temp" and m["type"] == "avg"
+    assert m["val"] == 15.68  # (22+12)/2 - 1.32
+    assert m["raw_val"] == 17.0
+    assert m["source"] == "coop" and m["confidence"] == "B"
+    assert m["method"] == "v5-midrange-month"
+
+
+def test_means_from_csv_and_store_fetch(tmp_path, monkeypatch):
+    src = tmp_path / "v5.csv"
+    write_csv([
+        {"d": "2011-01-01", "var": "temp", "type": "max", "val": 10.9,
+         "source": "pugc1", "method": "v5-linear", "version": "v5", "confidence": "A", "raw_val": 11.1111},
+        {"d": "2011-01-01", "var": "temp", "type": "min", "val": 8.46,
+         "source": "pugc1", "method": "v5-linear", "version": "v5", "confidence": "A", "raw_val": 7.7778},
+        {"d": "2011-01-01", "var": "rain", "type": "total", "val": 0.074,
+         "source": "pugc1", "method": "v5-ratio", "version": "v5", "confidence": "A", "raw_val": 0.08},
+        {"d": "2012-06-01", "var": "temp", "type": "max", "val": 22.5,
+         "source": "coop", "method": "v5-linear", "version": "v5", "confidence": "B", "raw_val": 21.0},
+        {"d": "2012-06-01", "var": "temp", "type": "min", "val": 12.0,
+         "source": "sfo", "method": "v5-linear", "version": "v5", "confidence": "C", "raw_val": 11.0},
+    ], src)
+    means = means_from_csv(src)
+    assert len(means) == 2
+    by = {r["d"]: r for r in means}
+    assert by["2011-01-01"]["val"] == 9.30
+    assert by["2011-01-01"]["source"] == "pugc1"
+    assert by["2012-06-01"]["val"] == round((22.5 + 12.0) / 2 + (-1.21), 2)
+    assert by["2012-06-01"]["source"] == "sfo"
+    assert by["2012-06-01"]["confidence"] == "C"
+
+    out = tmp_path / "means.csv"
+    write_csv(means, out)
+    monkeypatch.setenv("RWC_ESTIMATED_CSV", str(out))
+    from rwcwx.estimated import store as est_store
+    est_store._load_csv.cache_clear()
+    got = fetch("temp", "avg")
+    assert [r.d for r in got] == [date(2011, 1, 1), date(2012, 6, 1)]
+    assert got[0].val == 9.30
+    assert got[0].method == "v5-midrange-month"
+    assert fetch("temp", "max") == []  # means-only CSV
+
+
+def test_merge_avg_measured_wins():
+    measured = [_Meas(date(2020, 12, 27), 10.0)]
+    estimated = [
+        _est(date(2020, 12, 26), typ="avg", val=9.3, source="pugc1"),
+        _est(date(2020, 12, 27), typ="avg", val=11.0, source="pugc1"),
+    ]
+    merged = merge_values([(m.d, m.val) for m in measured], estimated)
+    assert merged == [(date(2020, 12, 26), 9.3), (date(2020, 12, 27), 10.0)]
+

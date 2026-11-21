@@ -13,6 +13,11 @@ filled from a calibrated secondary:
   Tmin  — PUGC1 monthly linear, else COOP monthly linear (confidence B), else SFO monthly linear (C)
   rain  — PUGC1 annual ratio, else COOP annual ratio (confidence B), else SFO annual ratio (C)
 
+Daily mean temperature (type=avg) is derived from the estimated Tmax and Tmin as
+(max+min)/2 plus a calendar-month offset (MEAN_MIDRANGE_MONTH_OFFSET), method
+v5-midrange-month. Source and confidence are the worse of the two extremes
+(C before B before A).
+
 Quality control (see rwcwx.estimated.qc): a Pulgas rain total above 1 in is rejected
 if it is more than 3× the larger of the same-day COOP and SFO raw totals, or if both
 are dry. A Pulgas Tmin is rejected if it differs by more than 8 °C from the COOP
@@ -236,3 +241,44 @@ def method_label(method: str) -> str:
 def confidence_for(source_id: str) -> str:
     """A = Pulgas primary, B = COOP gap-fill, C = SFO gap-fill."""
     return {"pugc1": "A", "coop": "B", "sfo": "C"}.get(source_id, "B")
+
+
+# °C added to (Tmax + Tmin) / 2 to estimate this station's daily mean (type=avg).
+# Fitted on complete measured days 27 Dec 2020–20 Nov 2026 (cnt >= 1300, excluding
+# the in-progress day). Leave-one-year-out RMSE 0.53 °C, MAE 0.41 °C. Midrange alone
+# is systematically too warm, more so in summer.
+MEAN_MIDRANGE_MONTH_OFFSET = {
+    1: -0.38,
+    2: -0.49,
+    3: -0.62,
+    4: -0.96,
+    5: -1.04,
+    6: -1.21,
+    7: -1.32,
+    8: -1.30,
+    9: -1.04,
+    10: -0.73,
+    11: -0.37,
+    12: -0.30,
+}
+MEAN_MIDRANGE_METHOD = "midrange-month"
+
+_SOURCE_RANK = {"pugc1": 0, "coop": 1, "sfo": 2}
+_CONF_RANK = {"A": 0, "B": 1, "C": 2}
+
+
+def estimate_daily_mean(tmax: float, tmin: float, month: int) -> Tuple[float, float]:
+    """Return (adjusted mean °C to 2 dp, unadjusted midrange to 4 dp)."""
+    mid = (float(tmax) + float(tmin)) / 2.0
+    return round(mid + MEAN_MIDRANGE_MONTH_OFFSET[month], 2), round(mid, 4)
+
+
+def worse_extreme(a: Mapping, b: Mapping) -> Mapping:
+    """Worse of two Tmax/Tmin rows: C before B before A, then sfo before coop before pugc1."""
+    ca = _CONF_RANK.get(a.get("confidence") or confidence_for(a.get("source")), 0)
+    cb = _CONF_RANK.get(b.get("confidence") or confidence_for(b.get("source")), 0)
+    if cb != ca:
+        return b if cb > ca else a
+    sa = _SOURCE_RANK.get(a.get("source"), 0)
+    sb = _SOURCE_RANK.get(b.get("source"), 0)
+    return b if sb > sa else a

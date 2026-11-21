@@ -4,7 +4,7 @@ import { baseObs, dailyStatsFor, defaultDailyStat, fmatAggTypeOpt, fmatObsOpt, i
 import { Page } from "../../components/Page";
 import RadioCard from "../../components/RadioCard";
 import { hasWaterYears } from "../../components/waterYear";
-import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, dataYearStart, DerivedVarNote, EstNote, EstToggle, isEstOn, StatButtons, SunViewToggle } from "../../components/report";
+import { DAILY_VALUE_OBS_OPTIONS, DAILY_VALUE_OBS_STATES, dataYearStart, DerivedVarNote, EstNote, EstToggle, hasEstimatedHistory, isEstOn, StatButtons, SunViewToggle } from "../../components/report";
 import { inList, useUrlState } from "../../components/urlState";
 import { hasDayStats, hasNormal, isMobile, STATS_MODES, YearChart } from "../../components/yearChart";
 import { ClimateNormalsLink } from "../../components/climate";
@@ -109,7 +109,7 @@ export default function YearCharts() {
       <Box my={4} mx={{ base: 0, md: 4, xl: 6 }}>
         <YearChart obs={obs} stat={stat} year={all ? null : Number(year)} waterYear={water} cumulative={cume === "cumulative"}
           showNormal={normal === "on"} stats={stats} allYears={all} today={today} height={chartHeight()} est={isEstOn(est)} />
-        <EstNote show={isEstOn(est) && !all && (obs === "rain" || (obs === "temp" && (stat === "max" || stat === "min")))} />
+        <EstNote show={isEstOn(est) && !all && hasEstimatedHistory(obs, stat)} />
       </Box>
       {hasDayStats(obs) && stats !== "off" && <Text fontSize="sm" mb="1">
         {cume === "cumulative"
