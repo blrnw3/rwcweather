@@ -39,10 +39,13 @@ import {
     spellThresholdsAny,
 } from "../../components/spells";
 import { formatObs } from "../../format";
-import { annualNormal, ClimateAnom, ClimateNormalsLink, ClimateNote, hasClimate, monthlyNormal, waterYearNormal } from "../../components/climate";
+import { annualNormal, ClimateAnom, ClimateNormalsLink, ClimateNote, hasClimate, monthlyNormal, seasonalNormal, waterYearNormal } from "../../components/climate";
 import {
     completeWaterYearStats, useWaterYears, WaterYearCell, WaterYearHeader, WaterYearNote,
 } from "../../components/waterYear";
+import {
+    isSeasonCurrentOrFuture, isSeasonFuture, PERIOD_LABELS, PERIODS, SEASON_LABELS, SEASONS, seasonOf,
+} from "../../components/seasons";
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const months = Array.from(Array(12).keys());
@@ -88,7 +91,7 @@ function defaultDailyFor(obs, summary) {
 
 // Shared by the year-by-month matrix and the all-time summary so both always
 // show the same underlying values for the selected variable and statistics.
-function useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spellThreshold) {
+function useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spellThreshold, period = "monthly") {
     const summaries = useSummaries(obs, dailyAggregation, est, summary !== "spells");
     const spells = useSpellGrid(obs, dailyAggregation, dir, spellThreshold, est, summary === "spells");
     const { data: response, error, isValidating } = summary === "spells" ? spells : summaries;
@@ -97,36 +100,44 @@ function useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spel
     const currentYear = serverDate[0];
     const currentMonth = serverDate[1] - 1;
     const selectedSummaryKey = summaryKey(summary);
+    const seasonal = period === "seasonal";
 
     const matrix = new Map();
     const annual = new Map();
-    const estMonths = new Map(); // year -> Set of month indices (0-11)
+    const estMonths = new Map(); // year -> Set of column keys (month index or season name)
     const estYears = new Set();
-    const sharedMonths = new Map(); // year -> Set of month indices
+    const sharedMonths = new Map();
     const sharedYears = new Set();
 
-    const markMonth = (year, monthIdx) => {
+    const ensureYear = (year) => {
+        if (!matrix.has(year)) {
+            matrix.set(year, new Map());
+        }
+    };
+    const markCell = (year, key) => {
         if (!estMonths.has(year)) {
             estMonths.set(year, new Set());
         }
-        estMonths.get(year).add(monthIdx);
+        estMonths.get(year).add(key);
+    };
+    const markShared = (year, key) => {
+        if (!sharedMonths.has(year)) {
+            sharedMonths.set(year, new Set());
+        }
+        sharedMonths.get(year).add(key);
     };
 
     if (summary === "spells") {
-        for (const result of results.monthly || []) {
-            const [year, month] = result.m;
-            if (!matrix.has(year)) {
-                matrix.set(year, new Map());
-            }
-            matrix.get(year).set(month - 1, result.val);
+        const rows = seasonal ? (results.seasonal || []) : (results.monthly || []);
+        for (const result of rows) {
+            const [year, col] = seasonal ? result.m : [result.m[0], result.m[1] - 1];
+            ensureYear(year);
+            matrix.get(year).set(col, result.val);
             if (result.est) {
-                markMonth(year, month - 1);
+                markCell(year, col);
             }
             if (result.shared) {
-                if (!sharedMonths.has(year)) {
-                    sharedMonths.set(year, new Set());
-                }
-                sharedMonths.get(year).add(month - 1);
+                markShared(year, col);
             }
         }
         for (const result of results.yearly || []) {
@@ -142,33 +153,32 @@ function useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spel
         const numericThreshold = Number(threshold);
         for (const result of results.daily || []) {
             const [year, month] = result.d;
-            if (!matrix.has(year)) {
-                matrix.set(year, new Map());
-            }
-            if (!matrix.get(year).has(month - 1)) {
-                matrix.get(year).set(month - 1, 0);
+            const colYear = seasonal ? seasonOf(year, month - 1).year : year;
+            const col = seasonal ? seasonOf(year, month - 1).season : month - 1;
+            ensureYear(colYear);
+            if (!matrix.get(colYear).has(col)) {
+                matrix.get(colYear).set(col, 0);
             }
             if (!annual.has(year)) {
                 annual.set(year, 0);
             }
             if (result.val > numericThreshold) {
-                matrix.get(year).set(month - 1, matrix.get(year).get(month - 1) + 1);
+                matrix.get(colYear).set(col, matrix.get(colYear).get(col) + 1);
                 annual.set(year, annual.get(year) + 1);
             }
             if (result.est) {
-                markMonth(year, month - 1);
+                markCell(colYear, col);
                 estYears.add(year);
             }
         }
     } else {
-        for (const result of results.monthly || []) {
-            const [year, month] = result.m;
-            if (!matrix.has(year)) {
-                matrix.set(year, new Map());
-            }
-            matrix.get(year).set(month - 1, result.summary[selectedSummaryKey]);
+        const rows = seasonal ? (results.seasonal || []) : (results.monthly || []);
+        for (const result of rows) {
+            const [year, col] = seasonal ? result.m : [result.m[0], result.m[1] - 1];
+            ensureYear(year);
+            matrix.get(year).set(col, result.summary[selectedSummaryKey]);
             if (result.est) {
-                markMonth(year, month - 1);
+                markCell(year, col);
             }
         }
         for (const result of results.yearly || []) {
@@ -194,12 +204,14 @@ function formatCell(summary, unit, value, fmat, shared = false) {
     return formatObs(unit, value, fmat, false, false);
 }
 
-function MonthlyMatrix({ obs, dailyAggregation, summary, threshold, est, dir, spellThreshold }) {
+function MonthlyMatrix({ obs, dailyAggregation, summary, threshold, est, dir, spellThreshold, period = "monthly" }) {
     const obsObj = OBS.get(obs);
     const fmat = fmatForObs(obs, dailyAggregation);
     const unit = useContext(UnitCtx);
+    const seasonal = period === "seasonal";
+    const columns = seasonal ? SEASONS : months;
     const { matrix, annual, estMonths, estYears, sharedMonths, sharedYears, currentYear, currentMonth, response, error, isValidating }
-        = useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spellThreshold);
+        = useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spellThreshold, period);
     // Rain also gets a water-year column; from October the in-progress water
     // year ends next calendar year, so it needs its own (otherwise future) row.
     const waterYears = useWaterYears(obs, summary, threshold, est,
@@ -211,8 +223,9 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold, est, dir, sp
     // of a daily series that has normals, e.g. mean of daily highs, rain total.
     const showClimate = summary === obsObj.summary && hasClimate(obs, dailyAggregation);
 
+    const colCount = columns.length + 1 + (waterYears ? 1 : 0);
     return <Grid id="obs-monthly-matrix"
-        templateColumns={"0.8fr repeat(" + (waterYears ? 14 : 13) + ", 1fr)"}
+        templateColumns={"0.8fr repeat(" + colCount + ", 1fr)"}
         templateRows="30px auto"
         overflow="auto"
         marginTop="4"
@@ -221,37 +234,42 @@ function MonthlyMatrix({ obs, dailyAggregation, summary, threshold, est, dir, sp
         <Flex justifyContent="center" fontSize="lg">
             {isValidating && !response ? <Spinner size="sm" /> : obsObj.icon}
         </Flex>
-        {months.map((month) =>
-            <Box key={month} fontWeight="bold" textAlign="center">{monthNames[month]}</Box>
+        {columns.map((col) =>
+            <Box key={col} fontWeight="bold" textAlign="center">{seasonal ? SEASON_LABELS[col] : monthNames[col]}</Box>
         )}
         <Box fontWeight="bold" textAlign="center">Annual</Box>
         {waterYears && <WaterYearHeader />}
         {years.map((year) =>
             <Box key={year} display="contents">
                 <Box minW="46px" py="2" fontWeight="bold" textAlign="center">{year}</Box>
-                {months.map((month) => {
-                    const isFuture = year > currentYear || (year === currentYear && month > currentMonth);
-                    const hasValue = matrix.get(year)?.has(month);
-                    const value = hasValue ? matrix.get(year).get(month) : null;
+                {columns.map((col) => {
+                    const isFuture = seasonal
+                        ? isSeasonFuture(year, col, currentYear, currentMonth)
+                        : year > currentYear || (year === currentYear && col > currentMonth);
+                    const hasValue = matrix.get(year)?.has(col);
+                    const value = hasValue ? matrix.get(year).get(col) : null;
                     const formattedValue = formatCell(summary, unit, value, fmat,
-                        !!sharedMonths.get(year)?.has(month));
-                    const { bg, col } = isFuture
+                        !!sharedMonths.get(year)?.has(col));
+                    const { bg, col: colour } = isFuture
                         ? { bg: "gray.200", col: "black" }
                         : styleForReportValue(value, fmat, unit, summary, false, true);
+                    const normal = seasonal
+                        ? seasonalNormal(obs, dailyAggregation, col)
+                        : monthlyNormal(obs, dailyAggregation, col + 1);
 
-                    return <Box key={year + "-" + month}
+                    return <Box key={year + "-" + col}
                         className="cell"
                         textAlign="center"
                         backgroundColor={bg}
-                        color={col}
+                        color={colour}
                         border="1px solid transparent"
-                        _hover={hasValue ? { border: "1px solid " + col } : {}}
+                        _hover={hasValue ? { border: "1px solid " + colour } : {}}
                         py="2"
                         px="1"
                     >
-                        {isFuture ? "" : <EstMark est={estMonths.get(year)?.has(month)}>{formattedValue}</EstMark>}
+                        {isFuture ? "" : <EstMark est={estMonths.get(year)?.has(col)}>{formattedValue}</EstMark>}
                         {showClimate && !isFuture && <ClimateAnom value={value} obs={obs} stat={dailyAggregation} unit={unit}
-                            normal={monthlyNormal(obs, dailyAggregation, month + 1)} />}
+                            normal={normal} />}
                     </Box>;
                 })}
                 {(() => {
@@ -314,18 +332,24 @@ function calcStats(values) {
     };
 }
 
-// Per-month and annual min/max/avg across years. Years without a value are
-// skipped (not counted as zero). The in-progress month and year are left out
-// because their partial totals/means would skew the all-time figures.
-function allTimeStats(matrix, annual, currentYear, currentMonth, estMonths, estYears) {
-    const byMonth = months.map((month) => {
+// Per-column and annual min/max/avg across years. Years without a value are
+// skipped (not counted as zero). The in-progress month or season, and the
+// current year, are left out because their partial totals/means would skew
+// the all-time figures.
+function allTimeStats(matrix, annual, currentYear, currentMonth, estMonths, estYears, period = "monthly") {
+    const seasonal = period === "seasonal";
+    const columns = seasonal ? SEASONS : months;
+    const byMonth = columns.map((col) => {
         const values = [];
         for (const [year, monthMap] of matrix) {
-            if (year === currentYear && month >= currentMonth) {
+            const skip = seasonal
+                ? isSeasonCurrentOrFuture(year, col, currentYear, currentMonth)
+                : year === currentYear && col >= currentMonth;
+            if (skip) {
                 continue;
             }
-            if (monthMap.has(month)) {
-                values.push({ value: monthMap.get(month), est: !!estMonths?.get(year)?.has(month) });
+            if (monthMap.has(col)) {
+                values.push({ value: monthMap.get(col), est: !!estMonths?.get(year)?.has(col) });
             }
         }
         return calcStats(values);
@@ -341,13 +365,15 @@ function allTimeStats(matrix, annual, currentYear, currentMonth, estMonths, estY
     return { byMonth, annual: calcStats(annualValues) };
 }
 
-function AllTimeSummary({ obs, dailyAggregation, summary, threshold, est, dir, spellThreshold }) {
+function AllTimeSummary({ obs, dailyAggregation, summary, threshold, est, dir, spellThreshold, period = "monthly" }) {
     const obsObj = OBS.get(obs);
     const fmat = fmatForObs(obs, dailyAggregation);
     const unit = useContext(UnitCtx);
+    const seasonal = period === "seasonal";
+    const columns = seasonal ? SEASONS : months;
     const { matrix, annual, estMonths, estYears, currentYear, currentMonth, response, error, isValidating }
-        = useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spellThreshold);
-    const stats = allTimeStats(matrix, annual, currentYear, currentMonth, estMonths, estYears);
+        = useMatrixData(obs, dailyAggregation, summary, threshold, est, dir, spellThreshold, period);
+    const stats = allTimeStats(matrix, annual, currentYear, currentMonth, estMonths, estYears, period);
     // Same water-year column as the matrix (rain only), over complete water
     // years: the in-progress and any partial first water year are left out.
     const waterYears = useWaterYears(obs, summary, threshold, est,
@@ -375,8 +401,9 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold, est, dir, s
         return formatObs(unit, value, fmat, false, false);
     };
 
+    const colCount = columns.length + 1 + (waterYears ? 1 : 0);
     return <Grid id="obs-alltime-summary"
-        templateColumns={"0.8fr repeat(" + (waterYears ? 14 : 13) + ", 1fr)"}
+        templateColumns={"0.8fr repeat(" + colCount + ", 1fr)"}
         templateRows="30px auto"
         overflow="auto"
         marginTop="4"
@@ -385,33 +412,36 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold, est, dir, s
         <Flex justifyContent="center" fontSize="lg">
             {isValidating && !response ? <Spinner size="sm" /> : obsObj.icon}
         </Flex>
-        {months.map((month) =>
-            <Box key={month} fontWeight="bold" textAlign="center">{monthNames[month]}</Box>
+        {columns.map((col) =>
+            <Box key={col} fontWeight="bold" textAlign="center">{seasonal ? SEASON_LABELS[col] : monthNames[col]}</Box>
         )}
         <Box fontWeight="bold" textAlign="center">Annual</Box>
         {waterYears && <WaterYearHeader />}
         {rows.map(({ key, label }) =>
             <Box key={key} display="contents">
                 <Box minW="46px" py="2" fontWeight="bold" textAlign="center">{label}</Box>
-                {months.map((month) => {
-                    const value = stats.byMonth[month]?.[key] ?? null;
-                    const { bg, col } = styleForReportValue(value, fmat, unit, summary, false, true);
-                    const cellEst = key === "min" ? stats.byMonth[month]?.minEst
-                        : key === "max" ? stats.byMonth[month]?.maxEst
-                            : stats.byMonth[month]?.avgEst;
+                {columns.map((col, idx) => {
+                    const value = stats.byMonth[idx]?.[key] ?? null;
+                    const { bg, col: colour } = styleForReportValue(value, fmat, unit, summary, false, true);
+                    const cellEst = key === "min" ? stats.byMonth[idx]?.minEst
+                        : key === "max" ? stats.byMonth[idx]?.maxEst
+                            : stats.byMonth[idx]?.avgEst;
+                    const normal = seasonal
+                        ? seasonalNormal(obs, dailyAggregation, col)
+                        : monthlyNormal(obs, dailyAggregation, col + 1);
 
-                    return <Box key={month + "-" + key}
+                    return <Box key={col + "-" + key}
                         className="cell"
                         textAlign="center"
                         backgroundColor={bg}
-                        color={col}
+                        color={colour}
                         border="1px solid transparent"
-                        _hover={value != null ? { border: "1px solid " + col } : {}}
+                        _hover={value != null ? { border: "1px solid " + colour } : {}}
                         py="2"
                         px="1"
                     >
                         <EstMark est={cellEst}>{formatValue(value, key)}</EstMark>
-                        {anom(value, monthlyNormal(obs, dailyAggregation, month + 1))}
+                        {anom(value, normal)}
                     </Box>;
                 })}
                 {(() => {
@@ -471,8 +501,10 @@ function AllTimeSummary({ obs, dailyAggregation, summary, threshold, est, dir, s
 }
 
 // Selections kept in the URL, e.g. /reports/alltime?var=rain&summary=count&threshold=0.1
+// period=seasonal is omitted when monthly (the default).
 const ALLTIME_URL_STATE = {
     obs: { param: "var", def: () => "temp", valid: inList(MULTIDAY_OBS_STATES) },
+    period: { def: () => "monthly", valid: inList(PERIODS) },
     // summary is resolved before daily so a Spells view can snap to a supported daily statistic.
     summary: { def: (s) => OBS.get(s.obs).summary, valid: (v, s) => allTimeSummaryOptions(s.obs).includes(v) },
     dailyAggregation: {
@@ -503,8 +535,9 @@ function AllTimeHeading({ obs, dailyAggregation, summary, dir, spellThreshold })
 }
 
 export default function AllTimeReport() {
-    const [{ obs, dailyAggregation, summary, threshold, est, dir, spellThreshold }, update] = useUrlState(ALLTIME_URL_STATE);
+    const [{ obs, dailyAggregation, summary, threshold, est, dir, spellThreshold, period }, update] = useUrlState(ALLTIME_URL_STATE);
     const monthlySummaryOptions = allTimeSummaryOptions(obs);
+    const seasonal = period === "seasonal";
 
     // Switching variable resets the daily statistic and threshold; a Mean/Total
     // summary follows the new variable (Min/Max/Count are kept). Spells is kept
@@ -541,6 +574,7 @@ export default function AllTimeReport() {
     const setThreshold = (value) => update({ threshold: value });
     const setDir = (value) => update({ dir: value });
     const setSpellThreshold = (value) => update({ spellThreshold: value });
+    const setPeriod = (value) => update({ period: value });
 
     return <Page name="reports" sub="all-time" title="Reports | all-time">
         <Heading as="h1" size="1">Reports: All-time</Heading>
@@ -561,7 +595,9 @@ export default function AllTimeReport() {
                 : dailyAggregationOptions}
             optFormat={(value) => DAILY_AGGREGATION_NAMES[value]} fn={setDailyAggregation} onObs={handleObsChange}
             allowObs={(v) => summary === "spells" ? SPELL_OBS.includes(v) : MULTIDAY_OBS_STATES.includes(v)} />
-        <Text mt="1" fontWeight="bold">Monthly and annual summary:</Text>
+        <Text mt="1" fontWeight="bold">Period:</Text>
+        <RadioButtonGroup name="period" value={period} options={PERIODS} optFormat={(value) => PERIOD_LABELS[value]} fn={setPeriod} />
+        <Text mt="1" fontWeight="bold">Summary:</Text>
         <RadioButtonGroup name="summary" value={summary} options={monthlySummaryOptions} optFormat={(value) => SUMMARY_NAMES[value]} fn={setSummary} />
         {summary === "count" && <CountThresholdSelector obs={obs} value={threshold} fn={setThreshold} />}
         {summary === "spells" && <>
@@ -571,15 +607,15 @@ export default function AllTimeReport() {
         <EstToggle value={est} onChange={(v) => update({ est: v })} />
 
         <MonthlyMatrix obs={obs} dailyAggregation={dailyAggregation} summary={summary} threshold={threshold} est={est}
-            dir={dir} spellThreshold={spellThreshold} />
+            dir={dir} spellThreshold={spellThreshold} period={period} />
 
         <Heading as="h3" size="3" mt="6">Min, max and average across all years</Heading>
         <AllTimeSummary obs={obs} dailyAggregation={dailyAggregation} summary={summary} threshold={threshold} est={est}
-            dir={dir} spellThreshold={spellThreshold} />
+            dir={dir} spellThreshold={spellThreshold} period={period} />
 
         {summary === "spells" ? <>
             <Text mt="3">
-                Each spell has one main period of each kind (month, calendar year, water year): the period
+                Each spell has one main period of each kind (month or season, calendar year, water year): the period
                 it overlaps the most, with ties broken by the period that contains its midpoint (the earlier
                 middle day when the length is even). In that main period the cell shows the spell's full
                 length. In every other period the spell touches, only the days that fall inside that period
@@ -587,26 +623,33 @@ export default function AllTimeReport() {
                 observations but no such spell is 0. A missing day ends the spell, as on the spells ranking.
                 An ongoing spell, still running on the latest eligible day, is counted at its length so far.
                 Rain and wet hours may include today; temperatures and sunshine stop at yesterday.
+                {seasonal && " Seasons are meteorological: Winter is December–February, labelled by the year"
+                    + " that contains January (so December is included in the following year's Winter);"
+                    + " Spring is March–May; Summer is June–August; Autumn (Fall) is September–November."}
             </Text>
             <Text mt="2">
                 * spell crosses a period boundary (shown at full length in its main period, truncated elsewhere).
             </Text>
             <Text mt="2">
-                The table above compares the same month (or full year) across years: its min, max and average
-                are taken over the spell lengths in the matrix. Years with no data for a month are ignored
-                rather than counted as zero. The current, still in-progress month and year are excluded so
+                The table above compares the same {seasonal ? "season" : "month"} (or full year) across years: its min, max and average
+                are taken over the spell lengths in the matrix. Years with no data for a {seasonal ? "season" : "month"} are ignored
+                rather than counted as zero. The current, still in-progress {seasonal ? "season" : "month"} and year are excluded so
                 partial spells do not skew the results; for rain, the Water yr column likewise covers complete
                 water years only (in-progress and partial water years are excluded).
             </Text>
         </> : <>
             <Text mt="3">
-                Choose a daily series first, then summarize those daily values independently for each month and year.
+                Choose a daily series first, then summarize those daily values independently for each
+                {" "}{seasonal ? "season" : "month"} and year.
                 Count is the number of selected daily values above the chosen threshold. Rainfall uses daily totals.
+                {seasonal && " Seasons are meteorological: Winter is December–February, labelled by the year"
+                    + " that contains January (so December is included in the following year's Winter);"
+                    + " Spring is March–May; Summer is June–August; Autumn (Fall) is September–November."}
             </Text>
             <Text mt="2">
-                The table above compares the same month (or full year) across years: its min, max and average are
-                taken over the values in the matrix. Years with no data for a month are ignored rather than counted as
-                zero. The current, still in-progress month and year are excluded so partial data does not skew the results;
+                The table above compares the same {seasonal ? "season" : "month"} (or full year) across years: its min, max and average are
+                taken over the values in the matrix. Years with no data for a {seasonal ? "season" : "month"} are ignored rather than counted as
+                zero. The current, still in-progress {seasonal ? "season" : "month"} and year are excluded so partial data does not skew the results;
                 for rain, the Water yr column likewise covers complete water years only (in-progress and partial
                 water years are excluded).
             </Text>

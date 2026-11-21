@@ -32,6 +32,46 @@ SEASONS: Dict[str, Set[int]] = {
     "winter": {12, 1, 2},
 }
 
+# Meteorological seasons. Winter is labelled by the year that contains January
+# (Dec 2023 – Feb 2024 is Winter 2024). "fall" is accepted as an alias of autumn
+# in filters, but season_of always returns "autumn".
+SEASON_NAMES = ("winter", "spring", "summer", "autumn")
+
+
+def season_of(d: date) -> Tuple[int, str]:
+    """Return (year_label, season) for a calendar date."""
+    if d.month == 12:
+        return d.year + 1, "winter"
+    if d.month in (1, 2):
+        return d.year, "winter"
+    if d.month <= 5:
+        return d.year, "spring"
+    if d.month <= 8:
+        return d.year, "summer"
+    return d.year, "autumn"
+
+
+def season_bounds(year: int, season: str) -> Tuple[date, date]:
+    """Inclusive start and end of a labelled meteorological season."""
+    season = "autumn" if season == "fall" else season
+    if season == "winter":
+        return date(year - 1, 12, 1), date(year, 3, 1) - timedelta(days=1)
+    if season == "spring":
+        return date(year, 3, 1), date(year, 5, 31)
+    if season == "summer":
+        return date(year, 6, 1), date(year, 8, 31)
+    if season == "autumn":
+        return date(year, 9, 1), date(year, 11, 30)
+    raise ValueError("unknown season: %s" % season)
+
+
+def next_season(year: int, season: str) -> Tuple[int, str]:
+    season = "autumn" if season == "fall" else season
+    i = SEASON_NAMES.index(season)
+    if i == len(SEASON_NAMES) - 1:
+        return year + 1, "winter"
+    return year, SEASON_NAMES[i + 1]
+
 # variable -> {daily statistic -> how the N daily values are combined}
 ROLLING_VARS: Dict[str, Dict[str, str]] = {
     "rain": {"total": "sum"},

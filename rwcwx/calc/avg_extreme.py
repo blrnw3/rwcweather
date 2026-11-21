@@ -10,6 +10,7 @@ from rwcwx.model.avgext import AvgExtQ
 from rwcwx.model.obs import ObsQ
 from rwcwx.models import AvgExt, Obs
 from rwcwx.util import DateUtil
+from rwcwx.calc.rolling import SEASON_NAMES, season_of
 
 # Circular quantities: a daily mean direction is meaningful, but averaging those means over
 # several days (or comparing them against thresholds) is not, so they get no multi-day summaries.
@@ -538,11 +539,35 @@ class AvgExtAggregator:
         ]
 
     @staticmethod
+    def seasonal(avg_exts: List[AvgExt], var: str):
+        """Meteorological seasons from the same daily rows as monthly / annual.
+
+        Winter is labelled by the year containing January (Dec of the previous
+        calendar year is included). No extra database query.
+        """
+        if var in DAILY_ONLY_VARS:
+            return []
+        by_season = defaultdict(list)
+        for ae in avg_exts:
+            year, season = season_of(ae.d)
+            by_season[(year, season)].append(ae)
+
+        def sort_key(item):
+            (year, season), _aes = item
+            return year, SEASON_NAMES.index(season)
+
+        return [
+            _period_summary(aes, var, [year, season])
+            for (year, season), aes in sorted(by_season.items(), key=sort_key)
+        ]
+
+    @staticmethod
     def all_summaries(avg_ext: List[AvgExt], var: str):
         return dict(
             daily=AvgExtAggregator.daily(avg_ext, var),
             monthly=AvgExtAggregator.monthly(avg_ext, var),
             yearly=AvgExtAggregator.annual(avg_ext, var),
+            seasonal=AvgExtAggregator.seasonal(avg_ext, var),
         )
 
 

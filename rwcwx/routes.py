@@ -400,7 +400,7 @@ def _spells_cached(var, typ, threshold, direction, month, start_year, limit, tod
 
 def var_spells_grid(var: str, typ: str):
     """
-    Longest qualifying spell (days) in each month, calendar year and water year,
+    Longest qualifying spell (days) in each month, meteorological season, calendar year and water year,
     e.g. /api/var/spells_grid/rain/total/?dir=below&threshold=0.01
     Each spell counts at full length in its home period (most overlap, ties broken by midpoint)
     and at the days inside the period in every other period it touches; the cell is the maximum.

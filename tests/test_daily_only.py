@@ -27,6 +27,7 @@ def test_wind_direction_has_no_monthly_or_annual_summaries():
     assert "wdir" in DAILY_ONLY_VARS
     assert AvgExtAggregator.monthly([ae], "wdir") == []
     assert AvgExtAggregator.annual([ae], "wdir") == []
+    assert AvgExtAggregator.seasonal([ae], "wdir") == []
     assert AvgExtAggregator.daily([ae], "wdir") == [{"x": 1}]
 
 

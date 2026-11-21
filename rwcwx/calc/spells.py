@@ -12,10 +12,11 @@ Rules:
   ends the spell (we can't tell whether it met the condition).
 - Month filter (rankings): any spell that overlaps the month or season is returned in full. Start year: only
   days from 1 January of that year count.
-- All-time grid: each spell has one home period of each kind (month, calendar year, water year) — the
-  period it overlaps the most, with ties broken by the period that contains its midpoint
-  (start + (length-1)//2, the earlier middle day when the length is even). If the midpoint is not in any
-  tied period, the earliest of those periods is used. In its home period the spell counts at full length;
+- All-time grid: each spell has one home period of each kind (month, meteorological season, calendar
+  year, water year) — the period it overlaps the most, with ties broken by the period that contains
+  its midpoint (start + (length-1)//2, the earlier middle day when the length is even). If the midpoint
+  is not in any tied period, the earliest of those periods is used. Winter is labelled by the year
+  containing January (and includes the preceding December). In its home period the spell counts at full length;
   in every other period it touches, only the days inside that period are counted. The cell is the maximum
   of those candidate values. A cell whose value comes from a spell that crosses the period boundary is
   marked shared (asterisk). An ongoing spell (ending on the latest eligible day) is counted at its length
@@ -29,7 +30,7 @@ Rules:
 from datetime import date, timedelta
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
-from rwcwx.calc.rolling import SEASONS, span_overlaps_months, target_months
+from rwcwx.calc.rolling import SEASON_NAMES, SEASONS, next_season, season_bounds, season_of, span_overlaps_months, target_months
 
 DIRECTIONS = ("above", "below")
 
@@ -252,6 +253,17 @@ def _water_year_periods(start: date, end: date):
             for wy in range(_water_year_of(start), _water_year_of(end) + 1)]
 
 
+def _season_periods(start: date, end: date):
+    periods = []
+    year, season = season_of(start)
+    lo, hi = season_bounds(year, season)
+    while lo <= end:
+        periods.append(((year, season), lo, hi))
+        year, season = next_season(year, season)
+        lo, hi = season_bounds(year, season)
+    return periods
+
+
 def _home_key(start: date, length: int, active):
     """Period with the most overlap; ties go to the one containing the midpoint, else the earliest."""
     mid = _midpoint(start, length)
@@ -351,17 +363,17 @@ def _cell(period, length: int, est: bool, shared: bool = False) -> dict:
 def spell_grid(daily: Iterable[Tuple[date, Optional[float]]], var: str, typ: str, threshold: float,
                direction: str = "above", today: Optional[date] = None,
                est_dates: Optional[set] = None) -> dict:
-    """Longest spell length (days) for each month, calendar year and water year.
+    """Longest spell length (days) for each month, meteorological season, calendar year and water year.
 
     Spells are the same runs as find_spells (consecutive calendar days meeting the
     threshold, broken by a missing day). Each spell has one home period of each
-    kind: the month / calendar year / water year it overlaps the most, with ties
-    broken by the period that contains its midpoint (start + (length-1)//2). In
-    its home period it counts at full length; in every other period it touches,
-    only the days inside that period are counted. The cell value is the maximum
-    of those candidates. Months, years and water years that have at least one
-    daily value are included (0 if no spell qualifies). Periods with no data are
-    omitted.
+    kind: the month / season / calendar year / water year it overlaps the most, with
+    ties broken by the period that contains its midpoint (start + (length-1)//2).
+    Winter is labelled by the year containing January and includes the preceding
+    December. In its home period it counts at full length; in every other period it
+    touches, only the days inside that period are counted. The cell value is the
+    maximum of those candidates. Periods that have at least one daily value are
+    included (0 if no spell qualifies). Periods with no data are omitted.
 
     A cell whose value comes from a spell that crosses that period's boundary is
     marked shared, so the grid can show a trailing asterisk (both the full-length
@@ -379,16 +391,18 @@ def spell_grid(daily: Iterable[Tuple[date, Optional[float]]], var: str, typ: str
     days = [(d, v) for d, v in daily if v is not None and (last_day is None or d <= last_day)]
     spells = find_spells(days, stored, direction, last_day=last_day)
 
-    months_with_data, years_with_data, wys_with_data = set(), set(), set()
+    months_with_data, seasons_with_data, years_with_data, wys_with_data = set(), set(), set(), set()
     first_date = None
     for d, _v in days:
         months_with_data.add((d.year, d.month))
+        seasons_with_data.add(season_of(d))
         years_with_data.add(d.year)
         wys_with_data.add(_water_year_of(d))
         if first_date is None or d < first_date:
             first_date = d
 
     monthly, monthly_est, monthly_ext = {k: 0 for k in months_with_data}, {}, {}
+    seasonal, seasonal_est, seasonal_ext = {k: 0 for k in seasons_with_data}, {}, {}
     yearly, yearly_est, yearly_ext = {k: 0 for k in years_with_data}, {}, {}
     wateryear, wateryear_est, wateryear_ext = {k: 0 for k in wys_with_data}, {}, {}
 
@@ -396,6 +410,8 @@ def spell_grid(daily: Iterable[Tuple[date, Optional[float]]], var: str, typ: str
         start, end, length = s["start"], s["end"], s["length"]
         _assign(monthly, monthly_est, monthly_ext, start, end, length,
                 _month_periods(start, end), last_day, est_dates)
+        _assign(seasonal, seasonal_est, seasonal_ext, start, end, length,
+                _season_periods(start, end), last_day, est_dates)
         _assign(yearly, yearly_est, yearly_ext, start, end, length,
                 _year_periods(start, end), last_day, est_dates)
         _assign(wateryear, wateryear_est, wateryear_ext, start, end, length,
@@ -404,6 +420,9 @@ def spell_grid(daily: Iterable[Tuple[date, Optional[float]]], var: str, typ: str
     monthly_rows = [_cell([y, m], monthly[(y, m)], monthly_est.get((y, m), False),
                           monthly_ext.get((y, m), False))
                     for y, m in sorted(monthly)]
+    seasonal_rows = [_cell([y, s], seasonal[(y, s)], seasonal_est.get((y, s), False),
+                           seasonal_ext.get((y, s), False))
+                     for y, s in sorted(seasonal, key=lambda k: (k[0], SEASON_NAMES.index(k[1])))]
     yearly_rows = [_cell(y, yearly[y], yearly_est.get(y, False), yearly_ext.get(y, False))
                    for y in sorted(yearly)]
     wateryear_rows = []
@@ -415,4 +434,4 @@ def spell_grid(daily: Iterable[Tuple[date, Optional[float]]], var: str, typ: str
         wateryear_rows.append(row)
 
     first = [first_date.year, first_date.month, first_date.day] if first_date else None
-    return dict(monthly=monthly_rows, yearly=yearly_rows, wateryear=wateryear_rows, first_date=first)
+    return dict(monthly=monthly_rows, seasonal=seasonal_rows, yearly=yearly_rows, wateryear=wateryear_rows, first_date=first)
