@@ -6,8 +6,8 @@ from typing import Iterable, List, Optional, Sequence, Set, Tuple
 
 from rwcwx.estimated.conversions import BLEND
 
-# (var, type) pairs this version can fill.
-ESTIMATED_VARS = frozenset(BLEND.keys())
+# (var, type) pairs this version can fill. Mean is derived from Tmax/Tmin, not blended from a source.
+ESTIMATED_VARS = frozenset(set(BLEND.keys()) | {("temp", "avg")})
 
 
 def is_estimated_row(row) -> bool:

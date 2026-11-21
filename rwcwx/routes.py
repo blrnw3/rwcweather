@@ -43,7 +43,7 @@ def _maybe_merge_estimated(var: str, typ: str, measured: list) -> list:
     """Attach estimated days that have no measured value. No-op when the option is off."""
     if not _est_wanted() or (var, typ) not in est_merge.ESTIMATED_VARS:
         return measured
-    # Only the requested series is filled (Tmax, Tmin, rain). Derived variables
+    # Only the requested series is filled (Tmax, Tmin, daily mean, rain). Derived variables
     # that load parent rows through this function stay measured-only.
     top_var = (request.view_args or {}).get("var")
     top_typ = (request.view_args or {}).get("typ")
