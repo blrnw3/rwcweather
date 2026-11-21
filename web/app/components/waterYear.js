@@ -217,13 +217,15 @@ export function WaterYearHeader() {
 }
 
 // One cell of the "Water yr" column: the water year ending in `waterYear`.
-// Partial and in-progress water years are marked with an asterisk.
+// Partial and in-progress water years are marked with a dagger, so the mark
+// does not collide with the spells asterisk (a spell that crosses a boundary).
 // `showClimate` adds the bracketed percent-of-normal (Total summary only).
 export function WaterYearCell({ waterYear, data, obs, unit, summary, showClimate = false }) {
     const info = data?.waterYears.get(waterYear);
     const value = info ? info.value : null;
     const flagged = info && info.status !== "complete";
-    const starred = flagged || (summary === "spells" && !!info?.shared);
+    const crosses = summary === "spells" && !!info?.shared;
+    const incompleteMark = summary === "spells" ? "†" : "*";
     const { bg, col } = styleForReportValue(value, OBS.get(obs).fmat, unit, summary, true);
 
     return <Box className={"cell water-year" + (flagged ? " partial" : "")}
@@ -239,7 +241,7 @@ export function WaterYearCell({ waterYear, data, obs, unit, summary, showClimate
         py="2"
         px="1"
     >
-        <EstMark est={!flagged && info?.est}>{formatWaterYearValue(value, obs, unit, summary)}{starred ? "*" : ""}</EstMark>
+        <EstMark est={!flagged && info?.est}>{formatWaterYearValue(value, obs, unit, summary)}{crosses ? "*" : ""}{flagged ? incompleteMark : ""}</EstMark>
         {showClimate && <ClimateAnom value={value} normal={waterYearClimateNormal(info, obs)} obs={obs} stat="total" unit={unit} />}
     </Box>;
 }
@@ -260,7 +262,7 @@ export function WaterYearNote({ data, obs, unit, summary, showClimate = false })
         <Text>
             Water yr is the rain year from 1 October to 30 September, labelled by the year it ends
             (e.g. {waterYearLabel(2026)} = {waterYearRange(2026)}), shown alongside the calendar-year Annual figure.
-            {flagged.length > 0 && <> * Partial: {flagged.join("; ")}.</>}
+            {flagged.length > 0 && <> {summary === "spells" ? "†" : "*"} Partial: {flagged.join("; ")}.</>}
             {showClimate && <> Bracketed water-year figures are the percentage of the
                 {" "}{formatObs(unit, waterYearNormal("rain", "total"), OBS.get("rain").fmat, false, true)} water-year normal;
                 {" "}the in-progress water year is compared to date, and a water year whose records start after
