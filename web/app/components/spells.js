@@ -66,7 +66,7 @@ export const SPELL_CONF = {
 // Metric users (uk & eu) get round Celsius and mm thresholds, stored as their °F / inch equivalents
 // to match SPELL_VARS in rwcwx/calc/spells.py.
 const SPELL_CONF_METRIC = {
-    rain: { total: ["0.01", ...[2, 5, 10, 25].map(mmToIn)] },
+    rain: { total: ["0.01", ...[1, 2.5, 5, 10, 25].map(mmToIn)] },
     wetrate: { avg: [0.5, 1, 2, 5].map(mmToIn) },
     rain60: { max: [1, 2, 5, 10].map(mmToIn) },
     rain10: { max: [0.5, 1, 2, 5].map(mmToIn) },
@@ -158,12 +158,14 @@ export function spellThresholds(obs, stat, unit = "us") {
 }
 
 // Every value the URL / API accepts: all unit systems' options.
+// 0.2 mm is the metric label for the 0.01 in dry threshold. 2 mm is no longer
+// shown for rain totals, but is accepted so older links can map to 2.5 mm.
 export function spellThresholdsAny(obs, stat) {
     return [...new Set([
         ...spellThresholds(obs, stat, "us"),
         ...spellThresholds(obs, stat, "uk"),
         ...spellThresholds(obs, stat, "eu"),
-        ...(obs === "rain" ? [mmToIn(0.2)] : []),
+        ...(obs === "rain" ? [mmToIn(0.2), mmToIn(2)] : []),
     ])];
 }
 
