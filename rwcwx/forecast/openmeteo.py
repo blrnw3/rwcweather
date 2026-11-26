@@ -2,14 +2,17 @@
 
 Keyless public APIs, fetched server-side with an identifying User-Agent and cached per process
 (and last-good on disk) so the page does not hammer upstream. A failed or timed-out fetch is
-retried after a short back-off; the last good payload is served in the meantime instead of None.
+retried after a short back-off; the last good payload is served in the meantime instead of None,
+for up to 24 hours (the forecast page is hit infrequently). Production callers also return
+that last-good payload immediately and refresh in the background, so a ReadTimeout does not
+blank the 10-day meteogram or hold the request long enough for the browser to abort.
 """
 from typing import Any, Callable, Optional
 from urllib.parse import urlencode
 
 from rwcwx.config import TZ_NAME
 from rwcwx.forecast import nws as nws_mod
-from rwcwx.forecast.cache import STALE_MAX, UpstreamCache
+from rwcwx.forecast.cache import STALE_MAX_OPENMETEO, UpstreamCache
 from rwcwx.forecast.http import CONNECT_TIMEOUT, get_json as http_get_json
 
 LAT, LON, ELEV = nws_mod.LAT, nws_mod.LON, 125
@@ -30,10 +33,11 @@ def get_json(url: str) -> Any:
 
 
 def _safe(name: str, ttl: float, fn: Callable[[], Any], now: Optional[Callable[[], float]] = None,
-          wall: Optional[Callable[[], float]] = None, failed_ttl: Optional[float] = None) -> Optional[Any]:
+          wall: Optional[Callable[[], float]] = None, failed_ttl: Optional[float] = None,
+          revalidate: bool = False) -> Optional[Any]:
     return _store.safe(name, ttl, fn, now=now, wall=wall,
                        failed_ttl=TTL_FAILED if failed_ttl is None else failed_ttl,
-                       stale_max=STALE_MAX)
+                       stale_max=STALE_MAX_OPENMETEO, revalidate=revalidate)
 
 
 def clear() -> None:
@@ -68,7 +72,7 @@ def meteogram() -> Optional[dict]:
         hourly=METEO_HOURLY, daily=METEO_DAILY,
         models="gfs_seamless",
     )
-    return _safe("meteogram", TTL_FORECAST, lambda: get_json(_url(FORECAST_URL, params)))
+    return _safe("meteogram", TTL_FORECAST, lambda: get_json(_url(FORECAST_URL, params)), revalidate=True)
 
 
 def ensemble(model: str) -> Optional[dict]:
@@ -76,7 +80,7 @@ def ensemble(model: str) -> Optional[dict]:
         latitude=LAT, longitude=LON, elevation=ELEV, timezone=TZ_NAME,
         forecast_days=10, hourly="precipitation", models=model,
     )
-    return _safe("ensemble:" + model, TTL_ENSEMBLE, lambda: get_json(_url(ENSEMBLE_URL, params)))
+    return _safe("ensemble:" + model, TTL_ENSEMBLE, lambda: get_json(_url(ENSEMBLE_URL, params)), revalidate=True)
 
 
 def previous_runs(model: str) -> Optional[dict]:
@@ -84,7 +88,7 @@ def previous_runs(model: str) -> Optional[dict]:
         latitude=LAT, longitude=LON, elevation=ELEV, timezone=TZ_NAME,
         forecast_days=10, hourly=PREV_HOURLY, models=model,
     )
-    return _safe("previous:" + model, TTL_ENSEMBLE, lambda: get_json(_url(PREV_URL, params)))
+    return _safe("previous:" + model, TTL_ENSEMBLE, lambda: get_json(_url(PREV_URL, params)), revalidate=True)
 
 
 SINGLE_URL = "https://single-runs-api.open-meteo.com/v1/forecast"
@@ -164,7 +168,7 @@ def single_run(model: str, run_utc, now_utc=None) -> Optional[dict]:
                 return _MISSING
             raise
 
-    val = _safe(name, ttl, fetch, failed_ttl=TTL_SINGLE_MISSING)
+    val = _safe(name, ttl, fetch, failed_ttl=TTL_SINGLE_MISSING, revalidate=True)
     if not val or (isinstance(val, dict) and val.get("_unavailable")):
         return None
     return val

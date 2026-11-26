@@ -1,7 +1,11 @@
 """10-day meteogram shaping from an Open-Meteo-like payload. No network, no DB."""
 from datetime import datetime
+import threading
+import time
 
 import pytest
+
+from rwcwx.forecast.cache import STALE_MAX, STALE_MAX_OPENMETEO
 
 from rwcwx.config import TZ
 from rwcwx.forecast import meteogram as mg
@@ -148,6 +152,96 @@ def test_openmeteo_disk_fallback_after_clear(tmp_path, monkeypatch):
     assert openmeteo._safe("ens", 600, boom, now=now, wall=wall_fn) == {"ok": True}
     assert calls == ["boom"]
     assert openmeteo.status("ens")["stale"] is True
+    openmeteo.clear()
+
+
+def test_openmeteo_serves_stale_past_three_hours():
+    """A gap of 3+ hours between /forecast visits used to drop last-good (STALE_MAX was 3 h)
+    and a ReadTimeout then returned no series. Last-good stays usable for 24 hours."""
+    openmeteo.clear()
+    t = [1000.0]
+    now = lambda: t[0]
+    good = {"hourly": {"time": ["2026-11-25T00:00"]}}
+
+    def ok():
+        return good
+
+    def boom():
+        raise TimeoutError("read")
+
+    assert openmeteo._safe("meteogram", 600, ok, now) is good
+    t[0] += STALE_MAX + 600  # 3.1 hours after fetch, well past the old cap and the TTL
+    assert openmeteo._safe("meteogram", 600, boom, now) is good
+    assert openmeteo.status("meteogram")["stale"] is True
+    t[0] = 1000 + 12 * 3600
+    assert openmeteo._safe("meteogram", 600, boom, now) is good
+    t[0] = 1000 + STALE_MAX_OPENMETEO + 1
+    assert openmeteo._safe("meteogram", 600, boom, now) is None
+    openmeteo.clear()
+
+
+def test_openmeteo_disk_fallback_past_three_hours(tmp_path, monkeypatch):
+    monkeypatch.setenv("RWCWX_FORECAST_CACHE_DIR", str(tmp_path))
+    openmeteo.clear()
+    clock = [0.0]
+    wall = [1_700_000_000.0]
+    now = lambda: clock[0]
+    wall_fn = lambda: wall[0]
+    openmeteo._safe("meteogram", 600, lambda: {"v": 1}, now=now, wall=wall_fn)
+    openmeteo.clear()  # like a new uWSGI worker after hours of no visits
+    clock[0] += STALE_MAX + 600
+    wall[0] += STALE_MAX + 600
+
+    def boom():
+        raise TimeoutError("read")
+
+    assert openmeteo._safe("meteogram", 600, boom, now=now, wall=wall_fn) == {"v": 1}
+    assert openmeteo.status("meteogram")["stale"] is True
+    openmeteo.clear()
+
+
+def test_openmeteo_revalidate_returns_stale_without_waiting():
+    """After TTL expiry, production Open-Meteo callers must not block on a slow/timing-out
+    refresh: return last-good immediately and refresh in the background."""
+    openmeteo.clear()
+    t = [1000.0]
+    now = lambda: t[0]
+    started = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    def ok():
+        return {"hourly": {"time": ["2026-11-25T00:00"]}}
+
+    def slow():
+        calls.append("slow")
+        started.set()
+        # Stay blocked until the test releases us; a 12s ReadTimeout would hang the request.
+        assert release.wait(2)
+        return {"hourly": {"time": ["2026-11-25T01:00"]}}
+
+    assert openmeteo._safe("meteogram", 600, ok, now)["hourly"]["time"] == ["2026-11-25T00:00"]
+    t[0] += 601
+    t0 = time.monotonic()
+    val = openmeteo._safe("meteogram", 600, slow, now, revalidate=True)
+    elapsed = time.monotonic() - t0
+    assert val["hourly"]["time"] == ["2026-11-25T00:00"]
+    assert elapsed < 0.5
+    assert openmeteo.status("meteogram")["stale"] is True
+    assert started.wait(2), "background refresh did not start"
+    release.set()
+    # Wait for the background fetch to publish the new value.
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        if (openmeteo.status("meteogram") or {}).get("stale") is False:
+            break
+        time.sleep(0.01)
+    assert openmeteo.status("meteogram")["stale"] is False
+    t[0] += 1  # still within the new TTL; clock is a test double, not wall time
+    assert openmeteo._safe("meteogram", 600, lambda: (_ for _ in ()).throw(AssertionError("no refetch")), now)[
+        "hourly"
+    ]["time"] == ["2026-11-25T01:00"]
+    assert calls == ["slow"]
     openmeteo.clear()
 
 
